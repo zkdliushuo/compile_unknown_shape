@@ -1,0 +1,16 @@
+name: Local Config
+version: 1.0.0
+schema: v1
+models:
+  - name: deepseek-v3.2-exp
+    provider: openai-compatible 
+    model: deepseek-v3.2-exp
+    apiBase: https://api.modelarts-maas.com/v1
+    requestOptions:
+      headers:
+        X-Auth-Token: mdPIpHNt7waLLtDaqVBlFAbP870fSItWYLRBzZjU2lelLvkI1ePhLKLN5WFipd-bIhT9OATuLtDpO3er0xtuNA
+    roles:
+      - chat
+      - apply
+      - edit
+      - autocomplete
