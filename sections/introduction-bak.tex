@@ -1,0 +1,243 @@
+\section{Introduction}
+\label{sec:intro}
+
+Deep learning operators play a fundamental role in deep learning systems. 
+A deep learning model is typically represented as a computation graph, where edges correspond to tensors with attributes such as shape and data type, while nodes represent operators.
+Operator programs must handle all possible valid shapes, data types, and other cases, making their inner logic highly complex.
+Significant performance degradation arises if the shapes of input and output tensors for operators are size-varying.
+This variability prevents the constant propagation of many variables and hinders the elimination of numerous branch structures within the program.
+Consequently, it becomes challenging to fully unroll loops, schedule adequate instructions, eliminate unreachable branches, etc., 
+leading to the so-called scalar bottleneck. % especially for the kernel function that executes on the accelerator hardware.
+
+\begin{figure}[ht]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        $$
+        \begin{aligned}
+            \text{MatMul Kernel}\ MM& :\ C \stackrel{\vec{t}}{=} A\times B \\
+            \text{Tensor}\ A\in \mathbb{R}^{d_1\times d_3}, B &\in \mathbb{R}^{d_3 \times d_2}, C\in \mathbb{R}^{d_1\times d_2} \\
+            \text{Shape parameters}\ \vec{S}& = (d_1, d_2, d_3) \in \mathcal{V}^3 \\
+            \text{Tiling parameters}\ \vec{t}& = (t_1, \dots, t_{|\vec{t}|}) \in \mathcal{V}^{|\vec{t}|} \\
+            \text{TilingFunc}\ f& = \mathcal{V}^3 \mapsto \mathcal{V}^{|\vec{t}|},\ \vec{t} = f(\vec{S})
+        \end{aligned}
+        $$
+        \caption{Definition of the MatMul operator $MM$, a representative dynamic-shape operator in deep learning models, and its tiling parameters $\vec{t}$. $\mathcal{V}$ denotes the variable domain. \begin{CJK}{UTF8}{gbsn} \end{CJK}}
+        \label{eq:Dynamic-MatMul-definition}
+    \end{minipage}
+    \vfill
+    % 右侧代码块（多态实例化示例）
+    \begin{minipage}[t]{\linewidth}
+    \centering
+        \includegraphics[width=0.85\linewidth]{figures/intro/intro1-dynamic-op-current.png}
+        \caption{Complete dynamic operators' compilation and invocation process. The host code is compiled by baseline compile pipeline $\mathcal{C}_B$ and the device code is compiled by $\mathcal{C}_D$ directly without specialization using constant input parameters.}
+        \label{fig:complete-dynamic-shape-op}
+        
+    \end{minipage}
+\end{figure}
+
+
+\begin{figure*}[ht]
+    \centering
+    \includegraphics[width=1\linewidth]{figures/motivation/pipeline_diagram.pdf}
+    \caption{Utilization of different processing units in an AI accelerator designed to optimize vectorized and matrix-based computations. While scalar, cube, and memory accessing units run in parallel, scalar units can unexpectedly become the performance bottleneck.}
+    \label{fig:pipeline}
+    
+\end{figure*}
+
+For example, the MatMul operator defined in \autoref{eq:Dynamic-MatMul-definition} treats all shape parameters $\vec{S}$ as variables.
+The host code $f$ of the operator takes $\vec{S}$ as input and returns a list of tiling parameters $\vec{t}$, which mainly denote how to partition computation and memory access, including block sizes, thread mappings, and data tiling strategies, to optimize execution efficiency on accelerator hardware.
+The kernel $MM$ calculates the production of matrices $A$ and $B$ using tiling parameters $\vec{t}$.
+Obviously, most tiling parameters' concrete values depend on the shape parameters' values.
+However, tiling parameters' values now are all unknown at compile time since $\vec{S}$ is treated as all dynamic.
+As a result, the compiled $MM$ kernel binary performs poorly due to too many scalar instructions, as shown in \autoref{fig:complete-dynamic-shape-op}.
+
+These challenges are particularly pronounced in hardware like Neural Processing Units (NPUs). A typical NPU architecture comprises four principal components\cite{tang2023performance}: the scalar unit (also handling instruction decoding, dispatch, and branch prediction), vector processing unit, matrix computation unit (commonly termed Cube unit), and high-bandwidth memory (HBM). While NPUs demonstrate superior vector/matrix computation capabilities compared to traditional CPUs, they exhibit weaker scalar processing and branch prediction performance. This architectural disparity renders NPU operations particularly vulnerable to scalar computation limitations and scalar-dependent control flows, resulting in pronounced scalar bottlenecks.
+
+\autoref{fig:pipeline} illustrates the execution pipeline and dependency relationships among Scalar, HBM, and Cube components during matrix multiplication (A$\times$B). The upper subfigure depicts static-shaped input tensors, while the lower subfigure shows scenarios with partially dynamic-shaped inputs. The computation initiates with scalar unit operations including global variable initialization and matrix tiling configuration. Following initialization, Matrix A undergoes partitioned loading from HBM to Cube through three sequential phases, with final results (Matrix C) written back to HBM. Notably, both HBM and Cube operations remain dependent on Scalar computations and instruction dispatch.
+
+Key observations reveal that while effective execution times for HBM and Cube components remain comparable between static and dynamic scenarios, pipeline bubbles significantly increase in dynamic cases. This degradation primarily stems from extended scalar unit execution time due to two critical factors:
+\begin{itemize}
+    \item Scalar Computation Overhead:  
+   Dynamic shapes prevent scalar computation optimization through constant folding and instruction scheduling, resulting in increased execution time across all scalar computation segments.
+   \item Registers overflow \& ICache miss:
+   Too many unoptimized scalars make it impossible to put all scalars in registers, and some need to be loaded / stored via memory. And branch prediction accuracy also substantially deteriorates when handling dynamic shape-related control flows, leading to increased ICache misses. This effect disproportionately impacts segments \textbf{(2)} and \textbf{(3)}.
+\end{itemize}
+The combined effects of these factors result in a 34\% overall computation time increase in dynamic shape scenarios, with system performance becoming critically constrained by scalar unit limitations.
+
+Our key insight is that in dynamic shape scenarios, only a tiny subset of dimensions are genuinely variable, a property we refer to as partial dynamicity. 
+We call a dimension with varying dimension size as \kw{dynamic dimension}; otherwise, \kw{constant dimension}.
+By only propagating constant information of the \kw{constant dimensions}, most tiling parameters can still be replaced with concrete constant values, generating a specialized kernel and boosting the kernel performance. 
+This optimization requires positively propagating constants throughout the program under a specific partial dynamic shape context, requiring a precise \textbf{inter-procedural constant propagation} compile pipeline.
+For simplicity, we call it short \textbf{IPCP}.
+
+
+However, our target operator programs are large-scale, each containing an average of over 10,000 lines of code. 
+Balancing precision and analysis efficiency is essential. 
+The IPCP process can not become a significant bottleneck in the compilation pipeline, as excessive overhead could outweigh its benefits.
+
+Consequently, the first challenge is \textbf{ensuring that IPCP analysis meets compilation overhead constraints while maintaining high precision}.
+
+Additionally, following several key challenges can hurt the precision of constant tiling parameter inference if not carefully addressed:
+\begin{itemize}
+
+\item \textbf{Early return caused by runtime shape checks:}
+Runtime shape checks in operator programs with dynamic shapes immediately trigger an early return when invalid input dimensions are detected.
+As a result, constant values are only defined on the paths that pass these checks. 
+However, standard program analysis often merges states from different paths, causing precise constant values to become unknown and significantly reducing analysis accuracy.
+
+\item \textbf{Imprecise point-to analysis for non-constant pointers:}
+When updating memory through unknown pointers, almost any memory locations have to be overwritten with unknown states, hurting precision significantly.
+Auxiliary point-to analysis \cite{anderson1994program} may help identify possible memory locations a pointer may point to, but its results are still imprecise. 
+\end{itemize}
+
+
+To address these challenges, we developed TilingInfer, a kernel function constant specialization tool based on constant dimension information.
+TilingInfer first performs inter-procedural constant propagation on the operator’s host code, guided by the given partial dynamic shape information.
+This information specializes in using operator context in the deployed model and generates tiling parameter invariants associated with that context. 
+Our tool uses enhanced techniques to incorporate useful constant information, propagating context-sensitive constant values throughout the program and storing them in the analysis environment. 
+This ensures accurate value analysis for memory objects related to tilings.
+
+Specifically, we develop a more efficient inter-procedural constant propagation analysis.
+The analysis maintains the value associated with variables and memory objects at each program point in a given context. 
+We call the associated value a specialized value(or sv). 
+Instead of aiming to build a super-compiler that symbolically simulates every possible execution state or analyzes all possible semantics in the program, our design decisions intend to strike a balance between precision and analysis efficiency.
+
+% \item \textbf{Lack of path sensitivity:} 
+% The methods struggle to determine which paths to explore further when meeting unknown branch conditions.
+% % when outputs remain constant under specific dynamic dimension conditions.
+% Nevertheless, the target program tends to execute different program paths according to the range of the symbolic input dimensions.
+% Without path-sensitive analysis, they cannot generate specialized kernel functions for different dynamic shape cases.
+
+% 为我生成一个英文版本的latex对比表格，该表格对比的是针对部分动态形状算子的常量传播优化方法的好处与不足。
+% 现在，我们已经知道的针对“部分动态形状算子的常量传播优化方法”大致有三类：
+% 1. 将目标函数中的常量参数替换为常量值，然后实施LLVM/GCC等主流编译器中的优化遍（例如打开O3优化选项），最终看函数中最终哪些输出为常量。
+% 2. 第二类做法是诸如LLPE这种面向C++程序的部分求值工作。这类工作针对给定上下文，通过逐个基本块的模拟执行，计算得到最终输出为常量。其中涉及到许多accuracy和precision的tradeoff。
+% 3. 第三类做法类似于符号执行，对于所有可能的路径通过guard value flow等代码依赖分析方法，确定哪些约束下输出为哪些值。
+
+% 上述三类做法，第1种做法速度快，但精度低，其内部分析通常没有引入路径敏感和上下文敏感，一般通过数据流分析迭代到不动点得到保守解，为降低分析开销过程间分析不区分上下文，难以适用。第2种做法，速度和精度适中，内部通常引入上下文敏感，但一般为降低开销采用数据流分析迭代到不动点得到循环整体上的结果。第3种分析是一种非常精确的做法，可以分析出每条路径上的输出值，但缺点是非常耗时。
+
+% 上述三种方法中，第二种对C++程序做部分求值的方法最接近我们为每种部分动态情形生成一种或几种特化核函数的需求。但仍然面临以下困境：
+% 1. 难以处理路径敏感（某些输出在动态形状的动态维度为特定范围时为常量，需要对这些情况做路径敏感的分析，生成几种特定的部分特化核函数）。
+% 2. 难以处理运行时形状检查导致的early return（某些动态维度上的大小、上下限等检查由于维度大小未知而导致的失败会使第二种做法早早判断所有输出值均为变量，难以识别出需要深度探索的代码段以及需要忽略的针对运行时形状做的检查）。
+% 3. 难以处理向不确定的指针做store时的别名分析（这些工作针对通用程序，在遇到pointer不确定时采用非常保守的策略做更新，导致大量内存对象的定值被kill。可以针对算子程序中指针运算中基地址确定、不存在类型broken的特点使用基对象以及层次化类型做更为准确的更新，保证精度）。
+% 4. 外部二进制接口调用的情况。由于部署硬件的特点，算子库在编译时中存在大量的第三方库。这些第三方库在硬件上可能不存在源码，只有编译时的二进制可链接文件。因此这种在AST、LLVM IR表示上做PE的工作难以准确分析这些第三方库的语义。我们通过半自动的分析函数生成方法成功解决该问题。我们收集了常量传播中算子程序中常见二进制库的常量传播语义，设计了一种简单描述语言用于快速描述这种语义，并在分析前自动生成分析函数集成到常量信息传播框架中。
+
+
+% \subsection{Prior Works}
+% 
+% Existing approaches to propagate constant information for dynamic shape operator programs can be classified into three major categories as shown in \autoref{tab:constant_propagation_comparison}.
+% The \kw{Def-Use based approach} executes inter-procedural sparse conditional constant propagation\cite{Wegman1991ConstantPropagationConditional,Sharif2018TRIMMERApplicationSpecialization} along the define-use chain.
+% The concrete static values of \kw{constant dimensions} in the specific context 
+% After the transformation, most compile-time-constant variables are replaced with propagated concrete values. 
+% This method requires concise define-use information. 
+% However, the define-use information on allocated memory objects and global variables is implicit in the program.
+% The effectiveness of this method depends on other auxiliary analyses, such as pointer alias analysis and de-virtualization.
+% The imprecision of auxiliary analyses disrupts the propagation of the constant information of \kw{constant dimensions}.
+% As a result, these works disagree with our target operator programs.
+% % and typically does not incorporate path sensitivity or context sensitivity. 
+% % The analysis usually uses data-flow techniques that iterate to a fixed point, producing conservative results.
+% % To reduce overhead, inter-procedural analysis in these approaches often ignores context, limiting their applicability to more complex scenarios.
+% 
+% The \kw{specialization approach}, such as \cite{Smowton2011MakeWorlda,Malecha2015AutomatedSoftwareWinnowing}, analyzes the program under specialization context and skips exploring the unreachable program path. 
+% These methods simulate execution at the granularity of basic blocks within a given context to eliminate unreachable codes and inference constant values for variables and memory objects at each program point.
+% However, existing methods merge preceding blocks' local stores to guarantee scalability, leading to insufficient accuracy, especially when dealing with runtime shape check statements.
+% 
+% The \kw{constraint guarded approach}, such as symbolic execution\cite{Cadar2008KLEEUnassistedAutomatic,Gong2019DetectingInterproceduralInfeasible,Yao2024FalconFusedApproach}, where all possible execution paths are analyzed using path constraints as guards.
+% This approach provides the highest precision, as these works can be transformed into inferring constant tiling parameters' values for every possible execution path.
+% However, it is also the most expensive approach, as the number of possible paths can grow exponentially with program complexity.
+% 
+% Each of these methods has its strengths and weaknesses. 
+% The first category is highly efficient for general programs. 
+% However, it sacrifices precision due to its lack of sensitivity to execution paths, calling contexts, and memory models, which is essential to meet our requirements.
+% The third category, though the most precise, suffers from significant scalability issues, making it impractical for large-scale programs.
+% In contrast, the second approach provides a better balance between performance and accuracy, making it suitable for many practical scenarios.
+% 
+% \input{tables/comparison-constant-propogations}
+% 
+% \subsection{This work}
+% % 在这个工作中，我们揭示了现有的技术方法在处理动态形状算子的核函数常量特化时的不足。
+% % 特别的，当前以partial evaluation为代表的几种方法在做自动核函数常量特化时，没有配套的分析方法保证常量维度信息沿着tiling计算的程序路径深度探索。
+% % 受制于分析时的保守策略，常量维度信息通常在遇到形状合法性检查、不确定的访存、间接函数调用、外部函数调用时，很容易就被中断了传播，导致丢失了挖掘常量tiling参数并进一步优化核函数的机会。
+% 
+% % 为了解决分析出的关键挑战，我们开发了\mysys, 一种基于常量维度信息的核函数常量特化工具。
+% % \mysys 首先对算子的 Host 程序根据给定的部分动态形状信息开展跨过程的常量信息传播。
+% % 给定的部分动态形状信息特化了部署的模型中这个算子程序的使用上下文，并且用来产生与该使用上下文相关联的tiling参数不变量。
+% % 我们的工具用增强的技术来整合有用的常量信息，对整个程序执行上下文敏感的常量值传播并保存在分析环境中，确保与tiling相关的内存对象的数值分析精度。
+% % 特别的，我们建立了一个作用在分析环境上的更为高效的跨过程常量传播分析，为每个程序点处的变量和内存对象维护其在特定上下文中关联的值，我们称作特化值。
+% % 我们并不追求构造一个超级编译引擎，来符号化模拟每种可能的执行状态或者记录程序中一切可能的语义，相反我们的设计决策都是为了兼顾精度和分析效率。
+% 
+% % 具体来说，对每个函数用给定上下文传播常量信息前，我们首先基于模式匹配识别并标记该函数中在高层语义上不可达的分支，从而保证函数内合并动态控制流的程序点上特化值的精度。
+% % 我们保留内存对象间的层次化关系，限制store指令的内存副作用。
+% % 同时随常量传播过程同时传播函数指针，准确确定间接函数调用的对象。
+% % 最后，我们通过手工构建外部函数语义的方法支持对外部函数的上下文敏感分析。
+% % 我们的实验显示通过采用上述方法，我们实现了更精确的常量传播，可以得到更多的tiling参数不变量，因此可以更积极地优化核函数中的标量指令。
+% % 我们的编译pipeline是基于 LLVM 编译框架开发的，作用在LLVM IR上。
+% 
+% In this work, we reveal shortcomings in existing techniques when handling constant specialization in kernel functions for dynamic shape operators. 
+% In particular, current methods, such as those based on partial evaluation, lack corresponding analysis to ensure constant dimension information is deeply propagated along tiling computation paths. 
+% Due to conservative strategies during analysis, constant dimension information is easily interrupted by shape validity checks, uncertain memory accesses, indirect function calls, or external function calls. 
+% This results in missed opportunities to extract constant tiling parameters and optimize kernel functions.
+% 
+% To address these challenges, we developed \mysys, a kernel function constant specialization tool based on constant dimension information. 
+% \mysys first performs inter-procedural constant propagation on the operator's host code, guided by the given partial dynamic shape information.
+% This information specializes in using operator context in the deployed model and generates tiling parameter invariants associated with that context.
+% Our tool uses stronger techniques to incorporate useful constant information, propagating context-sensitive constant values throughout the program and storing them in the analysis environment. 
+% This ensures accurate value analysis for memory objects related to tiling.
+% 
+% Specifically, we develop a more efficient inter-procedural constant propagation analysis.
+% The analysis maintains the value associated with variables and memory objects at each program point in a given context.
+% We call the associated value a specialized value(or sv). 
+% Instead of aiming to build a super-compiler that symbolically simulates every possible execution state or analyzes all possible semantics in the program, our design decisions intend to strike a balance between precision and analysis efficiency.
+% 
+% In practice, we first identify and mark semantically unreachable branches using pattern matching before propagating constant information for each function in a given context. 
+% This preserves the precision of specialized values at program points where dynamic control flows merge. 
+% We maintain the hierarchical relationships among memory objects and limit the side effects of store instructions.
+% In addition, we propagate function pointers along with constant values to resolve indirect function calls accurately. 
+% Finally, we support context-sensitive analysis of external functions by manually constructing their semantic models.
+% 
+% Our experiments show that these techniques achieve more precise constant propagation, allowing the extraction of more tiling parameter invariants and more aggressive optimization of scalar instructions in kernel functions.
+% Our compilation pipeline is built on the LLVM\cite{lattner2004llvm} compiler framework and processes on LLVM IR.
+% 
+% \autoref{eq:guarded-constant-parameters} defines constant tiling parameters $\vec{t}_C$ and specialized kernel functions $MM\langle\vec{t}_C\rangle$ in the specialisation context with \kw{constant dimensions} $\vec{S}_C$ for MatMul. 
+% Accordingly, \autoref{fig:this-work-overflow} illustrates how this work employs $\vec{S}_C$ to infer the concrete values of some tiling invariants in $\vec{t}$.
+% 
+% The specialized tilingfunc $f_{\vec{S}_C}$ is a transformed tilingfunc whose input dimensions are replaced with the accordingly constants in $\vec{S}_C$. 
+% The constant tiling parameters $\vec{t}_C$ are obtained from analysis of compile pipeline $\mathcal{C}_C$ on $f_{\vec{S}_C}$, denoted as $f_{\vec{S}_C} \vdash \vec{t}_C$.
+% Then the specialized kernel functions $MM\langle\vec{t}_C\rangle$ is compiled with existing compile pipeline $\mathcal{C}_D$.
+% The new compile pipeline flow is shown as \autoref{fig:this-work-overflow}.
+% 
+% \begin{figure}[ht]
+%     \centering
+%     \begin{minipage}[t]{0.48\textwidth}
+%         \centering
+%         % \footnotesize % 设置字体大小为小号
+%         $$
+%         \begin{aligned}
+%             \text{Constant Dimensions}&\ \vec{S}_C: \{(d_2, 64), (d_3, 32)\}\\
+%             % \text{Dynamic Dimensions}&\ \vec{S}_D = (d_1) \in \mathcal{V}^{|\vec{S}_D|} \\
+%             % \forall_{t_i\in\vec{t}_C}\forall_{\vec{S_D}} t_i = c_i \\
+%             \text{Constant Tilings}&\ \vec{t}_C \subseteq \vec{t} \\
+%             \text{Dynamic Tilings}&\ \vec{t}_D = \vec{t} - \vec{t}_C \\
+%             % \text{Specialized TilingFunc}&\ f_{\vec{S}_C}= \mathcal{V}^{|\vec{S}_D|} \mapsto \mathcal{V}^{|\vec{t}_D|} \\
+%             % \vec{t} = f_{\vec{S}_C}(\vec{S}_D), \vec{t}_C = 
+%             % \vec{t}_C \uplus \vec{t}_D = f_{\vec{S}_C}(\vec{S}_D)&,\ f_{\vec{S}_C} \vdash \vec{t}_C \\
+%             \text{Specialized Kernel}\ MM&\langle\vec{t}_C\rangle:\ C \stackrel{\vec{t}_C\uplus \vec{t}_D}{=} A\times B
+%         \end{aligned}
+%         $$
+%         \caption{Constant tiling parameters and the specialized kernel of the operator MatMul in a specific partial dynamic scenario where $d_2 = 64, d_3 = 32$. We represent all the constant tiling parameters as a vector $\vec{t}_C$, whose elements' values can be inferred at compile time. Then, the operator kernel can be specialized using $\vec{t}_C$, which we denote as $MM\langle\vec{t}_C\rangle$.}
+%         \label{eq:guarded-constant-parameters}
+%     \end{minipage}
+%     \hfill
+%     % 右侧代码块（多态实例化示例）
+%     \begin{minipage}[t]{0.5\textwidth}
+%     \vspace{0pt}
+%         \includegraphics[width=\linewidth]{figures/intro/intro2-partial-dynamic-op-ours.png}  
+%         \caption{This work employs a new compile pipeline $\mathcal{C}_B$ to inference the constant tiling parameters $\vec{t}_C$ of function $f$ in the given constant dimensions context $\vec{S}_C$. Then, we transform the original kernel to a specified kernel $MM\langle\vec{t}_C\rangle$ using constant tiling parameters $\vec{t}_C$ and compile $MM\langle\vec{t}_C\rangle$ with existing compiler pipeline $\mathcal{C}_D$.}
+%         \label{fig:this-work-overflow}
+%     \end{minipage}
+% \end{figure}
+% 
+% \begin{CJK}{UTF8}{gbsn} \ls{本文的贡献是什么？再思考清楚} \end{CJK}
+
+% We extract shape information from the computation graph of dynamic shape models and first analyze the constant tiling parameters $t_C$ under certain shape constraints.

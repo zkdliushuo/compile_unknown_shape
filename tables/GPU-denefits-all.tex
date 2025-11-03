@@ -1,0 +1,38 @@
+
+\begin{table}[ht]
+\centering
+\setlength{\tabcolsep}{3pt}
+\begin{threeparttable}
+
+\caption{Code size reduction and kernel optimization results for different types of attentions in \autoref{tab:benchmark-setting-attention-types} on GPU server. The performance baseline is FlashInfer~\cite{ye2025flashinfer}, which specializing kernels in the manual dispatch style.
+The original code size is measured using the value domain listed in \autoref{tab:attention-dimensions-definition}.
+}
+\label{tab:dimensions-value-domain}
+\footnotesize
+\begin{tabularx}{0.95\linewidth}{ c c c l X }
+\toprule
+\textbf{ID} & \textbf{Code Size(MB)} & \textbf{Reduction Ratio} & \textbf{Op} & \textbf{Speedup Ratio} \\
+\midrule
+\multirow{2}{*}{\ding{172}} & \multirow{2}{*}{19.2($\downarrow 501.3$)} & \multirow{2}{*}{96.3\%} & DFA & 1.02× \\
+ & & & DFA & 1.00× \\
+\hline
+\multirow{2}{*}{\ding{173}} & \multirow{2}{*}{20.2($\downarrow 500.3$)} & \multirow{2}{*}{96.2\%} & DFA &1.03× \\
+ & & & DFA & 1.01× \\
+\hline
+\multirow{2}{*}{\ding{174}} & \multirow{2}{*}{18.9($\downarrow 501.6$)} & \multirow{2}{*}{96.4\%} & DFA & 1.03× \\
+ & & & DFA & 1.01× \\
+\hline
+\multirow{2}{*}{\ding{175}} & \multirow{2}{*}{19.1($\downarrow 501.4$)} & \multirow{2}{*}{96.3\%} & DFA & 1.02× \\
+ & & & DFA & 1.00× \\
+\hline
+\multirow{2}{*}{\ding{176}} & \multirow{2}{*}{22.1($\downarrow 498.4$)} & \multirow{2}{*}{95.8\%} & DFA & 1.03× \\
+ & & & DFA & 1.02× \\
+\hline
+\multirow{2}{*}{\textbf{Average}} & \multirow{2}{*}{19.9($\downarrow 500.60$)} & \multirow{2}{*}{96.20\%} & DFA & 1.03× \\
+ & & & DFA & 1.01× \\
+\bottomrule
+\end{tabularx}
+
+\end{threeparttable}
+\end{table}
+% 520.5

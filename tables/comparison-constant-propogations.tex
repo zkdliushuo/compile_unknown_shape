@@ -1,0 +1,29 @@
+\begin{table}
+    \centering
+    \footnotesize
+    \caption{Comparison of different constant propagation optimization methods for parameterized operator programs}
+    \label{tab:constant_propagation_comparison}
+    \begin{tabularx}{\linewidth}{c|c|c}  
+        \toprule
+        \textbf{Existing Method} 
+        & \makecell{\textbf{Early}  \textbf{Return}}  
+        & \makecell{\textbf{Point-to}  \textbf{Analysis}} 
+        \\
+        \midrule
+        \raggedright Def-Use Based\cite{Wegman1991ConstantPropagationConditional,Sharif2018TRIMMERApplicationSpecialization}
+        & \red{Speed\ding{51}}, Precision\ding{55} 
+        & \red{Speed\ding{51}}, Precision\ding{55} 
+        \\
+        \midrule
+        \raggedright Constraint Guarded\cite{Cadar2008KLEEUnassistedAutomatic,Gong2019DetectingInterproceduralInfeasible,Yao2024FalconFusedApproach}
+        & Speed\ding{55}, \red{Precision\ding{51}}  
+        & Speed\ding{55}, \red{Precision\ding{51}}  
+        \\
+        \midrule
+        \raggedright Partial Evaluation\cite{Smowton2011MakeWorlda,Malecha2015AutomatedSoftwareWinnowing}
+        & Speed\ding{55}, \red{Precision\ding{51}}
+        & \red{Speed\ding{51}}, Precision\ding{55}
+        \\
+        \bottomrule
+    \end{tabularx}
+\end{table}

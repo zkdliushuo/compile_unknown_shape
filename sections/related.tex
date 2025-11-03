@@ -1,0 +1,49 @@
+\section{Related Works}
+\label{sec:related}
+
+% %\yu{Yitong, 1) Automatic tuning based on decoupling computation and schedule; 2) Automatic tuning based on polyhedrol; 3) Various Optimization on Dynamic Models}
+
+
+% % \subsection{Automatic Tuning}
+
+% % There are many existing work on the automatic tuning of static parameter operators. According to the difference of the intermediate representation, it can be divided into the automatic tuning algorithm based on the Halide representation and the polyhedron representation.
+
+% % \textbf{Automatic tuning algorithms based on Halide representation.} 
+% % \kd{Decoupling Computation and Schedule.}
+% % Halide\cite{ragan2013halide} is a domain-specific language and compiler used to develop high-performance image processing pipelines. It innovatively proposes the idea of separation of computing definition and schedule. %The definition represents the mathematical nature of calculation, and the scheduling represents the optimization strategy combination of the implementation details such as the order of calculation. 
+% % Based on this idea, TVM~\cite{chen2018tvm} designs the TE language to express the computation of deep learning operators and provides code generation and optimization for different hardware. AutoTVM~\cite{chen2018autotvm} uses the learning model to learn the cost model, and uses the scheduling template to automatically search for optimized operator implementations. FlexTensor~\cite{zheng2020flextensor} designs different scheduling primitives for different hardware, and uses heuristics and machine learning methods to search for optimal scheduling configurations.  Ansor~\cite{zheng2020ansor} uses a hierarchical search space for sampling to obtain more optimized combinations.
+% % These works have been successful in static shape workloads, but the support for dynamic shape is insufficient. 
+
+% % \kd{Automatic Tuning Based on Polyhedral.}
+% % Polyhedral representation was originally mainly used for the compilation and optimization of nested loop programs~\cite{feautrier1988parametric}. 
+% % In recent years, it has been widely used in specific fields to optimize computationally intensive programs, such as image processing~\cite{mullapudi2015polymage} and deep learning\cite{vasilache2018tensor}. 
+% % Diesel~\cite{elango2018diesel} uses polyhedral compilation techniques to obtain the initial schedule, and subsequently applies hardware-related optimizations such as loop binding, memory enhancement, and software pipeline. Tensor comprehensions~\cite{vasilache2018tensor} uses a polyhedral Just-In-Time compiler to automatically tune the CPU and GPU code. In addition, some works try to expand the expressive power of polyhedral representation. Tiramisu~\cite{baghdadi2019tiramisu} uses Halide's decoupling idea and introduces a set of scheduling commands on the basis of polyhedral representation, and completely decoupled computing representation, cyclic transformation, data layout and multi-machine communication through four-level intermediate representation. Stripe~\cite{zerrell2019stripe} proposes a nested polyhedral model to compare the nested structure of deep learning operators and accelerator topology to support large-scale parallel computing on different target hardware. These works also lack support for \kw{dynamic operators}.
+
+% % \subsection{Various Optimization on Dynamic Models}
+% % There is several existing work on dynamic operator tuning. The representitive ones are Nimble~\cite{shen2021nimble}, DietCode~\cite{zheng2022dietcode}, and HAOTuner~\cite{mu2023haotuner}. Nimble takes globally applicable scheduling assumption.
+% % DietCode and HAOTuner leverage micro-kernel-based schedules to tune for dynamic shape.
+% % Compared with existing works, \mysys achieves better runtime performance on a wide range of shapes and accelerates the compilation process.
+
+% \kd{Other Optimization on Dynamic Models.} There are some other optimizations for dynamic models. 
+% Yu \etal~\cite{yu2018dynamicflow} proposes a distributed programming model for the dynamic structure of the network model (mainly branches and while loops). This programming model can divide the conditional branches and loop bodies in the loop into different hardware devices for execution. 
+% BladeDISC\cite{zheng2023bladedisc} is a compiler approach that addresses the challenges of dynamic shape optimization by abstracting and extracting shape information, creating a cross-level symbolic shape representation, and introducing a dynamic shape fusion approach based on the propagation of shape information.
+% CoRa\cite{fegade2022cora} is an efficient compiler tailored for operations on irregular tensors, also known as ragged tensors. It reduces computational waste compared to traditional padding and masking techniques, thereby enhancing processing efficiency.
+% Some works try to infer the shape of tensors in dynamic networks\cite{hattori2020shape}. These works all involve dynamic models, but none of them are optimized for the automatic tuning of tensor operators with parameters unknown at compile time. 
+
+% % \yu{Paper：
+% % Dynamic Control Flow in Large-Scale Machine Learning
+
+% % Dynet: The dynamic neural network toolkit.
+
+% % Semi-static Type, Shape, and Symbolic Shape Inference for Dynamic Computation Graphs
+
+% % DISC
+
+% % Nimble
+
+% % AdaTune: Adaptive Tensor Program Compilation Made Efficient
+
+% % FlexTensor
+
+% % 。。。
+% % }

@@ -1,0 +1,60 @@
+\section{Motivation}
+
+Current methods face the following key challenges when propagating constants to infer parameter values. 
+
+% It is not trivial to propagate constant information for each tiling parameter. 
+% The following lists troubling challenges that none of the prior works can properly handle.
+
+\subsection{Early Return Caused by Runtime Shape Checks}
+Dynamic shape operators often require runtime shape checks for several reasons:
+\begin{itemize}
+    \item Some operator implementations restrict supported shapes and require early validation.
+    The tiling algorithm is bypassed if the input shape does not meet these constraints.
+    \item Operator shapes may exceed size limits, violate shape constraints, or fail to meet data layout constraints, requiring error reporting.
+\end{itemize}
+
+Consequently, runtime shape checks are prevalent in operator implementations, especially for NPU operators, which must satisfy stringent hardware constraints such as mandatory memory alignment %for specific tensor dimensions 
+and strict buffer allocation rules.
+For example, all 36 programs in the customized NPU operator library~\cite{ascend_cannopsadv} %, all 36 of its provided programs 
+perform runtime shape checks within their tiling functions.
+
+\autoref{fig:early-return} shows a code snippet of a tiling function implementation.
+Function \texttt{Tiling} first checks if the dimension size \(d\) falls outside the expected range\([0, \text{INT\_MAX}]\).
+If so, it returns early at line 16 with an INVALID status code.
+Otherwise, it continues computing the tiling parameters at line 19.
+After that, the resulting values are stored in  memory object \texttt{o1}.
+%If so, the function returns early at line 16, directly returning an INVALID status code.
+A similar early return occurs at line 21 if the calculated tiling parameters violate hardware constraints.
+We call the pattern that checks on dimension size variables or tiling parameters directly return non-success status code, as \kw{early-return} pattern.
+
+The constant propagation algorithm may fail to determine which path to adopt at line 15 if \(d\) is dynamic.
+The algorithm must merge the tiling parameter values from both paths at the function's exit block, thereby losing all constant information.
+Nevertheless, the early-return paths never perform because only valid shapes (i.e., dimension sizes) are given at runtime.
+
+Such {early-return} paths are common in operator code and disrupt propagation by merging with normal paths.
+Manually eliminating these {early-return} paths is impractical due to engineering complexity, while precise path-sensitive analysis risks path explosion and high overhead.
+
+In  our analysis of LLVM IR, we observe that early-return patterns often manifest multiple control-flow paths converging at the exit block, where a \texttt{PHI} instruction selects the return status. 
+By examining whether the incoming values of this \texttt{PHI} instruction equal \texttt{SUCCESS} or not, one can distinguish early-return paths from normal ones. This insight allows the constant propagation algorithm to skip merging with early-return paths, improving both precision and efficiency.
+
+
+\subsection{Imprecise Pointer Point-to Analysis}
+Operator programs are often written in object-oriented languages like C++, where data is organized into aggregates such as structures and arrays (e.g., the \texttt{TData} class in \autoref{fig:early-return-code}). 
+The compiler represents these as address-taken memory objects, which can only be accessed through pointers. 
+Memory instructions like \texttt{STORE} and \texttt{LOAD} in LLVM IR operate on specific fields via pointers, with field addresses computed by \texttt{getelementptr} (\texttt{GEP}) using base pointers and field offsets.
+
+During constant propagation, it is common that the precise memory object that a pointer $p$ refers to is unclear.
+In such case, the analysis conservatively computes a point-to set $\mathit{tar}(p)$ (i.e., all possible memory objects that $p$ may point to). 
+A memory write operation with the pointer $p$ (e.g., \texttt{store} $q, p$) may update all objects in $\mathit{tar}(p)$, marking their values as unknown. 
+If $\mathit{tar}(p)$ is overly imprecise, the loss of constant information becomes widespread.
+This is particularly harmful for inferring tiling parameters, as they are stored in memory objects. 
+As a result, constant values of tiling parameters may be invalidated by any \texttt{store} instruction involving a non-constant pointer.
+
+To improve propagation precision, we model each pointer as $\text{Pointer}(\text{Base}, \text{Offsets}_{all})$, where \text{Base} is the allocation site and $\text{Offsets}_{all}$ is a sequence of indices representing the access path to the target field within the object.
+Unlike traditional methods, we track both the base object and the internal offsets of each pointer.
+This helps limit the side effects of \texttt{STORE} instructions by identifying affected subfields.
+% We call this approach \emph{multi-layer-based point-to analysis}.
+
+When \text{Base} is unknown, the analysis degrades to type-based point-to analysis.
+When $\text{Offsets}_{all}$ are partially unknown, it resembles field-sensitive Anderson-style analysis.
+This layered tracking helps preserve constant values, especially for tiling parameters in memory.

@@ -1,0 +1,45 @@
+\newcolumntype{H}{>{\centering\arraybackslash}m{0.07\linewidth}}
+\newcolumntype{O}{>{\centering\arraybackslash}m{0.14\linewidth}}
+\newcolumntype{A}{>{\centering\arraybackslash}m{0.18\linewidth}}
+\newcolumntype{P}{>{\centering\arraybackslash}m{0.07\linewidth}}
+
+\begin{table}[b]
+\centering
+\caption{Statistics of constant tiling parameters for Attention operators on hardware (HW) platforms. }
+\label{tab:tiling-params-statistics}
+\begin{tabular}{H|O|>{\centering\arraybackslash}m{0.08\linewidth}|A|P|>{\centering\arraybackslash}m{0.13\linewidth}}
+\hline
+\textbf{HW} & \textbf{Operator} & \textbf{$|\vec{p}|$} & \textbf{Attention}  & \textbf{$|\vec{p_C}|$} & \textbf{$|\vec{p_C}|/|\vec{p}|$} \\ \hline
+\multirow{4}{*}{\textbf{GPU}} & \multirow{2}{*}{\parbox{\linewidth}{\centering Prefill Attention}} & \multirow{2}{*}{\parbox{\linewidth}{\centering 51}} & MHA  & 35 & 69\% \\ \cline{4-6}
+& & & MQA & 35 & 58.8\% \\ \cline{2-6}
+& \multirow{2}{*}{\parbox{\linewidth}{\centering Decoding Attention}} & \multirow{2}{*}{\parbox{\linewidth}{\centering 34}} & MHA  & 20 & 59\% \\ \cline{4-6}
+& & & MQA & 19 & 55.9\% \\ \hline
+\multirow{4}{*}{\textbf{NPU}} & \multirow{2}{*}{\parbox{\linewidth}{\centering Prefill Attention}} & \multirow{2}{*}{\parbox{\linewidth}{\centering 258}} & MHA & 242 & 93.8\% \\ \cline{4-6}
+& & & MQA & 241 & 93.4\% \\ \cline{2-6}
+& \multirow{2}{*}{\parbox{\linewidth}{\centering Decoding Attention}} & \multirow{2}{*}{\parbox{\linewidth}{\centering 362}} & MHA & 286 & 79\% \\ \cline{4-6}
+& & & MQA & 235 & 64.9\% \\ \hline
+\multicolumn{6}{l}{$|\Vec{p}|$ represents the total number of kernel function parameters}\\
+\multicolumn{6}{l}{$|\vec{p_C}|$ represents the number of constant parameters.}
+\end{tabular}
+\end{table}
+% % Table with custom columns
+% \begin{table}[H]
+%     \centering
+%     \caption{Tiling Parameters Summary for Two Operators under Dynamic Dimensions}
+%     \label{table:tiling_summary}
+    
+%     % Header row
+%     \begin{tabular}{|C|N|D|T|K|}
+%         \hline
+%         \textbf{Operator Name} & \textbf{$|\Vec{S}|$} & \kw{|$\Vec{S}_D$|} & \textbf{Tiling Params} & \textbf{Const Tiling Params (\%)} \\
+%         \hline
+%         Flash Attention & 5 (filters, biases) & 3 (input H, W, C) & 4 (block H, W, C, stride) & 50\% (fixed block sizes) \\
+%         \hline
+%         MatMul & 1 (weight matrix) & 2 (matrix rows, cols) & 3 (tile rows, cols, batch split) & 33\% (fixed tile rows) \\
+%         \hline
+%     \end{tabular}
+    
+%     % Footnotes
+%     \footnotetext[1]{* Dynamic dimensions refer to runtime-variable tensor shapes (e.g., input size).}
+%     \footnotetext[2]{* Constant tiling params are hardware-optimized values fixed at compile time.}
+% \end{table}

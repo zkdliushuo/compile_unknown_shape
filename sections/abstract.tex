@@ -1,0 +1,30 @@
+
+%Regular/special-issue paper – 100 to 200 words
+% \IEEEtitleabstractindextext{%
+\begin{abstract}
+
+% 参数化算子 -> 提供编程接口灵活性的同时，算子内部包含了大量标量操作，用于计算并行、分块、计算访存源语等优化超参数 -> 
+% 
+% AI 加速芯片依赖众核
+
+% \begin{CJK}{UTF8}{gbsn} 
+% 深度学习应用中广泛调用参数化的算子，这样可以允许编程人员指定输入输出张量的形状、数据类型等信息，提供了足够的编程灵活性。
+% 为了适配各种可能的参数输入，算子内部包含了大量的标量运算和分支跳转，用于根据参数取值计算并行、分块、硬件源语等优化超参数。
+% 上述情况容易造成寄存器溢出、分支预测失败、指令缓存不命中等情形，使我们的目标硬件 Ascend (一种典型的被广泛应用的NPU硬件)的性能受限无法达到理论最大运算性能。
+% 编译器中广泛采用的常量优化技术是避免上述情况发生的重要手段，但我们观察到，即使给定了许多参数的取值，
+% 现有的编译设施在编译算子时仍做不好常量优化，导致运行时AI加速芯片上标量计算部件很容易成为性能瓶颈所在。
+% 本文总结了常见的阻碍常量优化的参数化算子的程序特征，并针对性提出一种高效的算子常量优化算法。
+% 在改进现有常量传播算法的同时，还引入了针对不可达语义以及内存别名的精确分析方法，最终有效缓解了算子执行时的标量性能瓶颈。
+% 在当前典型的标量性能受限算子上，该方法编译的特化算子平均取得了1.1倍的性能提升，显著优于现有的最先进编译设施。
+% \end{CJK}
+
+Parameterized operators are commonly used in deep learning applications.
+They allow programmers to specify tensor shapes, data types, and other properties for flexibility.
+These operators involve many scalar computations and branch operations to optimize parallelism and hardware settings for various parameters. 
+However, this can cause issues like register spill, branch prediction penalty, and cache misses, which limit the performance of hardware like Ascend (a commonly used NPU).
+Given specific parameter values, existing compilers use constant propagation to optimize scalars and branches within operators. 
+However, effective constant propagation is often disrupted by certain program branches and inaccurate data dependency analysis, preventing the optimization process.
+We present an improved approach that models and addresses these challenges, leading to significant alleviation of scalar performance bottlenecks.
+Our approach achieves an average 1.2x performance improvement on the typical operator whose performance is limited to scalar operations, outperforming state-of-the-art compilers.
+
+\end{abstract}

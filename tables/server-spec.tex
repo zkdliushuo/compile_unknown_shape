@@ -1,0 +1,22 @@
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\caption{Specifications of experimental hardware platforms}
+\label{tab:hardware}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{@{}ccc@{}}
+\toprule
+\textbf{Feature} & \textbf{GPU Server} & \textbf{NPU Server} \\ \midrule
+Operating System & Ubuntu 24.04 LTS & Ubuntu 20.04 LTS \\
+\hdashline 
+CPU & Intel Xeon Gold 6348 & Intel Core i7-8700 \\
+Host Memory & 512 GB & 32 GB \\
+\hdashline 
+Accelerator Card & NVIDIA RTX 4080 & Huawei Ascend 910B1 \\
+Device Memory & 16 GB & 64 GB \\
+Computing Core & 76 SMs & 24 DaVinci Cores \\ 
+Processing Units & Tensor, CUDA Core & Cube, Vector, Scalar Units \\ \bottomrule
+\end{tabular}%
+}
+\end{table}

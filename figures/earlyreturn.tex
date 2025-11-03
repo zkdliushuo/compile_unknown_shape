@@ -1,0 +1,59 @@
+\begin{figure*}[b]
+  \centering
+  \begin{subfigure}[b]{0.58\textwidth}
+    \centering 
+    % First code block
+    \begin{minipage}[t]{0.4\linewidth} % Use \linewidth relative to the subfigure
+      \begin{lstlisting}[firstnumber=1,basicstyle = \ttfamily\footnotesize]
+const int SUCCESS = 0;
+const int +@INVALID@+ = 1;
+const int +@FAILED@+ = -1;
+class PartData{
+  int x; ...
+};
+class TData{
+  PartData p[3]; ...
+};
+class AlgoBase{
+  class TData t; ...
+};
+class Algo1: public AlgoBase {...};
+      \end{lstlisting}
+    \end{minipage}
+    \hfill % Add space between the two code blocks
+    % Second code block
+    \begin{minipage}[t]{0.58\linewidth} % Use \linewidth relative to the subfigure
+      \begin{lstlisting}[firstnumber=14,basicstyle = \ttfamily\footnotesize]
+int Tiling(TData& t/*o1*/, int d, ...) {
+  if(d < 0 || d > INT_MAX) 
+    return +@INVALID@+;/*+@\hlcode{Dead BB 1}@+*/
+  AlgoBase algo = Algo1();/*o2*/
+  /*+@\corecodecomment{Core codes setting tilings}@+*/
+  +@\textcolor{blue!70}{SetTiling(\&algo, d, ...);}@+ 
+  +@\textcolor{blue!70}{t.copy(\&algo.t);}@+ 
+  if(Check(t, L0_Size) == +@FAILED@+) 
+    return +@FAILED@+;/*+@\hlcode{Dead BB 2}@+*/
+  else 
+    return SUCCESS;
+}
+      \end{lstlisting}
+    \end{minipage}
+    % This single subcaption applies to the two minipages above
+    \subcaption{Code snippet of function \texttt{Tiling} with runtime shape checks}
+    \label{fig:early-return-code} % Label for subfigure (a)
+  \end{subfigure}
+  \hfill % Add space between subfigure (a) and (b)
+  % --- Subfigure (b): Illustration ---
+  \begin{subfigure}[b]{0.41\textwidth}
+    \centering
+    % \vspace{0pt} is often used to fix vertical alignment issues if they occur
+    \includegraphics[width=0.85\linewidth]{figures/challenge/early-return-control-flow.png}
+    \subcaption{Flow graph of \texttt{Tiling} with early return (red path)}
+    \label{fig:early-return-flowchart} % Label for subfigure (b)
+  \end{subfigure}
+
+  % --- Main Figure Caption ---
+  % This caption describes the entire figure (Figure 1).
+  \caption{Illustration of the early return pattern. Function {\textcolor{blue!70}{SetTiling(AlgoBase* o2, int, ...)}} computes tiling parameters and stores them in the object o2. Then, function {\textcolor{blue!70}{t.copy(TData*)}} copies these parameters to the memory object t (i.e., o1).}
+  \label{fig:early-return}
+\end{figure*}

@@ -1,0 +1,246 @@
+\section{System Design of \mysys}
+\label{sec:design}
+
+We propose \mysys, a highly accurate constant propagation framework that infers constant tiling parameter values from given shape parameter constants.
+\mysys takes an LLVM program as input and requires a specification entry function (i.e. Host code $f$ in \autoref{fig:matmul-definition}) with its specialization shape context, $\mathbb{C}$. 
+The analysis target is the memory object storing the tiling parameters, explicitly passed as a parameter to the entry function. 
+%\mysys analyzes the contents of this memory object to determine constant tiling parameters.
+Starting from the entry function, \mysys performs context-sensitive interprocedural analysis, propagating constants through each basic block.
+At the end of the analysis, the derived constant values for the target memory object represent the inferred constant tiling parameters.
+
+\subsection{Definitions}
+
+The shape context $\mathbb{C}$ maps an input dimension parameter $d \in \Vec{S_D}$ to a constant $c\in \Vec{c}$.
+If $d\in \text{keys}(\mathbb{C})$, then $d$ is a \kw{constant dimension}, and its dimension size is $\mathbb{C}[d]$.
+The corresponding specialized values $sv \in \mathcal{SV}$ can be classified into four distinct categories: constant $c$, pointer $p$, Unknown($\bot$), or Nothing($\top$). A constant $c$ represents an instruction or memory location with a particular constant value, which can be an integer, floating point number, or function pointer.
+
+% The former typically includes Shape APIs with unknown semantics in deep learning frameworks, as well as functions whose precise behavior is challenging to analyze.  
+We assume that pointer arithmetic instructions cannot modify the base object a pointer refers to.
+A base object corresponds to an allocation instruction or a global variable. 
+This assumption aligns with the semantics of LLVM IR, which ensures that pointer arithmetic operations cannot access objects allocated by other instructions beyond the bounds of the base object.
+When analyzing objects, $\text{Pointer(Base, offsets)}$ is often used, where
+$\text{Base}$ is an allocation instruction instance or global variable, and $\text{offsets}$ is a vector. Each element is either a constant integer or $\bot$.
+
+\begin{figure}[t]
+\centering\small
+%\[
+\begin{tabular}{ll}
+\text{Dimension size} &$d\in \Vec{S_D}$ \\
+\text{Shape Context} &$\mathbb{C} := \Vec{S_D} \mapsto \Vec{c}$ \\
+\text{Top-level Variable}& $v\in \mathcal{V}$ \\
+\text{Memory Object}& $o\in \mathcal{O}$ \\
+\text{Constant}& $c :=  \text{Integer}\ \mid \text{Float}\ \mid \text{Function Pointer} $\\
+\text{Pointer}& $p := (\text{Base, Offsets}_{all}) $\\
+\text{Specilized Value}& $sv := c \mid p \mid \top \mid \bot \qquad   sv\in \mathcal{SV}$ \\
+\text{Environment}& $\mathbb{E} := \mathcal{V} \mapsto \mathcal{SV}$ \\
+\text{Store}& $\mathbb{S} := \mathcal{O} \mapsto \mathcal{SV}$
+\end{tabular}
+%\]
+\caption{Abstract domains of \mysys.}
+\label{fig:abstract-domain}
+
+\end{figure}
+
+\input{algorithm/early-return}
+
+\subsection{Identify Early Return Pattern}
+
+
+% Early return patterns hinder constant propagation by interfering with the proper merging of constant values.
+The early-return path bypasses the normal execution path, and these two paths often join at the function's ending block. 
+At join points, merging values from both paths results in losing specialized constant information. 
+Identifying these early-return paths allows avoiding merging value information on these paths, thereby preserving only the constant values produced on the normal execution path.
+
+As a result, we introduce Algorithm~\ref{algo:runtime-shape-check-detection} to identify and label early-return edges in the control-flow graph.
+After annotating edges as either Normal or Early-Return, the following constant propagation can selectively merge incoming values only from Normal edges. All successor basic blocks reachable solely via early-return edges are excluded, thereby preventing them from affecting the join-point computations.
+
+
+Algorithm~\ref{algo:runtime-shape-check-detection} detects early-return edges derived from runtime shape checks in the given function $F$. 
+It starts from the exit block of $F$ and assumes the return value is a \texttt{phi} instruction node.
+Each incoming pair \((v, P)\) of the \texttt{phi} corresponds to a value \(v\) from a predecessor block \(P\).
+If \(v\) is a compile-time constant in the error set \(\mathcal{E}\), the predecessor block \(P\) belongs to an early-return path.
+Otherwise, it belongs to a normal path.
+Then, a backward propagation (\texttt{PropagateBack}) process marks corresponding labels for all edges on these paths.
+Note that a normal mark will overwrite any previous early-return marks for soundness.
+
+
+However, simply identifying early-return edges in a single function is not sufficient.
+In some cases, the early returns may be incurred because of the invocation of a subroutine. 
+Therefore, the algorithm has to recursively identify which subroutine generates the early return path.
+Obviously, basic blocks that contain such sub-routines have both normal and early-return outgoing edges.
+The algorithm extracts the condition value from the last conditional branch instruction in such blocks. 
+Assuming the condition value is of the form \(v \bowtie s\), where \(\bowtie\ \in \{eq, neq\}\), the algorithm checks if it indicates 
+\(s\) belongs to \(\mathcal{E}\) when \(\bowtie\) is \(eq\), or if \(s\) belongs to the success state set \(\mathcal{S}\) when \(\bowtie\) is \(neq\). 
+If these conditions hold and \(v\) is a return value from a function call instruction, the algorithm recursively applies its analysis to that function. 
+This method employs a reverse control-flow traversal to capture the complete set of reachable edges and integrates status code evaluation to accurately identify segments affected by runtime shape checks.
+
+Algorithm~\ref{algo:runtime-shape-check-detection} relies on several helper functions.
+\texttt{GetPhiOperand} extracts the operand list of a \texttt{phi} instruction in the exit block, pairing each incoming value with its predecessor block.  
+\texttt{IsConstant} checks whether a value is a compile-time constant.  
+\texttt{MarkNormalEdge} and \texttt{MarkEarlyReturnEdge} are used to annotate edges with their respective roles in the control-flow graph. 
+\texttt{IsNormal} and \texttt{IsEarlyReturn} query the current marking of an edge.  
+\texttt{ReverseReachableEdges} returns all edges that can reach a given block in reverse, allowing backward propagation of the edge property.  
+
+\input{algorithm/intra-procedural-analysis}
+\subsection{Inter-procedural constant propagation}
+
+
+In this section, we present our improved constant propagation algorithm, which integrates precise control flow and context-sensitive analysis to reduce active edges and merge points. 
+As shown in Algorithm~\ref{algo:const-propagation}, it operates on the control flow graph (CFG) of a function $F$, starting from the entry block and processing blocks via a worklist $\mathcal{W}$.
+
+For each basic block $B$, the algorithm first computes an input context $\mathbb{S}_{in}$ by merging contexts from predecessor blocks through the function \texttt{MergePredecessors}. 
+The block is then processed using \texttt{RunOnBasicBlock} to yield an output context $\mathbb{S}_{out}$ and a flag $updated$ indicating whether the context has been updated.
+If the context has changed or the algorithm is not in maximal fixed-point (MFP) mode, the successors of $B$ are pushed into the worklist using \texttt{ProcessSuccessors}.
+
+The key function \texttt{RunOnBasicBlock} implements three distinct processing components:
+
+\begin{itemize}
+    \item Arithmetic Instruction Handling:
+    Performs straightforward semantic-based constant propagation for fundamental operations through direct value substitution.
+    \item Pointer-Centric Instruction Handling: track the pointers' access paths, as detailed in the next section. 
+    \item Function Call: Update the environment $\mathbb{E}$ of the function entry basic block according to the actual parameters of the call point, and then call the function \texttt{RunOnFunction} for processing
+\end{itemize}
+
+
+A key component of our approach is the \texttt{SuccessorLiveness} function, which evaluates the reachability of each edge from $B$ to a successor $S$ based on the specialized context $\mathbb{S}_{out}$ to determine the liveness of successor block $S$ from current block $B$.
+This function returns a value $C \in \{\texttt{true}, \texttt{false}, \texttt{unknown}\}$, reflecting whether the branch is definitely reachable, definitely unreachable, or uncertain. 
+In non-MFP mode, only successors with $C=\texttt{true}$ are processed.
+If $C$ is \texttt{unknown}, the algorithm switches to MFP mode and sets the final merge point $\mathcal{M}$ to the direct post-dominating block of $B$.
+In MFP mode, every successor $S\neq\mathcal{M}$ with $C\neq\texttt{false}$ is added to the worklist, and the corresponding edge is marked as active.
+
+This design offers finer control over path merging by filtering out provably unreachable edges. 
+The precision of constant propagation is improved by avoiding the propagation of imprecise contexts from definitely unreachable paths.
+Moreover, the adaptive switch to MFP mode ensures that the analysis remains conservative when the branching target is uncertain.
+Enhanced memory alias analysis further increases the accuracy of condition evaluation, leading to better overall performance in our constant propagation.
+
+\subsection{On-the-fly Point-to Propagation Algorithm}
+
+Accurate constant propagation recovers constant values for many index operands in pointer arithmetic instructions(e.g. \texttt{Field} instructions).
+A pointer targeting a specific field can be represented by an access path, a sequence of constant indices.
+This access path constrains the set of potential target objects.
+When the base object is uncertain, these constant indices act as constraints to reduce the number of candidate base objects.
+To track the pointers' access paths, we first formalize the data flows in LLVM IR instructions into a set of access path propagation rules.
+The function \texttt{RunOnBasicBlock} in \autoref{algo:const-propagation} adopts these rules for each instruction and maintains this information in the environment $\mathbb{E}$ and store $\mathbb{S}_{out}$.
+To implement these rules, we maintain the structure of each allocated memory object and define some auxiliary functions for the propagation.
+
+\myparagraph{Auxiliary Functions for Access Path Propagation.} 
+We use function \(\mathcal{F}(p)\) to query the set $tar(p)$ of all the may-point-to field objects of the pointer $p$.
+The function \(\mathcal{F}\) calculates the set based on a pair \((o,\text{Offsets})\) (obtained from \(\mathbb{E}[p] \mapsto (o,\text{Offsets})\)). 
+\(\mathcal{F}\) is implemented in three different ways.
+First, if both \(o\) and \(\text{Offsets}\) are fully determined (i.e., all values are constant), then \(\mathcal{F}(o,\text{Offsets})\) returns a singleton set containing the unique field object pointed to by the complete access path.
+Second, if \(o\) is determined but some indices in \(\text{Offsets}\) are uncertain (i.e., include \(\bot\)), then \(\mathcal{F}(o,\text{Offsets})\) traverses the hierarchical structure of \(o\) to locate all field objects that correspond to the known constant indices in the access path.
+Lastly, if \(o\) is also uncertain, then \(\mathcal{F}(o,\text{Offsets})\) uses the constant indices present in \(\text{Offsets}\) as constraints and searches over all allocated base objects whose hierarchical layout can accommodate an access path matching the known indices.
+In this case, the union of the corresponding field objects from all matching base objects is returned.
+
+Besides, the function \(\text{OffsetsOf}\) takes a field object $o$ and computes the complete access path (a sequence of constant indices) from the root of the base object to $o$.
+For example, the access path to \(\texttt{o1.p[1].x}\) at line 12 in \autoref{fig:early-return-code} would be \(o1, [0, 1, 0]\), where each index corresponds to a field or array access.
+The byte offset operation $o+i$ calculates a new pointer. 
+It computes a target address by adding byte offset $i$ to the address of $o$. 
+Then, to resolve ambiguity where multiple typed objects (like a struct and its first field) may share this address, the operation normalizes the result by returning the most fine-grained field object residing at the target address. 
+This corresponds to the leftmost leaf in the type hierarchy rooted at $o$.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{figures/motivation/aggregate-for-tilingdata.png}
+    \caption{Example of how to compute the point-to set and the access path for the pointer \texttt{ptr}. Symbols \texttt{PartData} and \texttt{algo} are defined in \autoref{fig:early-return-code}}
+    \label{fig:example-point-to-analysis}
+\end{figure}
+
+The intersection operator \(\cap\) is used to calculate the overlap between two access paths. 
+It returns the shared base object and constant indices, and introduces uncertainty (\(\bot\)) if any index is unknown or mismatched.
+When intersecting two access paths of different lengths and different bases, the result is \(\bot\), denoting unknown access path with unknown side-effects.
+
+
+\begin{figure}[htbp]
+\centering
+\footnotesize
+\[
+\resizebox{\linewidth}{!}{$
+\begin{array}{l}
+[\text{AddrOf}]
+\dfrac{p \overset{AddrOf}{\longleftarrow} o}
+      {\mathbb{E}[p] \mapsto \bigl(o,\langle\rangle\bigr)}
+\quad
+[\text{Copy}]
+\dfrac{p \overset{Copy}{\longleftarrow} q,\ \mathbb{E}[q] \mapsto \bigl(\text{Base},\text{Offsets}_q\bigr)}
+      {\mathbb{E}[p] \mapsto \bigl(\text{Base},\text{Offsets}_q\bigr)}
+\\[1mm]
+[\text{Field}]
+\dfrac{p \overset{Field_i}{\longleftarrow} q,\ \mathbb{E}[q] \mapsto \bigl(o,\text{Offsets}_q\bigr),\ |\mathcal{F}(q)|=1}
+      {\mathbb{E}[p] \mapsto \bigl(o,\text{OffsetsOf}(\mathcal{F}(q)+i)\bigr)}
+\\[1mm]
+[\text{Field}]
+\dfrac{p \overset{Field_i}{\longleftarrow} q,\ \mathbb{E}[q] \mapsto \bigl(\text{Base},\text{Offsets}_q\bigr),\ |\mathcal{F}(q)|>1}
+      {\mathbb{E}[p] \mapsto \Bigl(\text{Base},\bigcap_{o'\in \mathcal{F}(q)} \bigcap_{i'\in \mathbb{E}(i)} \text{OffsetsOf}(o'+i')\Bigr)}
+\\[1mm]
+[\text{Phi}]
+\dfrac{r \leftarrow \phi(p,q),\ p = \bigl(o_p,\text{Offsets}_p\bigr),\ q = \bigl(o_q,\text{Offsets}_q\bigr),\ o_p = o_q}
+      {\mathbb{E}[r] \mapsto
+              \bigl(o_p,\text{Offsets}_p \cap \text{Offsets}_q\bigr) }
+\\[1mm]
+[\text{Phi}]
+\dfrac{r \leftarrow \phi(p,q),\ p = \bigl(o_p,\text{Offsets}_p\bigr),\ q = \bigl(o_q,\text{Offsets}_q\bigr),\ o_p \neq o_q}
+      {\mathbb{E}[r] \mapsto 
+              \bigl(\bot,\text{Offsets}_p \cap \text{Offsets}_q\bigr)}
+\\[1mm]
+[\text{Load}]
+\dfrac{p \overset{Load}{\longleftarrow} q,\ \mathbb{E}[q] \mapsto \bigl(o,\text{Offsets}_q\bigr),\ |\mathcal{F}(q)|=1}
+      {\mathbb{E}[p] \mapsto \mathbb{S}[\mathcal{F}(q)]}
+\\[1mm]
+[\text{Load}]
+\dfrac{p \overset{Load}{\longleftarrow} q,\ \mathbb{E}[q] \mapsto (o, \text{Offsets}_q),\ |\mathcal{F}(q)|>1}
+      {\mathbb{E}[p] \mapsto \bigcap_{o' \in \mathcal{F}(q)} \mathbb{S}[o']}
+\\[1mm]
+[\text{Store}]
+\dfrac{p\overset{Store}{\longleftarrow}q,\ \mathbb{E}[p] \mapsto \bigl(o,\text{Offsets}_p\bigr),\ |\mathcal{F}(q)|=1}
+      {\mathbb{S}[\mathcal{F}(p)] \gets \mathbb{E}[q]}
+\\[1mm]
+[\text{Store}]
+\dfrac{p\overset{Store}{\longleftarrow}q,\ \mathbb{E}[p] \mapsto \bigl(o,\text{Offsets}_p\bigr),\ |\mathcal{F}(q)|>1}
+      {\forall\, o' \in \mathcal{F}(p):\ \mathbb{S}[o'] \gets \bot}
+\end{array}
+$}
+\]
+\caption{Accurate access path propagation rules trace the data flow in LLVM IR instructions based on constant offset indexes.}
+\label{eq:access-path-propagation-rules}
+
+\end{figure}
+
+
+\myparagraph{Access Path Propagation Rule Statement.}
+
+\autoref{eq:access-path-propagation-rules} lists access path propagation rules for five kinds of instructions with respect to pointer variables.
+Our analysis realizes these rules in a field-sensitive, flow-sensitive, yet context-insensitive manner to precisely trace access paths throughout the program. To ensure accuracy in loops, the analysis iteratively applies these rules until a fixed point is reached, thereby capturing stable propagation results across all control flow paths.
+
+\begin{itemize}
+\item AddrOf: When a pointer variable is assigned the address of an object, its access path is initialized with the object and an empty offset sequence. This represents a direct reference to the base object.
+
+\item Copy: A copy operation propagates the exact access path from the source pointer to the target. This ensures aliasing relationships are preserved accurately.
+
+\item Field Access:  
+If the pointer refers to a unique object ($|\mathcal{F}(q)| = 1$), the field index is appended to the offset path (\textit{strong update}).  
+If multiple targets exist ($|\mathcal{F}(q)| > 1$), we intersect their access paths after extension (\textit{weak update}).
+
+\item Phi:  
+If both operands share the same base object ($o_p = o_q$), intersect their offset sets (\textit{strong merge}).  
+If not ($o_p \ne o_q$), set the base to $\bot$ and intersect the offsets (\textit{weak merge}).
+
+\item Load:  
+For a unique target ($|\mathcal{F}(q)| = 1$), load the stored access path directly (\textit{strong read}).  
+Otherwise, intersect the access paths of all possible targets (\textit{weak read}).
+
+\item Store:  
+If the target is unique ($|\mathcal{F}(p)| = 1$), update the field with the source’s access path (\textit{strong update}).  
+For multiple targets, assign $\bot$ to all possible destinations (\textit{weak update}).
+\end{itemize}
+
+% For example, assume calculating a pointer \texttt{ptr} pointing to one member \texttt{o2.t.p[i]} inside the \texttt{o2}~(i.e. \texttt{algo}) in \autoref{fig:early-return-code}, where \texttt{i} is a variable.
+% The LLVM type structure of \texttt{o2} and the corresponding LLVM IR instructions are shown in \autoref{fig:example-point-to-analysis}.
+% Although \texttt{i} uncertain 
+
+
+Consider the example in \autoref{fig:example-point-to-analysis}, which shows the calculation of a pointer \texttt{ptr} to the field \texttt{algo.t.p[i]}, where \texttt{i} is a dynamic variable.
+Fortunately, under the assumption that the input programs are well-formed and do not exhibit undefined behavior from out-of-bounds memory access, we can constrain the possible values of the index \texttt{i} to range \(\{0,1,2\}\) through the type information of \texttt{\%tmp}.
+The range infers that \texttt{\%ptr} may points to \texttt{0.x}, \texttt{1.x}, and \texttt{2.x}.
+By intersecting the access paths to these possible pointees, we get a single, summarized abstract path: $\mathbb{E}[\text{\%ptr}] = (\text{o2}, [0, 0, 0, 0, \bot, 0])$.
+This precision effectively constrains the side effects of any write through \texttt{ptr}, preventing it from affecting unrelated fields and preserving their constant values.

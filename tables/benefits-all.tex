@@ -1,0 +1,15 @@
+\begin{table*}[ht]
+    \centering
+    \caption{Performance Evaluation of Automatic Constant Specialization}
+    \label{tab:all_exp_summary}
+    \begin{tabular}{@{}llccc@{}}
+        \toprule
+        \textbf{Operator Library} & \textbf{Target Operator(s)} & \textbf{Comparison Baseline} & \textbf{Avg. Speedup} & \textbf{Avg. Library Size Reduction} \\
+        \midrule
+        \multirow{2}{*}{CANN SDK} & DFA & \multirow{2}{*}{Unspecialized} & 1.20x & N/A \\
+                                  & PFA & & 1.03x & N/A \\
+        \midrule
+        FlashInfer & DFA \& PFA & Manual Specialization & 1.02x \textasciitilde{} 1.04x & 89.4\% \\
+        \bottomrule
+    \end{tabular}
+\end{table*}

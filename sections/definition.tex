@@ -1,0 +1,215 @@
+\section{Problem formulation}
+\label{sec:problem-formulation}
+
+\subsection{Targeted Programs}
+% \paragraph{\textbf{Targeted Programs}.}
+
+Many deep learning operator programs are built using C/C++, fundamental to deep learning frameworks. 
+Our goal is to optimize these operator programs. 
+We focus on determining the tiling parameters for deep learning operators with a given shape context. 
+
+% We look at a specific subset of LLVM IR, as shown in \autoref{fig:syntax}. 
+% Our analysis aims at deep learning programs often using polymorphic inheritance and factory functions in C++.
+% This helps create a unified method to handle different operator algorithms.
+% As a result, these programs usually have indirect function calls like $call\ v(v_1, \dots)$.
+
+% 首先，算子程序的TilingFunc记作M。程序M有一组全局变量和函数组成，M的输入参数记作$\Vec{S}$。
+% 映射$\mathcal{C}$保存了$\Vec{S}$中的哪些符号维度$d$被映射到一个常量$c$上。这样的$d$显然就是常量维度.
+First, the TilingFunc of an operator program is denoted as $M$.
+The program $M$ consists of a list of global variables and functions, and its input parameters are shape parameters $\Vec{S}$.
+The shape context $\mathbb{C}$ maps an input dimension parameter $d \in \Vec{S}$ to a constant $c\in \Vec{c}$.
+Obviously if $d\in \text{keys}(\mathbb{C})$, it is a \kw{constant dimension}, and its dimension size is $\mathbb{C}[d]$.
+The corresponding specialized values $sv \in \mathcal{SV}$ can be classified into four distinct categories: constant $c$, pointer $p$, Unknown($\bot$), or Nothing($\top$). A constant $c$ represents an instruction or memory location with a particular constant value, which can be an integer, floating point number, or function pointer.
+
+% 此外，我们假设程序$M$中有外部函数，以及间接函数调用语句。前者通常是一些深度学习框架中的未知语义的Shape APIs，以及一些难以分析具体语义的函数。
+% 我们还假设指针算术指令不能修改一个指针指向的基对象，其中基对象是一条分配指令的一次执行实例。该假设与LLVM IR的语义保持一致，即指针算术指令不能超过基对象的范围访问其他指令分配的对象。
+We also assume that program $M$ contains external functions and indirect function calls.
+The former typically includes Shape APIs with unknown semantics in deep learning frameworks, as well as functions whose precise behavior is challenging to analyze.  
+Besides, we assume that pointer arithmetic instructions cannot modify the base object a pointer refers to.
+A base object is an instance of an allocation instruction's execution. 
+This assumption aligns with the semantics of LLVM IR, which ensures that pointer arithmetic operations cannot access objects allocated by other instructions beyond the bounds of the base object.
+When analyzing objects, $\text{Pointer}(Base, offsets)$ is often used, where
+Base is an allocation instruction instance or global variable, and offsets is a vector. Each element is either a constant integer or $\bot$.
+
+% 已有的专注于代码瘦身、生成特化程序的partial evaluators处理循环结构时，通常依赖于循环展开等优化。我们的分析对于内存对象的值状态的精度要求高，
+% Unlike existing partial evaluators\cite{Smowton2011MakeWorlda,Sharif2018TRIMMERApplicationSpecialization}, which targets application debloating and tolerates unknown memory states, 
+
+% Theoretically, the equivalence between $v$ and $d$ can be precisely identified by analyzing deep learning frameworks' runtime kernel launching codes. 
+% However, these runtime implementations often contain more than 10 KLoC\footnote{KLoC, short for thousand lines of codes.}, making it time-consuming and challenging.
+% Fortunately, mainstream frameworks often propose well-designed APIs to request dimension size inside the operator programs. 
+% Considering these APIs have fixed patterns, it is easy to manually construct a map $\mathbb{R}:=\mathcal{D}\mapsto \mathcal{V}$, 
+% which defines which variable $v$ in the programs is equivalent to which symbolic dimension $d$.
+% This allows our program analysis to use symbolic values of shape parameters to represent the program's variables.
+
+% 这里描述程序是受限的，首先是访存必须是inbound的，这个概念还没解释清楚
+% 其次，heap 对象不分析，尽可能制约副作用的影响
+% Our analysis targets bounded programs whose memory access must be inbound, a.k.a. All pointer calculation results are still inside the base pointer range. 
+% \begin{figure}[H]
+% \centering
+% $$
+% \begin{aligned}
+% \text{Operator}\ &O\ ::=\  M( \Vec{S} ) \\
+% \text{Shape Parameters}\ &\Vec{S}\ ::=\ \langle d_1, d_2, \dots, d_n \rangle \\
+% \text{Program}\ &M\ ::=\ (F\ |\ v)^+ \\
+% \text{Function}\ &F\ ::=\ f(v_1,v_2,\dots,)\{ (\mathcal{l}: S;)^+ \} \\
+% \text{Statement}\ &S\ ::=\  S_1;S_2\ |\
+%                             r = \text{call}\ f(v_1, v_2, \dots)\ |\
+%                             r = \text{call}\ v(v_1, v_2, \dots)\ | \\
+%                   & \quad \quad \quad v_1 = \&v_2\ |\ v_1 = v_2\ |\
+%                             v = \phi((\mathcal{l}_1, v_1), (\mathcal{l}_2, v_2), \dots)\ |\ 
+%                             \text{return}\ v  \\
+%                   & \quad \quad \quad *v_1 = v_2\ |\ v_1 = *v_2\ |\ \text{br}\ v, \mathcal{l}_1, \mathcal{l}_2
+% \end{aligned}
+% $$
+% \caption{The syntax of target programs. $\mathcal{l}$ represents the label of a basic block.}
+% \label{fig:syntax}
+% \Description{syntax}
+% \end{figure}
+
+\begin{figure}
+\centering
+\[
+\begin{gathered}
+% \text{Labels } \mathcal{l} \in \mathcal{L} \quad 
+% \text{Variable } v \in \mathcal{V} \quad \text{Object } o \in \mathcal{O}\quad \text{Dimension}\ d\in \Vec{S} \\
+% \text{Specialized Value}\ sv = \text{Constant}(c)\ |\ \text{Pointer}(p)\ |\ \bot \ |\ \top \in \mathcal{SV} \\
+\text{Dimension}\ d\in \Vec{S} \quad \text{Shape Context}\ \mathbb{C} := \Vec{S} \mapsto \Vec{c} \\
+\text{Environment } \mathbb{E} := \mathcal{V} \mapsto \mathcal{SV} \quad \text{Store } \mathbb{S} := \mathcal{O} \mapsto \mathcal{SV}
+\end{gathered}
+\]
+\caption{Abstract domains of \mysys.}
+\label{fig:abstract-domain}
+\end{figure}
+
+% \paragraph{\textbf{Abstract Domains}.}
+% \subsection{Abstract domains}
+% 
+% % A label $\mathcal{l}\in \mathcal{L}$ denotes the basic block in the control flow graph. 
+% 
+% 
+% The symbols and abstract domains are listed in \autoref{fig:abstract-domain}. 
+% A variable $v\in \mathcal{V}$ indicates a top-level variable in LLVM IR, and an object $o\in \mathcal{O}$ corresponds to an address-token variable which can only be indirectly accessed through pointer variables.
+% A specialization value can be a constant, pointer, Unknown($\bot$), or Nothing($\top$).
+% A constant represents an instruction or memory location with a particular constant value. 
+% The constant c can be an integer, floating point number, or function pointer.
+% Besides, $\text{Pointer}(Base, offsets)$ represents a symbolic pointer.
+% Base is an allocation instruction instance or global variable, and offsets is a vector. Each element is either a constant integer or $\bot$.
+% We use a symbolic pointer to record which field of structured data to obtain. 
+% $\bot$ in offsets indicates any fields may be accessed in this layer.
+
+% \definition{(Post-Dominate Control Flow Subgraph)} 
+% In the control flow Graph $G$, take the direct post dominate block of basic block $B_i$ as $B_j$, denoted as $\text{ipdom}(B_i)$.
+% The subgraph that consists of all nodes of all program paths from block $B_i$ to $B_j$ is denoted as $G'_{B_i}\subset G$.
+
+% \definition{(Partially-determined Execution Path)}
+% $P(B_i, B_j)$ means a program execution path consists of all blocks from the source block $B_i$ to the destination block $B_j$.
+% Besides, partially analyzing a control flow subgraph such as $G'_{B_i}$ is also allowed.
+% As a result, the current analysis path can contain a subgraph as one of its nodes.
+% We use $\mathbb{P}(G)$ to represent the set of all possible paths in the graph $G$.
+% The formal expression of a partially determined execution path $P \in \mathcal{P}$ is $(P(B_0, B_j) | \mathbb{P}(G))^+$, where $^+$ denotes the pattern repeats at least once.
+
+% We maintain an analysis result for each $P \in \mathcal{P}$. We factor the abstract domain to the points-to environment $\points$ and abstract store $\stores$.
+% During analysis, we first try to simulate the program along a determined path. 
+% When meeting an undetermined jump target block, we switch the analysis from simulation to data flow analysis.
+% For simplicity, we define the operation $\Pi_P$ to query $\points$ and $\stores$ in the start point of the target block of Path $P$. Formally,
+% $$
+% \begin{aligned}
+%     \Pi_{P}(\points(v))=\{(P,o) &|(P', o)\in\points(v) \wedge P'\in \text{MaxPrefix}(\points(v), P)\} \\
+%     \Pi_{P}(\stores(o))=\{(P,v) &|(P', v)\in\stores(o) \wedge P'\in \text{MaxPrefix}(\stores(o), P)\}
+% \end{aligned}
+% $$
+
+% 我现在想用公式描述一个集合 \text{MaxPrefix}(\points(v), P)，其中，\points(v)表示变量指向的内存对象。这个指向关系表示为 \points(v) = {（P', o）}，表示在程序路径P'处v指向取地址变量o。然后，当前我想在路径P处查询v指向哪些取地址变量，就需要知道哪些定值可以到达P。这里，路径的定义包含两种节点，一种是基本块，一类是由基本块组成的控制流子图节点。想要知道哪些定值可以到达P，则需要确定所有路径 \{P'|(P', o) \in \points(v)\}中哪些路径不需要经过其他路径就可以到达P，即为P的最大前缀。注意，如果当前路径P的最后一个节点为一个控制流子图，则p \in \text{MaxPrefix}(\points(v), P)，这样可以防止前缀路径上的定值通过最后节点上的控制流子图中的某条路径到达P。
+
+% Specifically, where the valid points-to relation at path $P$ comes from is in $\text{MaxPrefix}(\points(v), P)$. Same as $\text{MaxPrefix}(\stores(v), P)$.
+% Formally,
+% $$
+% \begin{aligned}
+%  \{P'|\exists o \text{ s.t. } (P', o) \in \points(v)\} \\
+% \text{MaxPrefix}(\points(v), P) = \{ \}
+% \end{aligned}
+% $$
+
+% In addition, we also define a special set-union operator for E as below, i.e., $\uplus$, such that we merge points-to environment for the same memory object.
+% Having these 
+
+% At the end block $\text{ipdom}(B_i)$ of $G'_{B_i}$, where all analysis results of all possible paths from $B_i$ to $\text{ipdom}(B_i)$ have converged.
+
+% Top-Level Variables and Address-Taken Variables
+
+% \begin{itemize}
+%     \item \textbf{Top-Level Variable} \( v \):
+%     \begin{itemize}
+%         \item LLVM IR stack virtual registers (names starting with `\%`).
+%         \item All global variables (names starting with `@`).
+%         \item Top-level variable set: \( V \).
+%     \end{itemize}
+
+%     \item \textbf{Address-Taken Variable} \( o \):
+%     \begin{itemize}
+%         \item Represents memory objects allocated in the program, accessed indirectly through pointer variables.
+%         \item Address-taken variable set: \( O \).
+%         \item In this work, \( o \) refers to memory objects allocated by \texttt{alloc} instructions, memory regions of global variables, and function objects.
+%     \end{itemize}
+% \end{itemize}
+
+% Post-Dominator Path Subgraph of a Basic Block
+
+% Let \( B_i \) be a basic block, and let \( B_j \) be its immediate post-dominator, denoted as \( \text{pdom}(B_i) \).
+
+% \begin{itemize}
+%     \item \textbf{Function}:
+%     \begin{itemize}
+%         \item Let \( \mathcal{G} \) be a function that takes a basic block \( B_i \) as input and generates the subgraph from \( B_i \) to \( \text{pdom}(B_i) \).
+%         \item Denoted as: \( \mathcal{G}(B_i) \).
+%     \end{itemize}
+
+%     \item \textbf{Subgraph}:
+%     \begin{itemize}
+%         \item Let \( G'(B_i) \) be the subgraph generated by \( \mathcal{G}(B_i) \), representing all nodes and edges on the paths from \( B_i \) to \( \text{pdom}(B_i) \).
+%         \item Denoted as: \( G'(B_i) \).
+%     \end{itemize}
+
+%     \item \textbf{Properties}:
+%     \begin{itemize}
+%         \item \( G'(B_i) \) satisfies:
+%         \begin{itemize}
+%             \item Starting from \( B_i \), any path will reach \( \text{pdom}(B_i) \).
+%             \item \( \text{pdom}(B_i) \) is the nearest merge point of these paths.
+%             \item \( G'(B_i) \) is a subset of the original control flow graph (CFG) \( G \).
+%         \end{itemize}
+%     \end{itemize}
+% \end{itemize}
+
+% Path Definitions
+% \begin{itemize}
+%     \item \textbf{Deterministic Path} \( P(B_0, B_1, \dots, B_i) \):
+%     \begin{itemize}
+%         \item Represents a unique, fully specified path from the entry block \( B_0 \) through \( B_1, \dots \) to the target block \( B_i \).
+%         \item All intermediate blocks \( B_1, \dots, B_{i-1} \) are sequentially executed without branching.
+%     \end{itemize}
+    
+%     \item \textbf{Path Set} \( \mathcal{P}(B_0, \dots, B_k, G'(B_k), \dots, B_i) \):
+%     \begin{itemize}
+%         \item Represents a collection of paths from \( B_0 \) to \( B_i \), defined as:
+%         \begin{itemize}
+%             \item First, follow the deterministic subpath \( P(B_0, \dots, B_k) \) to reach \( B_k \).
+%             \item From \( B_k \), traverse any path to \( \text{pdom}(B_k) \), denoted by \( G'(B_k) \). This includes all possible branching paths within the dominance scope.
+%             \item Finally, follow the deterministic subpath \( P(\text{pdom}(B_k), \dots, B_i) \) to \( B_i \).
+%         \end{itemize}
+%         \item \textbf{Notation}: The path set is uniquely denoted as \( \mathcal{P}(B_0, \dots, B_i) \).
+%     \end{itemize}
+% \end{itemize}
+
+% Definite Goto
+
+% \begin{itemize}
+%     \item \textbf{Definite Goto}:
+%     \begin{itemize}
+%         \item If constant propagation analysis determines that the branch instruction in \( B_i \) along the path \( P(B_0, \dots, B_i) \) will definitely jump to \( B_j \), it is denoted as:
+%         \[
+%         P: B_i \ \text{definitely goto} \ B_j
+%         \]
+%         \item In this case, the analysis of other successor blocks of \( B_i \) is skipped, and symbolic execution continues with \( B_j \).
+%     \end{itemize}
+% \end{itemize}

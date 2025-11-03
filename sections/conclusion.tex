@@ -1,0 +1,13 @@
+\section{Limitations}
+
+While \mysys demonstrates effective kernel specialization, its current implementation is not fully automated. 
+The process relies on manual configuration to define and inject an operator's constant shape parameters into \mysys, guided by an understanding of its tiling function. 
+This engineering overhead currently limits the application of \mysys for end-to-end, automatic constant specialization at the full model-inference level.
+
+Furthermore, the performance benefits of \mysys are not uniform across all kernel types. 
+For compute-bound kernels, such as Prefill Attention (PFA), the optimization gains are modest. 
+Consequently, \mysys is most effective for scenarios involving lightweight kernels that are invoked with high frequency, where the reduction of dispatch and setup overhead yields the most significant impact.
+
+\section{Conclusion}
+\label{sec:concl}
+We present TilingInfer, a kernel function constant specialization framework that addresses optimization challenges in dynamic tensor programs through context-aware constant propagation. By leveraging partial dynamic shape information and inter-procedural analysis, TilingInfer generates invariant tiling parameters tailored to specific operator contexts and optimizes these operators. Experimental validation demonstrates that TilingInfer effectively optimizes operators in practical applications, especially in scenarios that require dynamic shape adaptation, with performance improvements of up to 12\% and 96\% reduction ratio of code size.

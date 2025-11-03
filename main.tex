@@ -1,0 +1,140 @@
+% HPCA 2026 cfg: https://hpca-conf.org/2026/
+% Track or topic : Compilers/OS/runtimes as they relate to Computer Architecture
+% 11 pages(not including refs) 
+% ddl:
+%%% Abstract Submission	July 25, 2025 23:59 UTC / 19:59 EDT
+%%% Paper Submission	August 1, 2025 23:59 UTC / 19:59 EDT
+\documentclass[10pt,conference]{IEEEtran}
+\input{local}
+\input{mycommand}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+% Ensure letter paper
+\pdfpagewidth=8.5in
+\pdfpageheight=11in
+\newcommand{\hpcayear}{2026}
+
+%%%%%%%%%%%---SETME-----%%%%%%%%%%%%%
+\newcommand{\hpcasubmissionnumber}{648}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\pagenumbering{arabic}
+
+\title{Mitigating Scalar Bottlenecks via Constant Specialization for Dynamic Shape Operators}
+%Alleviating Scalar Bottleneck: Automatic Constant Specialization for Dynamic Shape Operators}
+
+% \author{{\normalsize{HPCA 2026 Submission \textbf{\#\hpcasubmissionnumber}}}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%% -- ONLY FOR CAMERA READY -- %%%%%%%%
+%\def\hpcacameraready{} % Uncomment to build camera-ready version
+\newcommand{\hpcapubid}{0000--0000/00\$00.00}
+\newcommand\hpcaauthors{First Author$\dagger$ and Second Author$\ddagger$}
+\newcommand\hpcaaffiliation{First Affiliation$\dagger$, Second Affiliation$\ddagger$}
+\newcommand\hpcaemail{Email(s)}
+\newcommand{\yinote}[1]{ \color{blue} [#1]  \color{black}}
+
+% \author{Shuo Liu}
+% \email{zkdliushuo@mail.ustc.edu.cn}
+% \orcid{0000-0002-7309-3266}
+% \affiliation{%
+%   \institution{University of Science and Technology of China}
+%   \city{Hefei}
+%   \state{Anhui}
+%   \country{China}
+% }
+
+% \author{Yang Ji}
+% \affiliation{%
+%   \institution{University of Science and Technology of China}
+%   \city{Hefei}
+%   \state{Anhui}
+%   \country{China}}
+% \email{jiyangjy@mail.ustc.edu.cn}
+
+% \author{Ce Sun}
+% \affiliation{%
+%   \institution{University of Science and Technology of China}
+%   \city{Hefei}
+%   \state{Anhui}
+%   \country{China}}
+% \email{ch12o6@mail.ustc.edu.cn}
+
+% \author{Yi Zhai}
+% \affiliation{%
+%   \institution{University of Science and Technology of China}
+%   \city{Hefei}
+%   \state{Anhui}
+%   \country{China}}
+% \email{zhaiyi0@mail.ustc.edu.cn}
+
+% \author{Yu Zhang}
+% \authornote{correspondence should be addressed.}
+% \affiliation{%
+%   \institution{University of Science and Technology of China}
+%   \city{Hefei}
+%   \state{Anhui}
+%   \country{China}}
+% \email{yuzhang@ustc.edu.cn}
+
+% \renewcommand{\shortauthors}{Liu et al.}
+
+%%%%% -- ARTEFACT EVALUATION RESULTS -- %%%%%%
+% Uncomment the following based on the badges that were awarded to this paper
+%\def\aeopen{}           % The artifact is publically available
+%\def\aereviewed{}     % The artefact has been reviewed
+%\def\aereproduced{} % The results have been reproduced
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\setlength{\textfloatsep}{6pt plus 1.0pt minus 2.0pt}  % 图表与正文之间
+\setlength{\floatsep}{6pt plus 1.0pt minus 2.0pt}      % 两个浮动体之间
+\setlength{\intextsep}{6pt plus 1.0pt minus 2.0pt}     % 插入正文中的浮动体上下的间距
+\makeatother
+
+\input{hpca-template}
+
+% \begin{document}
+% \maketitle
+% \thispagestyle{plain}
+% \pagestyle{plain}
+
+% Tiling Specialization for Dynamic Parameterized Operators
+
+%% Introduction
+
+%%% Dynamic Tiled Operators are beneficial to improving workload balance.
+
+%%%%%% —— 列举 Dynamic Shape 场景下, Attention (Nvidia GPU / Ascend NPU) 的做法，负载均衡的差异情况，体现出动态场景下不同策略（动态 Tiling 参数、静态 Tiling 参数）在不同硬件上的实际效果。 
+%%%%%% —— 在此基础上，示例展示算子程序的 CPU 和 NPU 侧代码，
+
+\begin{abstract}
+
+    Dynamic shape operators are crucial for deploying Large Language Models (LLMs), offering essential flexibility for mechanisms like attention.
+    However, this flexibility introduces numerous runtime parameters and scalar calculations into operator kernels, preventing aggressive compile-time optimizations. 
+    This leads to the so-called scalar bottleneck, caused by an overload of scalar computations and complex control flow from the parameterized kernels with poor constant optimization.
+    This work is based on the observation that many parameters, depending only on static model dimensions, are effectively constant in deployment.
+    We introduces \mysys{}, a framework that automatically specializes kernel using parameter invariants by performing targeted inter-procedural constant propagation analysis on the operator's host code. 
+    \mysys{} is designed to overcome challenges that typically disrupt this analysis, such as complex control flow and ambiguous data dependencies, thereby effectively alleviating the scalar bottleneck. 
+    We evaluate \mysys{} against highly-optimized attention implementations on both NPU and GPU platforms.
+    On an NPU, \mysys{} achieves up to 1.12x average speedup over its state-of-the-art (SOTA) baseline implementation. 
+    On GPUs, \mysys{} boosts the performance of SOTA baselines that rely on manual constant specialization, achieving speedups of 1.01x to 1.03x, while also reducing binary size by up to 96.2\%.
+    
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/background}
+\input{sections/motivation}
+
+\input{sections/design}
+\input{sections/details}
+\input{sections/evaluation}
+\input{sections/conclusion}
+
+\newpage
+
+%%%%%%%%% -- BIB STYLE AND FILE -- %%%%%%%%
+\bibliographystyle{IEEEtran}
+\bibliography{opt,pa,ref}
+
+\end{document}

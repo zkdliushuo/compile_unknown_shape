@@ -1,0 +1,185 @@
+\section{Evaluation}
+\label{sec:eval}
+
+Our objective is to demonstrate that \mysys effectively optimizes dynamic-shape tensor operators on accelerators, outperforming the state-of-the-art.
+We address the following research questions:
+
+\begin{itemize}
+    \item \textbf{RQ1} Can \mysys enhance the performance of widely-used dynamic shape operators on accelerators?
+    \item \textbf{RQ2} Can \mysys effectively infer invariable parameters for kernels with a reasonable compilation overhead?
+\end{itemize}
+
+% RQ1: \subsection{Performance Results} subsec.B
+% RQ1: \subsection{Performance Analysis} subsec.C
+
+\subsection{Experimental Setup}
+\label{sec:eval:setup}
+
+\paragraph{Hardware and Software Platforms}
+\mysys's evaluation covers two hardware platforms running Linux-based operating systems: an Nvidia RTX 4080 GPU and an Ascend 910B1 NPU(\autoref{tab:hardware}). 
+For the GPU platform, we utilize CUDA toolkit (v12.6) and GPU library FlashInfer (v0.2.5).
+For the NPU platform, we employ CANN SDK (v8.0.RC1) and an operator library~\cite{ascend_cannopsadv} customized for LLMs.
+To ensure accuracy, the reported data represents the average of the last 90 runs out of 100 total executions.
+
+\input{tables/server-spec}
+
+\input{tables/key-dimensions}
+
+\paragraph{Benchmarks} 
+Practical LLM inference typically consists of two distinct computational phases: prefill and decoding. 
+We evaluate two representative operators extracted from the two phases, Prefill FlashAttention (PFA, attention optimized for prefill) and Decoding FlashAttention (DFA, attention optimized for decoding).
+The \autoref{tab:attention-dimensions-definition} table specifies invariable and variable dimension parameters and their value domain.
+\autoref{tab:benchmark-setting-attention-types} lists five attention types with different settings, as the research targets in this section.
+
+We compare \mysys with the following three kinds of compilation approaches:
+
+\begin{itemize}
+    \item \textbf{Dynamic Compilation (Dynamic)}: Operator implementation supporting generic shape computation without specialization
+    \item \textbf{Manual Dispatch(Manual)}: Manually enumerate several key kernel parameters to specialize kernels
+    \item \textbf{Just-In-Time Compilation (JIT)}: Generates optimized kernels for each possible input shape at runtime
+\end{itemize}
+
+Given that the decoding phase notably accounts for over 80\%~\cite{zhong2024distserve,agrawal2024taming} of total inference latency in typical deployment scenarios, we particularly emphasize optimization effectiveness for decoding-stage operators, i.e., the DFA operator.
+
+
+% 我们在不同大小的 S (16~160) 上对DFA，PFA，MM 三个算子进行了多组实验，实验结果如图八所示。其中 DFA 算子通过 TilingInfer 编译优化达到了 20% 左右的加速，这主要来自于类似图3中展示的初始化优化。在初始化阶段，由于 DFA 算子具有许多可配置的参数，主要是对各种参数的赋值和少量的计算。计算所涉及到的指令延迟大多为 1 周期，但赋值涉及到的 load / store 延迟要远远大于计算指令。如果发生了 cache miss ，load / store 的延迟可以达到数百周期。经过了 Tiling Infer 的优化后，部分参数可以被优化为常量，相应的 load / store 可以被消除，从而达到了可观的加速。
+\subsection{Kernel Optimization Results (\textbf{RQ1})}
+% \input{tables/benefits-all}
+
+\subsubsection{Optimizing Dynamic-Shape Operators for NPU Library} 
+
+% \input{tables/op-ratio-summary}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/evaluation/speedup-NPU/prefill_decode_comparison_chart.png}
+    \caption{Kernel optimization for different types of attentions in \autoref{tab:benchmark-setting-attention-types} on NPU server. }
+    \label{fig:NPU-kernel-opt-ave}
+\end{figure}
+
+\autoref{fig:NPU-kernel-opt-ave} shows the overall speedups of \mysys compared to the unspecialized kernels in the NPU library~\cite{ascend_cannopsadv} with both DFA and PFA operators.
+
+Notably, the DFA operator achieved approximately 12\% acceleration through our \mysys optimization, primarily attributed to initialization optimization similar to that illustrated in \autoref{fig:pipeline}.
+During the initialization phase, the DFA operator involves numerous configurable parameters that mainly require value assignments with minimal computational operations.
+
+The instruction latency for computational operations typically remains at 1 cycle, while load/store operations associated with assignments exhibit significantly higher latency. 
+Particularly in cases of cache misses, the latency for load/store operations can escalate to hundreds of cycles. 
+Through TilingInfer optimization, certain parameters can be optimized into constants, thereby eliminating the corresponding load/store operations and achieving substantial performance improvement.
+This optimization mechanism effectively reduces memory access overhead by converting dynamic parameter assignments into static constant values during compilation.
+
+Regarding the PFA operators, it shows only an average of 3\% speedup ratio.
+\autoref{tab:detailed-op-metric-NPU} illustrates why there are significantly different speedup ratios.
+Notably, while the PFA operator demonstrates substantial absolute latency reduction (560$\mu s\to 541.8\mu s$) through initialization-phase load/store elimination - a mechanism analogous to the DFA optimization, its relative improvement remains constrained (3.3\% vs. DFA's 20.3\%). 
+This phenomenon stems from PFA's computational and memory intensity during prefill phase execution, where initialization overhead is only a small fraction of the total runtime. 
+
+\input{tables/op-ratio-summary}
+
+% \begin{figure*}[htp]
+%     \centering
+%     \includegraphics[width=\textwidth]{figures/evaluation/overall_benefits.pdf}
+%     \caption{Runtime latency comparison of the operator DFA using different compile approaches. Although the compile method using static shape information achieves the least kernel latency, the Just-In-Time (JIT) compile overhead leads to minutes of latency, making it impractical for dynamic shape situations.}
+%     \label{fig:NPU-benefits}
+% \end{figure*}
+
+\subsubsection{Optimizing Dynamic-Shape Operators for GPU Library}
+
+\input{tables/GPU-denefits-all}
+
+We applied \mysys to specialize operators in a production-level GPU library~\cite{ye2025flashinfer}, which is the default operator backend for many LLM serving systems such as vLLM~\cite{kwon2023vllm} and SGLang~\cite{zheng2024sglang}.
+
+\mysys tries to address both the significant code size inflation from manual dispatching and the performance of the kernels. 
+The aggregated results are summarized in \autoref{tab:dimensions-value-domain}.
+Our method achieves a remarkable 96.2\% average reduction in code size, compressing the compiled shared library by approximately 500.6 MB.
+This demonstrates the effectiveness of \mysys in mitigating library bloat.
+
+In terms of performance, \mysys delivers consistent, positive speedups over the already optimized baseline kernels.
+On average, we observe a 1.03$\times$ speedup for PFA and a 1.01$\times$ speedup for DFA. 
+The moderate performance gain is expected, as the baseline manual dispatch approach already specializes the most critical performance parameters.
+
+To provide a more detailed view, we use operator \ding{176} as a case study to analyze the performance characteristics across different input sequence lengths, as illustrated in \autoref{fig:GQA-prefill} and \autoref{fig:GQA-decode}. 
+We observe that the source and magnitude of performance gains vary between operator types.
+Speedup comparison of
+For the PFA (\autoref{fig:GQA-prefill}), our specialized kernel shows performance advantages, especially for shorter sequence lengths. 
+We measured an average speedup of 1.04$\times$ for sequence lengths under 1k. 
+In contrast, the DFA (\autoref{fig:GQA-decode}) exhibits more modest gains. 
+The speedup is marginal, averaging 1.01$\times$ for sequence lengths over 1k and showing negligible improvement for shorter ones, occasionally performing on par with the baseline.
+We attribute this difference to the inherent characteristics of the kernels; the PFA has a larger set of kernel parameters that benefit from specialization, whereas the DFA is simpler with fewer such parameters, as detailed in \autoref{tab:tiling-params-statistics}.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{\linewidth}
+        \centering
+        \includegraphics[width=0.9\linewidth]{figures//evaluation/comparison_bench_flashinfer_batch_prefill_half_half_speedup.pdf}
+        \caption{PFA kernel performance speedup compared to the baseline.}
+        \label{fig:GQA-prefill}
+    \end{subfigure}
+    \vspace{0.5em}
+    \begin{subfigure}[b]{\linewidth}
+        \centering
+        \includegraphics[width=0.9\linewidth]{figures//evaluation/comparison_bench_flashinfer_batch_decode_half_half_speedup.pdf}
+        \caption{DFA kernel performance speedup compared to the baseline.}
+        \label{fig:GQA-decode}
+    \end{subfigure}
+    \caption{Speedup of attention \ding{176} across different input sequence lengths. We use $B=4$.}
+    \label{fig:gqa-comparison}
+\end{figure}
+
+\subsubsection{Acceleration Ratio vs. Key Dimensions Settings}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=1\linewidth]{figures//evaluation/combined_jit_p_speedup.png}
+    \caption{Specialization ratio of the MQA attention operators using four different shape parameters across varying sequence lengths on NPU server.}
+    \label{fig:ifa-4shape}
+\end{figure}
+
+
+In this section, we analyze the impact of key dimensional parameters on the performance gains achieved by constant specialization.
+We focus our analysis on NPU operators, as their baseline provides a clearer opportunity to demonstrate these effects compared to the already heavily optimized GPU baseline kernels, where similar gains were more modest.
+We conducted experiments on an MQA-based DFA operator, specializing kernels using different shape parameters batch size $B$ and the number of queries $N_{q}$, while keeping the head dimension $D$ fixed at 512. 
+The results are presented in \autoref{fig:ifa-4shape}.
+A primary observation is that the speedup ratio consistently decreases as the query sequence length increases.
+Constant specialization yields a relatively fixed amount of time savings by optimizing the kernel's initialization stage.
+As the sequence length grows, the workload strength increases substantially. 
+Consequently, the proportion of time saved by our fixed optimization becomes smaller relative to the total execution time.
+
+Furthermore, the parameters that define the overall workload, $B$ and $N_{q}$, also influence the speedup ratio.
+As shown, configurations with larger workloads (e.g., $B=32, N_{q}=128$) yield a lower relative speedup compared to those with smaller workloads (e.g., $B=16, N_{q}=32$). 
+This is due to the same amortization effect: the constant-time optimization benefit is spread over a larger total workload, thus reducing its relative impact.
+
+Despite this amortization effect, our method demonstrates considerable effectiveness on NPU operators. 
+For sequence lengths under 2k, the average speedup remains significant at approximately 1.10$\times$, confirming the practical benefits of our approach for NPU kernel optimization.
+
+\subsection{Effectiveness Analysis of \mysys{} (\textbf{RQ2})}
+
+\begin{table}[htb]
+    \centering
+    \caption{The compile time overhead and compare effectiveness of \mysys on NPU servere.}
+    \label{tab:op-ratio-summary}
+    \renewcommand{\arraystretch}{1}
+    \begin{adjustbox}{max width=\linewidth}
+    \begin{tabular}{@{} c c c c @{}}
+        \toprule
+        \textbf{OP} & \textbf{Compilation Approach} & \textbf{Compile Time (s)} & \textbf{Speedup over Dynamic} \\
+        \midrule
+        \multirow{3}{*}{DFA} & Dynamic & 19.4 & 1.00 \\
+                             & JIT     & $19.4 \times |S_{kv}|$ & 1.14 \\
+                             & \mysys  & 20.6($\uparrow 1.2$) & 1.12  \\
+        \midrule
+        \multirow{3}{*}{PFA} & Dynamic & 21.9 & 1.00 \\
+                             & JIT     & $21.9 \times |S_{kv}|$ & 1.03 \\
+                             & \mysys  & 23.2 ($\uparrow 1.3$) & 1.03  \\
+        \bottomrule
+    \end{tabular}
+    \end{adjustbox}
+\end{table}
+
+The \autoref{tab:op-ratio-summary} compares the compilation overhead of each approach. 
+The Dynamic approach compiles only once, yielding the lowest compilation time but suboptimal performance. 
+In contrast, the JIT approach generates a specialized kernel for each of the $|S_{kv}|$ shape instances. While this achieves optimal performance, its compilation overhead becomes impractically high when many instances exist.
+\mysys{} introduces only a minimal overhead. Its total time comprises the original kernel compilation (19.4s for DFA and 21.9s for PFA) plus a small constant propagation cost (1.2s for DFA and 1.3s for PFA), increasing the average compile time by a modest 6.\%.
+
+Despite this low compilation overhead, \mysys{} delivers performance highly competitive with the theoretical optimum of JIT compilation. 
+As shown in the \autoref{tab:op-ratio-summary}, \mysys{} achieves a 12\% speedup through kernel specialization, reaching 85.7\% of the 14\% speedup provided by JIT.
+This narrow performance gap indicates that our method effectively specializes the most performance-critical constants. 
+The marginal potential for further gains does not justify adopting more computationally expensive techniques, such as constraint-guided symbolic execution, which would introduce significant compilation overhead.

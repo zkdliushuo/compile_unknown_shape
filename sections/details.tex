@@ -1,0 +1,24 @@
+\section{Implementation Details}
+\label{sec:details}
+
+% \mysys 基于 LLVM v15.0.5 搭建。\mysys 的实现整体上分为两部分：
+% \item 针对算子的 tiling function ，\mysy 将每个算子的 tiling function 作为分析的入口函数。将算子的常量参数（例如常量维度、底层内存格式配置等）作为外部常量信息引入。
+% 当前，算子的参数信息通常是通过 Python 侧 API 调用运行时传递进来，但动态语言的不确定性限制了我们直接从 Python 程序自动分析获得常量信息。我们的实现方法是，为每种算子的 tiling function 维护一个函数签名，外部常量信息通过配置文件传递给 LLVM 编译器，由编译器负责将其转换成 tiling function 的入参。
+
+%  \item 针对核函数的特化，对于不同硬件平台实现方法不太相同。针对 Ascend NPU，我们基于 Bisheng 编译器实现了基于 LLVM Bitcode 的参数特化 Pass，之后递归调用诸如 IPSCCP, CSE 等优化后生成特化的核函数二进制文件。
+% 对于 GPU 算子，由于 NVCC 编译器闭源且没有尝试基于 LLVM 编译核函数，我们的实现方式是识别出常量核函数参数后将其定义为模板参数，之后均通过模板参数获取该该参数。
+% 此外，针对给定的模型形状参数取值，我们基于推理出来的常量参数，消除冗余分派，最终消除了完全未被调用的特化核函数，打包为更精简的共享库，从而实现了代码消减。
+
+\mysys is built on LLVM 15.0.5 and optimizes machine learning operators and kernels by treating some shape parameters as compile-time constants. 
+While these operators are typically invoked from high-level Python APIs, analyzing such dynamic code is notoriously complex. 
+\mysys sidesteps this issue.
+By using a configuration file to define an operator's constant parameters (e.g., invariable dimensions, memory layout), it specializes the underlying C++ implementation directly, starting from its core tiling function.
+
+Our approach to specializing the low-level kernel functions varies by hardware:
+\begin{itemize}
+    \item \textbf{For Ascend NPUs:} We use the Bisheng compiler to perform specialization on the LLVM bitcode.
+    \item \textbf{For NVIDIA GPUs:} Since the NVCC compiler is closed-source, we convert the constant parameters into C++ template parameters to generate specialized versions of the kernels.
+\end{itemize}
+
+Finally, the compiler eliminates any specialized functions that are not used for a given model. 
+This process removes redundant code, resulting in a final, streamlined shared library with a significantly smaller binary size.

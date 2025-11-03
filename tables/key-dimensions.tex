@@ -1,0 +1,164 @@
+% \begin{table}[ht]
+% \centering
+% \caption{Key Dimensions and Operator Specifications}
+% \label{tab:dimensions-and-operators}
+% \resizebox{\linewidth}{!}{%
+% \begin{tabular}{ccc}
+% \toprule
+% \multicolumn{3}{c}{\textbf{Notations of Key Dimensions}} \\
+% \midrule
+% \textbf{Symbols} & \textbf{Description} & \textbf{Value} \\
+% \midrule
+% $B$ & Batch size & 4 \\
+% $N$ & Number of heads & 128 \\
+% $S$ & Sequence length & $\{32,64,...,2048\}$ (step=32) \\
+% $D$ & Dimension per head & 64 \\
+% $|S|$ & Number of possible shapes & 10 \\
+% \midrule
+% \multicolumn{3}{c}{\textbf{Operator Specifications}} \\
+% \midrule
+% \textbf{Abbr.} & \textbf{Operator Name} & \textbf{Input Shapes} \\
+% \midrule
+% DFA & Decoding FlashAttention & [B, N, 1, D], [S, N, D], [S, N, D] \\
+% PFA & Prefill FlashAttention & [B, S, 8192], [B, S, 8192], [B, S, 8192] \\
+% \bottomrule
+% \end{tabular}%
+% }
+% \end{table}
+
+\renewcommand{\arraystretch}{1.1}
+% \begin{table}[htbp]
+% \begin{threeparttable}
+% \centering
+% \caption{Taxonomy and Configurations of Key Shape Dimensions for LLM Attention Kernels.}
+% \label{tab:attention-dimensions-definition}
+% \footnotesize
+% \begin{tabularx}{\linewidth}{
+%     l
+%     >{\raggedright\arraybackslash}p{0.85cm} % Column for Symbols
+%     >{\raggedright\arraybackslash}X % Column for Description
+%     l
+% }
+% \toprule
+% \textbf{Type} & \textbf{Notation} & \textbf{Notation Description} & \textbf{Value} \\
+% \midrule
+% \multirow{5}{*}{\parbox{0.85cm}{\centering Invariable}}
+% & $N_{qo}$& \textbf{Number of query heads} & 16/32/64/128 \\
+% \cmidrule(lr){2-4}
+% & $N_{kv}$& \textbf{Number of key/value heads} & 2/4/8/16/32 \\
+% \cmidrule(lr){2-4}
+% & $D$ & \textbf{Encoding length per head}. & 32/96/128/192 \\
+% % \cmidrule(lr){2-4}
+% % & $D_{pos}$ & \textbf{Positional encoding length}. & 32/96/128/192 \\
+% \cmidrule(lr){2-4}
+% & $B$ & \textbf{Batch size}. & 1/4/16/32 \\
+% \midrule
+% \multirow{4}{*}{\parbox{0.85cm}{\centering Variable}}
+% & $S_{qo}$\tnote{*} & \textbf{Query Sequence Length} &\\
+% & & \textit{prefill:} length of the prompt & [32, 2048, 32] \\
+% & & \textit{decoding:} equals to 1 & 1 \\
+% \cmidrule(lr){2-4}
+% & $S_{kv}$\tnote{*} & \textbf{Key/Value Sequence Length} &\\
+% & & \textit{prefill:} length of the prompt & [32, 2048, 32] \\
+% & & \textit{decoding:} length of tokens so far & [32, 2048, 32] \\
+% \bottomrule
+% \end{tabularx}
+% \begin{tablenotes}
+% \item[*] \small \textit{Note:} In batched inference, operators require an array of the exact logical length of each sequence. For simplicity, we use the symbols $S_{qo}$ and $S_{kv}$ to denote the logical length of a representative sequence. The physical memory for the KV cache is allocated in discrete blocks (pages) of a fixed size (e.g., 16 tokens). Therefore, the allocated memory for a sequence is a multiple of this page size, while the kernel computation relies on the precise logical sequence length $S_{kv}$.
+% \end{tablenotes}
+
+% \end{threeparttable} % 结束 threeparttable 环境
+% \end{table}
+
+\begin{table}[htbp]
+\begin{threeparttable}
+\centering
+\caption{Key shape dimensions and their value domain.}
+\label{tab:attention-dimensions-definition}
+\footnotesize
+\begin{tabularx}{\linewidth}{
+    >{\raggedright\arraybackslash}p{0.8cm} % Category column
+    >{\raggedright\arraybackslash}p{0.8cm} % Symbol column
+    >{\raggedright\arraybackslash}X      % Description column
+    >{\raggedright\arraybackslash}p{2.3cm} % Value column
+}
+\toprule
+\textbf{Category} & \textbf{Notation} & \textbf{Description} & \textbf{Values} \\
+\midrule
+\multirow{6}{*}{\parbox{0.85cm}{\centering Invariable}} & $B$ & \textbf{Batch size} & 1/4/16/32 \\
+\cmidrule(lr){2-4}
+& $N_{q}$ & \textbf{Query heads number}. & 16/32/64/128 \\
+\cmidrule(lr){2-4}
+& $N_{kv}$\tnote{*} & \textbf{Key/value heads number} & 1/4/8/16/32 \\
+\cmidrule(lr){2-4}
+& $D$ & \textbf{Dimension size per head} & 64/128/192/256 \\
+\cmidrule(lr){2-4}
+& $D_{pe}$ & \textbf{Position encoding dimension per head} & 32/64/128 \\
+\midrule
+\multirow{4}{*}{\parbox{0.85cm}{\centering Variable}} & $S_{qo}$\tnote{**} & \textbf{Query Sequence Length} & \textit{Prefill:} [32, 4096] \newline \textit{Decode:} 1 \\
+\cmidrule(lr){2-4}
+& $S_{kv}$\tnote{**} & \textbf{Key/Value Sequence Length} (total tokens) & \textit{Prefill:} [32, 4096] \newline \textit{Decode:} [32, 4096] \\
+\bottomrule
+\end{tabularx}
+
+\begin{tablenotes}
+\item[*] \small The relationship between $N_q$ and $N_{kv}$ defines the attention type: \textbf{Multi-Head (MHA)} if $N_{kv} = N_q$; \textbf{Grouped-Query (GQA)} if $1 < N_{kv} < N_q$; \textbf{Multi-Query (MQA)} if $N_{kv} = 1$.
+\item[**] \small In batched inference, operators require the exact logical length of each sequence. For simplicity in this context, we use the logical lengths $S_{qo}$ and $S_{kv}$ to represent the variable dimensions.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+% \begin{table}[htbp]
+% \centering
+% \caption{Value of Key Shape Dimensions for some representative LLMs.}
+% \label{tab:dimensions-value-domain}
+% \footnotesize
+% % 确保导言区有 \usepackage{pifont} 用于 \ding 命令
+% \begin{tabularx}{\linewidth}{l X c c c c}
+% \toprule
+% \textbf{ID} & \textbf{Model} & \textbf{Attention Type} & $\boldsymbol{N_{qo}}$ & $\boldsymbol{N_{kv}}$ & $\boldsymbol{D}$ \\
+% \midrule
+% \ding{172} & LLaMA-2 7B & MHA & 32 & 32 & 128 \\
+% \ding{173} & LLaMA-3 8B & GQA & 32 & 8 & 128 \\
+% \ding{174} & Qwen2 72B& GQA & 64 & 8 & 128 \\
+% \ding{175} & Google Gemma 7B & MHA & 16 & 16 & 192 \\
+% \ding{176} & Microsoft Phi-3 3.8B & GQA & 32 & 4 & 96 \\
+% \ding{175} & DeepSeek-V2 236B & MLA & 128 & 1 & 32 \\
+% \bottomrule
+% \end{tabularx}
+% \end{table}
+
+
+\begin{table}[htbp]
+\centering
+\begin{threeparttable}
+    
+\caption{Benchmark settings of key shape dimensions}
+\label{tab:benchmark-setting-attention-types}
+\footnotesize
+\begin{tabularx}{\linewidth}{
+  l                % Left-aligned column for model name
+  >{\centering\arraybackslash}X                % Left-aligned, expandable column for attention type
+  c                % Centered column for N_q
+  c                % Centered column for N_kv
+  c                % Centered column for D_head
+  c                % Centered column for D_rope
+}
+\toprule
+\textbf{ID} & \textbf{Attention Type} & \textbf{$N_{q}$} & \textbf{$N_{kv}$} & \textbf{$D$} & \textbf{$D_{pe}$} \\
+\midrule
+\ding{172} & MHA & 32 & 32 & 128 & 0  \\ % LLaMA-2 7B \\
+\ding{173} & MHA & 16 & 16 & 256 & 0  \\ % Google Gemma 7B \\
+\ding{174} & GQA & 32 & 8 & 128 & 0 \\ % LLaMA-3 8B \\
+\ding{175} & GQA & 32 & 4 & 128 & 0 \\ % Qwen2 72B \\
+% \ding{176} & GQA & 32 & 4 & 96 & 0 \\ % Microsoft Phi-3 3.8B \\
+\ding{176} & MQA & 32 & 1 & 512 & 64 \\ % MLA (Conceptual) \\
+\bottomrule
+\end{tabularx}
+
+
+\end{threeparttable}
+\end{table}
+% \multicolumn{2}{p{0.95\linewidth}}{\raggedright\small%
+% \textit{\textbf{Implementation Note on Paged KV Cache:} Underlying operator implementations often use a Paged KV Cache mechanism. Instead of a single dense tensor of length $S_{kv}$, the operator takes an array of pointers or indices indicating the specific physical memory pages for each sequence in a batch. For simplicity in this context, we use the logical lengths $S_{qo}$ and $S_{kv}$ to represent the variable dimensions.}
+% }

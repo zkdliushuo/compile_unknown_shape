@@ -1,0 +1,144 @@
+\begin{algorithm}[ht]
+\caption{Early-Return Edges Detection}
+\label{algo:runtime-shape-check-detection}
+\footnotesize
+\SetKwFunction{RunOnFunction}{RunOnFunction}
+\SetKwFunction{MarkEarlyReturnEdge}{MarkEarlyReturnEdge}
+\SetKwFunction{MarkNormalEdge}{MarkNormalEdge}
+\SetKwFunction{PropagateBack}{PropagateBack}
+\SetKwFunction{ProcessShapeCheckBlock}{ProcessShapeCheckBlock}
+\SetKwFunction{IsConstant}{IsConstant}
+\SetKwFunction{GetPhiOperand}{GetPhiOperand}
+\SetKwFunction{PushBack}{PushBack}
+\SetKwFunction{IsNormal}{IsNormal}
+\SetKwFunction{IsEarlyReturn}{IsEarlyReturn}
+\SetKwFunction{ReverseReachableEdges}{ReverseReachableEdges}
+
+\SetKwProg{Fn}{Function}{:}{}
+\Fn{\RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}}{
+    $B \gets$ exit block of $F$\;
+    \lIf{return value of $B$ is not a \texttt{phi} instruction}{\Return}
+    $\phi \gets \GetPhiOperand(B)$\;
+    \ForEach{$(v,P) \in \phi$}{
+        \eIf{\IsConstant{$v$} $\land\ v \in \mathcal{E}$}{
+            % 若对应的路径尚未被标记为NormalEdge，则标记为EarlyReturnEdge
+            \PropagateBack{$P,\;\mathcal{E},\;\text{Early-Return}$}\;
+        }{
+            % 当前边对应的路径从entry直到此处均为正常逻辑；
+            % 若该边已被EarlyReturnEdge标记，则用NormalEdge覆盖
+            \PropagateBack{$P,\;\mathcal{E},\;\text{Normal}$}\;
+        }
+    }
+    \ForEach{$B \in F$ has both Normal and Early-Return outgoing edges}{
+        \ProcessShapeCheckBlock{$B,\;\mathcal{E},\;\mathcal{S}$}\;
+    }
+}
+\medskip
+% \tcp{Traverse all control-flow edges reachable in reverse from $B$}
+\Fn{\PropagateBack{$B,\;\mathcal{E},\;T$}}{
+    \ForEach{Edge $e \in $\ReverseReachableEdges$(B)$}{
+        \eIf{$T = \text{Normal}$}{
+            \MarkNormalEdge$(e)$\;
+        }{
+            \If{$\neg$\IsNormal$(e)$}{
+                \MarkEarlyReturnEdge$(e)$\;
+            }
+        }
+    }
+}
+    
+\medskip 
+\Fn{\ProcessShapeCheckBlock{$B,\;\mathcal{E},\;\mathcal{S}$}}{
+    br $v \bowtie s,\,S_1,\,S_2 \gets$ conditional branch instruction in \(B\)\;
+    \lIf{\(v\) is not a function call}{\Return}
+    \tcp{Assume \(\bowtie \in \{eq,\,neq\}\) and \(v = \text{call } F(\ldots)\)}
+    Let $e \gets \text{Edge}(B \rightarrow S_1)$\;
+    \If{\IsNormal(e) $\land ((\bowtie = eq \land s \in \mathcal{S}) \lor (\bowtie = neq \land s \in \mathcal{E}))$}{
+        \RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}\;
+    }
+    \If{\IsEarlyReturn(e) $\land ((\bowtie = eq \land s \in \mathcal{E}) \lor (\bowtie = neq \land s \in \mathcal{S}))$}{
+        \RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}\;
+    }
+}
+
+\end{algorithm}
+
+% \Fn{\ProcessShapeCheckBlock{$B,\;\mathcal{E},\;\mathcal{S}$}}{
+%     br $v \bowtie s, S_1, S_2 \gets$ conditional branch instruction in \(B\)\;
+%     \lIf{\(v\) is not a function call instruction}{return}
+%     \tcp{Assume $v = \text{call } F(\dots)$}
+%     \eIf{\IsNormal$(\text{Edge}(B\rightarrow S_1))$}{
+%         \If{$(\bowtie = eq \land s \in \mathcal{S})\lor(\bowtie = neq \land s \in \mathcal{E})$}{
+%             \RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}\;
+%         }
+%     }{
+%         \If{$(\bowtie = eq \land s \in \mathcal{E})\lor(\bowtie = neq \land s \in \mathcal{S})$}{
+%             \RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}\;
+%         }
+%     }
+% }
+% \Fn{\PropagateBack{$l,\;\mathcal{E},\;T$}}{
+%     $V \gets \varnothing$\;
+%     $W \gets [\,l\,]$ \;
+%     \While{$W \neq \varnothing$}{
+%          $B \gets W.\PopFront{}$\;
+         
+%          \ForEach{predecessor $P$ of $B$}{
+%               \eIf{$T = \text{Normal}$}{
+%                  \MarkNormalEdge$(P, B)$\;
+%               }{
+%                  \lIf{\IsNormal$(P,B)$}{
+%                      \MarkEarlyReturnEdge$(P, B)$
+%                  }
+%               }
+%               \If{$P \notin V$}{
+%                 $V \gets V \cup \{P\}$\;
+%                 $W.\PushBack(P)$\;
+%               }
+%          }
+%     }
+% }
+
+% \begin{algorithm}
+%     \caption{Detect Runtime Shape Check Functions with Early Return Path}
+%     \label{algo:early-return-marking}
+%     \KwIn{Function $g$ with runtime shape check, set of expected invalid status codes $expected\_invalid\_status\_codes$}
+%     \KwOut{Mark functions that perform runtime shape checks}
+
+%     $ret\_block \gets$ get\_exit\_block($g$)\;
+%     $ret\_instr \gets$ get\_terminal\_instruction($ret\_block$)\;
+%     $phi\_instr \gets$ get\_phi\_operand($ret\_instr$)\;
+%     $early\_return\_blocks \gets \emptyset$\;
+
+%     \ForEach{$(x_i, l_i) \in phi\_instr$}{
+%         \If{is\_constant($x_i$)}{
+%             $c_i \gets$ get\_constant\_value($x_i$)\;
+%             \If{$c_i \notin$ expected\_invalid\_status\_codes}{
+%                 $early\_return\_blocks \gets early\_return\_blocks \cup \{l_i\}$\;
+%             }
+%         }
+%     }
+
+%     \ForEach{$l_i \in early\_return\_blocks$}{
+%         $current\_block \gets l_i$\;
+%         \While{$current\_block$ is not root of dominator tree}{
+%             $dom\_block \gets$ get\_dominating\_block($current\_block$)\;
+%             \If{$dom\_block$ is not dominated by $l_i$}{
+%                 break\;
+%             }
+%             $current\_block \gets dom\_block$\;
+%         }
+        
+%         $branch\_instr \gets$ get\_last\_conditional\_branch($dom\_block$)\;
+%         $cmp\_var \gets$ get\_cmp\_variable($branch\_instr$)\;
+        
+%         \If{is\_comparison\_with\_invalid\_status($cmp\_var$)}{
+%             $v \gets$ get\_comparison\_operand($cmp\_var$)\;
+%             \If{is\_function\_return($v$)}{
+%                 $f \gets$ get\_called\_function($v$)\;
+%                 mark\_function\_as\_runtime\_check($f$)\;
+%             }
+%         }
+%     }
+
+% \end{algorithm}

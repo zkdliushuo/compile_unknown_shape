@@ -1,0 +1,44 @@
+% \begin{table*}[htb]
+%     \centering
+%     \caption{Performance metrics of attention \ding{175} for both Prefill and Decode on the NPU server.}
+%     \label{tab:op-ratio-summary}
+%     \renewcommand{\arraystretch}{1}
+%     \begin{adjustbox}{max width=\textwidth}
+%     \begin{tabular}{@{} c c *{3}{c} c @{}}
+%         \toprule
+%         \textbf{OP} & \textbf{Compilation Approach} & \textbf{Kernel Latency (us)} & \textbf{Scalar Computation Time (us)} & \textbf{HBM Data Read Time (us)} & \textbf{Compile Time (s)} \\
+%         \midrule
+%         \multirow{3}{*}{DFA} & Dynamic & 27.2 & 9.6 & 5.2 & 19.3 \\
+%                              & JIT & 20.6 ($\downarrow 6.2$) & 7.1 ($\downarrow 2.5$) & 4.3 ($\downarrow 0.9$) & $19.4 \times |S|$  \\
+%                              & \mysys & 22.6 ($\downarrow 4.2$) & 8.5 ($\downarrow 1.1$) & 4.3 ($\downarrow 0.9$) & 44.9 ($\uparrow 25.6$)\\
+%         \midrule
+%         \multirow{3}{*}{PFA} & Dynamic & 560.0 & 501.9 & 387.5 & 34.7 \\
+%                              & JIT & 537.1 ($\downarrow 22.9$) & 485.6 ($\downarrow 16.3$) & 369.5 ($\downarrow 18.0$) & $34.7 \times |S|$ \\
+%                              & \mysys & 541.8 ($\downarrow 18.2$) & 488.8 ($\downarrow 13.1$) & 369.0 ($\downarrow 18.5$) & 107.1 ($\uparrow 72.4$) \\
+%         \bottomrule
+%     \end{tabular}
+%     \end{adjustbox}
+% \end{table*}
+
+
+\begin{table*}[htb]
+    \centering
+    \caption{Detailed performance metrics of attention \ding{176} for both Prefill and Decode on the NPU server. We profile using $B=4, S_{qo} = 1024$ and $S_{kv} = S_{qo}$ for Prefill. The $\uparrow$($\downarrow$) arrow in the parentheses denote the absolute increase (reduction) compared to the dynamic approach.}
+    \label{tab:detailed-op-metric-NPU}
+    \renewcommand{\arraystretch}{1}
+    \begin{adjustbox}{max width=\textwidth}
+    \begin{tabular}{@{} c c *{3}{c} c @{}}
+        \toprule
+        \textbf{OP} & \textbf{Compilation Approach} & \textbf{Latency (us)} & \textbf{Scalar Time (us)} & \textbf{HBM Access Time (us)} & \textbf{Cube Time (s)} \\
+        \midrule
+        \multirow{3}{*}{DFA} & Dynamic & 27.2 & 10.2 & 7.5 & 2.18 \\
+                             & JIT & 20.6 ($\downarrow 6.6$) & 7.8 ($\downarrow 2.4$) & 5.7 ($\downarrow 1.8$) & 2.18 ($0$)  \\
+                             & \mysys & 22.6 ($\downarrow 4.6$) & 9.2 ($\downarrow 1$) & 5.8 ($\downarrow 1.7$) & 2.18 ($0$) \\
+        \midrule
+        \multirow{3}{*}{PFA} & Dynamic & 560.0 & 501.9 & 387.5 & 125.7 \\
+                             & JIT & 537.1 ($\downarrow 22.9$) & 485.6 ($\downarrow 16.3$) & 369.5 ($\downarrow 18.0$) &  125.7 ($0$) \\
+                             & \mysys & 541.8 ($\downarrow 18.2$) & 488.8 ($\downarrow 13.1$) & 369.0 ($\downarrow 18.5$) &  125.7 ($0$)\\
+        \bottomrule
+    \end{tabular}
+    \end{adjustbox}
+\end{table*}

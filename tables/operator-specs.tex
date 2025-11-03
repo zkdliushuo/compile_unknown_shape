@@ -1,0 +1,18 @@
+\begin{table}[h]
+\centering
+\caption{Operator Specifications}
+\label{tab:operator-specs}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lll}
+\toprule
+\textbf{Operator} & \textbf{Abbr.} & \textbf{Input Shapes} \\
+\midrule
+Matrix Multiply & MM & [B × S, 7168], [7168, 1536] \\
+Batch Matrix Multiply & BMM & [B, N, S, D], [B, N, S, D] \\
+LayerNorm & LN & [B, S, 7168] \\
+FlashAttentionScoreGrad & FAG & [B, S, 8192], [B, S, 8192], [B, S, 8192] \\
+IncreFlashAttention & IFA & [B, N, 1, D], [S, N, D], [S, N, D] \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

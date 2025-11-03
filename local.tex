@@ -1,0 +1,167 @@
+% \usepackage{cite}
+% \usepackage[numbers,sort]{natbib}
+\usepackage{amsmath,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+% \usepackage[hyphens]{url}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+\usepackage[utf8]{inputenc}
+\newcommand\commentformat[1]{\small\ttfamily{#1}}
+\SetCommentSty{commentformat}
+\SetKwComment{Comment}{// }{}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{stfloats}
+\usepackage{url}
+\usepackage{makecell}
+\usepackage{multicol}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{mathrsfs}
+\usepackage{dutchcal}
+\usepackage{amsthm}
+\usepackage{threeparttable}
+
+\usepackage{ctex}
+
+% 定义新定理样式：缩进1em，标题斜体，内容正常
+\newtheoremstyle{indenteditalic}
+  {3pt}   % 上方间距
+  {3pt}   % 下方间距
+  {}      % 主体字体（正常）
+  {1em}   % 缩进量
+  {\itshape} % 标题字体（斜体）
+  {.}     % 标题后标点
+  {0.5em} % 标题与内容间距
+  {}      % 定理头格式（可选）
+
+% 应用新样式到definition环境
+\theoremstyle{indenteditalic}
+\newtheorem{definition}{Definition}[section]
+% 强制声明字体尺寸兼容性（添加到导言区）
+% \DeclareFontFamily{U}{rsfs}{\skewchar\font127}
+% \DeclareFontShape{U}{rsfs}{m}{n}{<-> s*[1.0] rsfs10}{} % 缩放系数可调
+
+\usepackage{subcaption}
+\usepackage{color}
+\usepackage{import}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{fancyhdr} 
+\usepackage{adjustbox}
+% \usepackage{amssymb} 
+% \newtheorem{definition}{Definition}
+% \newtheorem{assumption}{Assumption}
+% \newcommand{\definitionautorefname}{Definition}
+% \newcommand{\assumptionautorefname}{Assumption}
+\PassOptionsToPackage{dvipsnames}{xcolor}
+\usepackage[dvipsnames]{xcolor}
+% \usepackage{pdfpages}
+\colorlet{RED}{red}
+% \usepackage{subfig}
+% \setstretch{0.95} % 或者更小的值
+% \usepackage{setspace}
+% \setlength{\parskip}{0pt}
+% \usepackage{titlesec}
+% \titlespacing{\section}{0pt}{2pt}{2pt}  % 控制章节标题的上、下间距
+% \titlespacing{\subsection}{0pt}{1pt}{1pt}  % 控制小节标题的上、下间距
+
+% \setlength{\textfloatsep}{5pt}   % 控制图表与正文之间的垂直距离
+% \setlength{\floatsep}{5pt}       % 控制两个图表之间的距离
+% \setlength{\intextsep}{5pt}      % 控制浮动图表与正文之间的距离
+% \setlength{\abovecaptionskip}{2pt}  % 调整标题与图表之间的距离
+% \setlength{\belowcaptionskip}{1pt}  % 调整标题与正文之间的距离
+\usepackage{cleveref}
+\usepackage{tikz}
+\usepackage{alltt}
+
+\usepackage{algorithm2e}
+% \usepackage{algorithm}
+% \usepackage{algpseudocode}
+\usepackage{CJKutf8}
+\usepackage{arydshln} % Add this package for dashed lines
+
+% 颜色定义
+\definecolor{codebg}{RGB}{255,255,255}
+\definecolor{keywordcolor}{RGB}{163,21,21}
+\definecolor{commentcolor}{RGB}{0,100,80}
+\definecolor{stringcolor}{RGB}{163,21,21}
+\definecolor{codefont}{RGB}{0,0,0} % 亮黑色字体
+\definecolor{typecolor}{RGB}{0,150,0}
+
+\newcommand{\hlcode}[1]{\colorbox{red!80}{\textcolor{white}{#1}}}
+% \newcommand{\corecode}[1]{%
+%   \colorbox{blue!20}{\textbf{#1}}%
+% }
+\newcommand{\corecodecomment}[1]{%
+  \colorbox{blue!70}{\textcolor{white}{#1}}%
+}
+
+% 设置 listings 样式
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\small\ttfamily\color{codefont},
+  % fontfamily=Fira Code,
+  keywordstyle=\color{keywordcolor},
+  commentstyle=\color{commentcolor}\itshape,
+  stringstyle=\color{stringcolor},
+  numberstyle=\tiny\color{gray},
+  numbers=left,
+  numbersep=5pt,
+  tabsize=2,
+  showstringspaces=false,
+  breaklines=true,
+  prebreak=\mbox{\textcolor{gray}{\tiny$\hookleftarrow$}\space}, % 将换行符显示在上一行末尾
+  frame=none,
+  escapeinside={+@}{@+},
+  captionpos=b,
+  language=C++,
+  morekeywords={align,define,declare,call,ret,br,phi,load,store,add,sub,mul,icmp,fcmp,bitcast,ptrtoint,inttoptr,alloca,getelementptr,select,unreachable},
+  alsoletter={\%,@},
+  morekeywords={[2]\%[a-zA-Z_][a-zA-Z0-9_]*,@[a-zA-Z_][a-zA-Z0-9_]*},
+  keywordstyle={[2]\color{blue!70}},
+  emph={TilingData,Status,T,BaseParams,SingleCoreParams,TData,OpTiling,TilingAlgo,AlgoBase,Algo1,Algo2,PartData,assert}, % 添加自定义类型名
+  emphstyle=\color{typecolor}, % 设置类型名高亮样式
+  moredelim=**[is][\colorbox{blue!20}]{@HL@}{@HL@},
+  mathescape=true,
+  aboveskip=0.5em, % 控制代码块上方的距离
+  belowskip=0em  % 控制代码块下方的距离
+}
+
+\newcommand{\myparagraph}[1]{\noindent\textbf{#1}}
+% \usepackage[numbers]{natbib}
+\usepackage[mathcal]{euscript}
+\renewcommand\lstlistingname{Code}
+\usepackage{ulem}
+\usepackage{pifont}
+\usepackage{array}
+\usepackage[table]{xcolor} % 引入xcolor包并启用表格颜色支持
+\definecolor{lightgray}{rgb}{0.9,0.9,0.9} % 自定义浅灰色
+\long\def\com#1{}
+\long\def\xxx#1{{\bf XXX: }{\small [#1]}}
+\long\def\abbr#1#2{#2}			% long version
+\def\bibbrev#1#2{#2}			% long version\newcommand{\abcite}[2]{\abbr{\cite{#1}}{\cite{#1,#2}}}
+\newcommand{\bibconf}[3][]{#1 #2}
+\newcommand{\mysect}[1]{\textit{\textbf{#1}}} 
+\newcommand{\kw}[1]{{\it #1}} % keyword
+\newcommand{\kn}[1]{\texttt{\small #1}}	% keyword
+\newcommand{\kd}[1]{\textbf{#1}} % keyword
+\newcommand{\KW}[1]{{\it #1}} % keyword
+\newcommand{\KN}[1]{\texttt{\small #1}}	% keyword
+\newcommand{\KD}[1]{\textbf{#1}} % keyword
+\newcommand{\ksf}[1]{{\small \textsf{#1}}} % small textsf
+\newcommand{\codet}[1]{{\small \textsf{#1}}} % small textsf
+\newcommand\etal{{\it{et al.\ }}}
+\newcommand\eg{{\it{e.g.,\ }}}
+\newcommand\ie{{\it{i.e.,\ }}}
+\newcommand\etc{{\it{etc.\ }}}
+
+\newcommand{\annotate}[1]{\textcolor{blue}{#1} \\}
+\newcommand{\todo}[1]{\textcolor{}{#1}}
+\newcommand{\leftblank}{\textcolor{}{XXX}\xspace}
+\newcommand{\mysys}{TilingInfer\xspace}
+\newcommand{\hlight}[1]{\textcolor{red}{#1}}

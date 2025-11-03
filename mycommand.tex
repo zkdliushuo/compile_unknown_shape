@@ -1,0 +1,33 @@
+\newcommand{\yu}[1] {{\textcolor{OliveGreen}{\textbf{#1}}}}
+\newcommand{\yunote}[1] {{$\langle${\textcolor{red}{YU:\textbf{#1}}}$\rangle$}}
+\newcommand{\ls}[1] {{$\langle${\textcolor{brown}{LS:\textbf{#1}}}$\rangle$}}
+\newcommand{\yi}[1] {{$\langle${\textcolor{blue}{HYT:\textbf{#1}}}$\rangle$}}
+\newcommand{\yiR}[2]{{\remv{#1}\yi{#2}}}
+\newcommand{\yiRemv}[1]{{\color{magenta}\sout{#1}}}
+\newcommand\sxy[1]{{$\langle${\textcolor{red}{SXY:\textbf{#1}}}$\rangle$}}
+\newcommand\yzj[1]{{$\langle${\textcolor{red}{YZJ:\textbf{#1}}}$\rangle$}}
+\newcommand\red[1] {{\textcolor{red}{#1}}}
+\newcommand{\lsR}[2]{{{\color{magenta}\sout{#1}}#2}}
+
+\newcommand\sR{{\mathbb{R}}}
+\newcommand\points{{\mathbb{E}}}
+\newcommand\stores{{\mathbb{S}}}
+
+\DeclareRobustCommand\cola{$|\cargset(\eargvec)|$}
+\DeclareRobustCommand\colb{NK}
+\DeclareRobustCommand\colc{NS}
+\DeclareRobustCommand\cold{NI}
+
+\newcommand*\blackcircled[1]{\tikz[baseline=(char.base)]{
+            \node[shape=circle,draw,inner sep=0.5pt,fill=black,text=white] (char) {#1};}}
+
+\newcommand\mmkernel{\texttt{MM}\xspace}
+\newcommand\demoop{\mmkernel}
+\newcommand\instantiated[1]{\mmkernel\langle #1\rangle}
+\newcommand\kDef[3]{\texttt{#1}(\texttt{#2,}\overrightarrow{#3})\xspace}
+\newcommand\kSpecialNm[2]{\texttt{#1}\langle \hlight{#2}\rangle\xspace}
+\newcommand\kSpecial[3]{\texttt{#1}\langle \hlight{#3}\rangle(\texttt{#2})\xspace}
+\newcommand\kSpecialD[4]{\texttt{#1}\langle \hlight{#3}\rangle(\texttt{#2,}\vec{#4})\xspace}
+\renewcommand\vec[1]{\overrightarrow{#1}}
+\newcommand\vecC[1]{\hlight{\overrightarrow{#1}}\xspace}
+

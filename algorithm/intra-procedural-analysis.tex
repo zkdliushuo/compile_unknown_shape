@@ -1,0 +1,86 @@
+\begin{algorithm}[htp]
+\caption{Inter-Procedural Constant Propagation}
+\label{algo:const-propagation}
+\small
+\SetKwFunction{MergePredecessors}{MergePredecessors}
+\SetKwFunction{RunOnBasicBlock}{RunOnBasicBlock}
+\SetKwFunction{MarkActiveEdge}{MarkActiveEdge}
+\SetKwFunction{IsActiveEdge}{IsActiveEdge}
+\SetKwFunction{ProcessSuccessors}{ProcessSuccessors}
+\SetKwFunction{ExitMFPMode}{ExitMFPMode}
+\SetKwFunction{MarkMFPMode}{MarkMFPMode}
+\SetKwFunction{InMFPMode}{InMFPMode}
+\SetKwFunction{RunOnFunction}{RunOnFunction}
+\SetKwFunction{PushFront}{PushFront}
+\SetKwFunction{PopFront}{PopFront}
+\SetKwFunction{IsConstant}{IsConstant}
+\SetKwFunction{SuccessorLiveness}{SuccessorLiveness}
+\SetKwFunction{GetEdgeCondition}{GetEdgeCondition}
+\SetKwFunction{IsEarlyReturnEdge}{IsEarlyReturnEdge}
+\SetKwProg{Fn}{Function}{:}{}
+
+\Fn{\RunOnFunction{$F$, $\mathbb{S}$}}{
+    $\text{Worklist}\ \mathcal{W} \gets [\text{entry block of }F]$\;  % Initialize worklist
+    $\mathcal{M} \gets \texttt{null}$\;
+    
+    \While{$\mathcal{W} \neq \emptyset$}{
+        $B \gets \mathcal{W}.\PopFront{}$\;
+        $\mathbb{S}_{in} \gets$ \MergePredecessors{$B, \mathbb{S}$}\;
+        $\mathbb{S}_{out}, updated \gets$ \RunOnBasicBlock{$B, \mathbb{S}_{in}$}\;
+        
+        \If{\InMFPMode{} $\land\ B = \mathcal{M}$}{
+            \ExitMFPMode{}\;
+        }
+        
+        \If{$\neg \InMFPMode{} \lor updated$}{
+            \ProcessSuccessors($B, \mathcal{W}, \mathcal{M}, \mathbb{S}_{out}$)\;
+        }
+        $\mathbb{S}[B] \gets \mathbb{S}_{out}$\;
+    }
+}
+
+\Fn{\MergePredecessors{$B,\mathbb{S}$}}{
+    $\mathbb{S}_{in} \gets \emptyset$\;
+    \ForEach{$P \in \text{Predecessors}(B)$}{
+        \If{\IsActiveEdge{Edge$(P\rightarrow B)$}}{
+            $\mathbb{S}_{in} \gets \mathbb{S}_{in} \cap \mathbb{S}[P]$\;
+        }
+    }
+    \Return $\mathbb{S}_{in}$\;
+}
+\Fn{\ProcessSuccessors{$B, \mathcal{W}, \mathcal{M}, \mathbb{S}_{out}$}}{
+    \ForEach{$S \in \text{Successors}(B)$}{
+        $C \gets \SuccessorLiveness(B, S, \mathbb{S}_{out})$\;  
+        \If{$\neg \InMFPMode{}\land C = \texttt{unknown}$}{
+            \MarkMFPMode{}\;
+            $\mathcal{M} \gets \text{Direct post-dom block of } B$\;
+        }
+        \If{$\InMFPMode{}$}{
+            \If{$S \neq \mathcal{M} \land C \neq \texttt{false}$}{
+                $\mathcal{W}.\PushFront(S)$\;
+                \MarkActiveEdge{Edge$(B\rightarrow S)$}\;
+            }
+        } \ElseIf{$C = \texttt{true}$}{
+            $\mathcal{W}.\PushFront(S)$\;
+            \MarkActiveEdge{Edge$(B\rightarrow S)$}\;
+        }
+    }
+}
+\Fn{\SuccessorLiveness{$B, S, \mathbb{S}_{out}$}}{
+    $e \gets \text{Edge}(B \rightarrow S)$\;
+    \If{\IsEarlyReturnEdge{$e$}}{
+        \Return \texttt{false}\;
+    }
+    \tcp{Edge is a Normal path}
+    $cond \gets $\GetEdgeCondition{$e$}\;
+    \If{$\mathbb{S}_{out}[cond] = \texttt{true}$}{
+        \Return \texttt{true}\;
+    }
+    \ElseIf{$\mathbb{S}_{out}[cond] = \texttt{false}$}{
+        \Return \texttt{false}\;
+    }
+    \Else{
+        \Return \texttt{unknown}\;
+    }
+}
+\end{algorithm}
