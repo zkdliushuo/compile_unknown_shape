@@ -1,180 +1,75 @@
 \section{Background}
 \label{sec:overview}
 
-\subsection{LLM Operator Libraries on AI Accelerators}
+\subsection{Ascend Architecture and Chanllenge}
 
-%   1. LLM 应用呈现出输入的动态性。query 和 KV Cache 长度在 request 间和随着时间变化，简单的实现可能会造成负载不均衡的问题，要求算子将具体输入形状转换到感知硬件的高效切分策略以实现最佳性能。
-%   2. 此外，不同的 LLM 应用基于 diverse 的 attention 机制变体。从MHA、GQA、MQA（增加对应的论文引用），特定的 attention mask，到定制化的 attention score 计算。此外底层的数据存储格式也不相同，例如不同 LLM 应用采用的 Paged Attention （增加 vllm 的引用）的 page size、page number 也不相同。
-%   3. 当前统一的 attention 算子库或者算子模板(例如 Flex Attention，FlashInfer，CANN SDK 算子库) 需要适配上述各种切分策略和变体、数据格式等。
-%   4. 当前的实现中，算子的host程序参数接收运行时形状、变体类型和数据格式（为了简洁，下文中我们统一将这些参数称作形状参数，记作$\overrightarrow{S_D}$），再根据这些信息设置核函数的参数，大大增加了核函数参数的数目，损害了加速器的执行性能。
-%   4. 此外，对于诸如 NPU 等特定加速硬件 (引用 MICRO 上 Davinci，Google TPU 的论文)，其内部配置的多样化异步硬件允许不同阶段的计算可以执行不同的策略参数，从而实现最高的性能，这种设计进一步增加了这类特定硬件上核函数参数的数目。
-%   5. 但在实际部署中，对于给定的 LLM 应用和确定的存储格式，通常仅有 query 和 KV Cache 的长度是动态的。这导致大部分的核函数参数在运行时始终是不变量。
+\begin{figure}
+    \includegraphics[width=\textwidth]{figures/motivation/ascend-data-path.png}
+    \caption{Overview of Ascend Architecture. The figure illustrates the key components of the Ascend architecture.}
+    \label{fig:ascend_architecture}
+\end{figure}
 
-%   6. \autoref{tab:tiling-params-statistics} 列举了两种硬件算子库中典型的 Attention 算子在给定变体、固定 Page Size 和 Page Number 的情况下核函数常量参数的数目及常量比例。
-
-LLM applications exhibit input dynamics. Typically, query lengths and KV cache vary between requests and over time, 
-and naive implementation suffers from the load-imbalance issue.
-Consequently, LLM operators such as Flash Attention~\cite{dao2024flashattention2} incorporate hardware-aware tiling strategies that map the variable input shapes to the underlying optimal scheduling. 
-This complexity is further compounded by the diverse attention mechanism variants, ranging from standard Multi-Head (MHA)~\cite{vaswani2017attention}, Grouped Query Attention (GQA)~\cite{ainslie2023gqa}, and Multi-Query Attention (MQA)~\cite{shazeer2019fast}, to variants with specific attention masks~\cite{beltagy2020longformerlongdocumenttransformer} and custom score computations~\cite{gemmateam2024gemma2improvingopen,ramapuram2025theoryanalysisbestpractices}. 
-Moreover, the underlying data storage formats differ, as seen in Paged Attention~\cite{kwon2023vllm}, where parameters such as page size and number vary across applications.
-
-To handle this diversity, operator libraries like FlexAttention~\cite{dong2025flexattention}, FlashInfer~\cite{ye2025flashinfer}, and CANN SDK~\cite{HuaweiCANN} 
-determine the optimal execution plan based on the runtime information, including the input shape, variant type, and underlying data format, which we collectively denote as $\overrightarrow{S_D}$. 
-Consequently, each execution plan corresponds to multitude of kernel arguments, resulting in an explosion of kernel parameter number.
-This explosion is even more pronounced on specialized hardware like NPUs~\cite{liao2019davinci} and Google's TPUs~\cite{jouppi2017datacenter}, whose diverse and asynchronous processing units can be configured with distinct schedule parameters to achieve maximum performance, further bloating the kernel's parameter space.
-
-The key observation is that in a practical deployment scenario for a given LLM application and a fixed data format, most kernel parameters are runtime invariants. 
-Typically, only query and KV Cache lengths are truly dynamic. 
-This implies that a great portion of the kernel parameters remains constant during execution. 
-\autoref{tab:tiling-params-statistics} enumerates the number and proportion of constant kernel parameters for typical Attention operators from two major hardware vendor libraries, Nvidia GPU and Ascend NPU~\cite{liao2019davinci}.
-When configured for a specific variant with a fixed page size and number, the majority of parameters are indeed constant, highlighting a new opportunity for optimization.
-
-\input{tables/constant-tiling-parameters-ratio}
-
-% \subsection{Existing Kernel Specialization Approaches}
-
-% 根据下述要点，总结现有的核函数常量特化方法，生成 latex 英文源码，要求尽量简洁、以方便读者理解为主，并且不要用生僻的英文词汇。不要用特别长的句子。
-%   由于过多的核函数参数会损害执行性能，因此 AI 编译器、算子库都会在实现算子时考虑如何针对核函数执行特化。
-%   现有的考虑核函数特化的工作整体上分为两类：  
-%       1. AI 框架、编译器（引用 PyTorch 2.0, Triton、TVM、DietCode、CANN 四篇论文）默认采取 JIT 特化的方法，即在运行时实际计算得出核函数参数，然后根据参数的值即时特化核函数并缓存编译结果。此后若无未被特化过的参数取值，则不会再触发重编译。但这种方式显著增加了运行时编译开销，潜在降低了系统的吞吐量，不适用于端侧部署、serverless场景，因而主要适用于静态形状场景，或者核函数参数取值变化范围较小的情况。
-%       2. 专家算子库（引用CuBlas，CUTLASS，FlashInfer）通常采取手工分派的方式，依赖专家经验提前枚举所有特化参数的取值组合，运行时根据参数值选择调用对应的特化函数。由于一种算子需要应对多种多样的 LLM 应用，面临参数取值空间组合爆炸的问题，因此手工分派面临着代码过度膨胀、参数特化不够充分的问题。
-%   据我们所知，目前缺少在离线编译阶段基于程序分析自动常量特化核函数的研究。相较于 JIT 特化方法，好处是无需运行时特化。相较于专家手工分派，则不会受制于代码膨胀的挑战（一种部署场景仅会特化一次核函数）。并且自动常量特化的方法与现有的手工分派是正交的关系，可以通过特化被忽略的常量参数进一步提升现有算子库性能。
-
-% Too many kernel parameters can hurt kernel performance.
-% To solve this, AI frameworks and libraries adopt kernel specialization to reduce the number of parameters.
-% Existing methods generally fall into two categories.
-
-% \paragraph{JIT Specialization}
-% AI frameworks~\cite{ansel2024dynamo,HuaweiCANN} and AI compilers~\cite{chen2018tvm,tillet2019triton,zheng2022dietcode} specialize kernels as long as the kernel parameters are determined at runtime, actually a JIT compilation method.
-% The specialized kernel is cached for later reuse.
-% However, JIT compilation increases the runtime overhead, hurting the system throughput.
-% It is not suitable for edge devices or serverless systems.
-% JIT works best for static shapes or when parameter values change very little.
-
-% \paragraph{Manual Dispatch}
-% Hand-written libraries~\cite{nvidia2021cublas,nvidia2017cutlass,ye2025flashinfer,dong2025flexattention} use a different method,
-% where Experts manually write many specialized functions, each with a specific combination of parameter values.
-% At runtime, a dispatcher selects the matching specialized function to call based on the input parameters.
-% However, modern LLM applications have many parameter combinations, leading to a combinatorial explosion of kernel parameters values.
-% The size of the compiled operator library containing many specialized functions is significantly large(i.e. code bloating).
-% Also, the specialization may not be complete, as experts cannot cover all parameter values.
-
-% To our knowledge, no prior work automatically specializes kernels during offline compilation using program analysis.
-% Compared to JIT specialization, the offline compilation has not to suffer from runtime overhead.
-% Compared to manual dispatch, it avoids the code bloating problem because a kernel is specialized only once for a given deployment scenario.
-% Furthermore, the automatic method is orthogonal to the existing manual dispatch implementations of libraries.
-% It can further improve their performance by specializing constant parameters that experts may have missed.
-
-\subsection{Kernel Specialization Approaches}
-
-A large number of kernel parameters can significantly hurt performance. To mitigate this, AI compilers and libraries commonly employ kernel specialization. Existing approaches to specialization primarily fall into two categories.
-
-\paragraph{JIT Specialization}
-AI frameworks~\cite{ansel2024dynamo,HuaweiCANN} and compilers~\cite{chen2018tvm,tillet2019triton,zheng2022dietcode} employ JIT specialization.
-This approach waits until runtime to determine the values of kernel parameters. 
-Once the values are known, it generates and compiles a specialized kernel on-the-fly, caching the result for future calls with the same parameters.
-While effective, this on-demand compilation introduces significant runtime overhead, which can reduce system throughput. 
-Consequently, JIT is ill-suited for latency-sensitive environments like edge devices or serverless computing and is best reserved for scenarios where parameters change infrequently.
-
-\paragraph{Manual Dispatch}
-Hand-written libraries~\cite{nvidia2021cublas,nvidia2017cutlass,ye2025flashinfer,dong2025flexattention} rely on manual dispatch. 
-In these libraries, domain experts write a multitude of kernel implementations by creating specific instantiations of template functions, with each instantiation being specialized for a particular combination of parameter values.
-At runtime, a dispatcher selects the appropriate instantiation based on the input. 
-This approach, however, struggles with the vast parameter spaces of modern LLM applications.
-The need to cover numerous combinations leads to a combinatorial explosion, resulting in severe \textbf{code bloat} and immense maintenance challenges. Furthermore, this manual effort is often incomplete, leaving some parameters unspecialized and thus suboptimal.
-
-A potential approach to specialization, unexplored in prior works to our best knowledge, is to automatic specialize kernels during offline compilation. 
-Such an approach could offer significant advantages over the established methods. 
-By performing specialization entirely at compile-time, it would eliminate the runtime overhead inherent to JIT. 
-Moreover, compared to manual dispatch, an automated method could also mitigate code bloat and maintenance burdens, as only the kernels required by a specific deployment scenario would be generated. 
-Moreover, this automated approach would be orthogonal and complementary to hand-written libraries, potentially enhancing their performance by systematically specializing constant parameters that experts may have overlooked.
-
-\input{figures/earlyreturn}  % section motivation
-\subsection{Existing Compiler Constant Propagation Methods}
-\label{sec:overview:existing-ipcp}
-
-\input{tables/comparison-constant-propogations}
-
-% Modern deep learning operators are predominantly implemented in C/C++. 
-% As one of the most popular compilers for these programs, LLVM \cite{lattner2004llvm} effectively compiles C/C++ programs into its Intermediate Representation (IR). 
-% By leveraging LLVM's infrastructure, developers can implement various program analyzers directly at the IR level, thereby circumventing the need to handle the complex semantics inherent to raw C/C++ source code.
-
-% At the IR level, data operations are fundamentally categorized into two types: variable accesses and object manipulations.
-% A variable $v\in \mathcal{V}$ indicates a top-level variable in LLVM IR. 
-% An object $o\in \mathcal{O}$ corresponds to an address-token variable which can only be indirectly accessed through pointer variables, called memory object later for simplicity. 
-
-% Constant propagation for variables proves relatively straightforward due to LLVM IR's Static Single Assignment (SSA) paradigm. This intrinsic property ensures that each variable definition (def) maintains singularity, with all subsequent uses (use) explicitly linked to their unique definition points. Compilers can efficiently perform Def-Use chain analysis to trace value origins and propagation paths, thereby enabling effective constant folding optimizations.
-
-% In contrast, constant propagation for objects presents significant complexity due to three inherent challenges: 1) Multiple mutable write operations may modify object states during different execution paths, 2) Pointer aliasing issues emerge when distinct pointers potentially reference identical memory objects, and 3) Aggregate objects may contain multiple independently accessible fields.
-
-% 为了在模型部署时，预先分析出核函数参数中的运行时不变量及其取值，需要编译器自动分析算子程序的CPU侧主机代码，根据形状参数中的常量值信息开展全程序的常量传播。
-% 这个传播的过程通常执行在程序的中间表示上，例如LLVM IR~\cite{lattner2004llvm}, to simplify analysis away from complex source code semantics.
-% 算子程序通常是基于 object-oriented 语言实现的，核函数参数通常被组织为聚合体类型，例如数组和结构体。
-% 此外算子的 CPU-side 程序含有复杂的控制流语义，例如含有检查输入形状合法性的语义。
-% 这些特点要求常量传播分析需要保证域敏感和路径敏感，即可以区分聚合体中不同域对象的值状态，并且可以沿着合法程序路径传播常量值，避免非法路径上的值影响最终的分析精度。
-
-% 根据处理聚合体和不同路径的分析精度与速度，我们将与常量传播相关的工作分为如下三类， as shown in \autoref{tab:constant_propagation_comparison}.
-
-To determine constant kernel parameters, compilers must propagate constants through the host-side code of an operator.
-This is challenging because the code contains complex data structures (e.g., aggregates like structs and arrays) and control flow (e.g., runtime shape checks).
-Therefore, an effective analysis must be \textbf{field-sensitive}, to distinguish between different fields of an object, and \textbf{path-sensitive}, to propagate constants along feasible execution paths. 
-Based on these two requirements, we classify existing approaches into three categories, as summarized in \autoref{tab:constant_propagation_comparison}.
-
-\paragraph{Def-Use Based}
-This class of approaches, such as Sparse Conditional Constant Propagation ~\cite{Wegman1991ConstantPropagationConditional,Sharif2018TRIMMERApplicationSpecialization}, traces the flow of values along the define-use~(Def-Use) chains. 
-It is efficient, but its effectiveness is limited by its insensitivity to fields and control flow paths.
-Field-level Def-Use chains are often implicit, and depend on auxiliary techniques like pointer alias analysis~\cite{anderson1994program,Might2010ResolvingExploitingKCFAa}.
-Moreover, it merges data from all paths, making it ineffective in the presence of early returns, common in runtime shape checks.
-
-\paragraph{Constraint Guarded Analysis}
-This class, examplified by symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Gong2019DetectingInterproceduralInfeasible,Yao2024FalconFusedApproach}, achieves perfect path-sensitivity by exploring all feasible program paths. 
-It represents program state using symbolic values and path conditions, enabling precise reasoning about variables under specific path constraints. 
-While highly accurate (especially when combined with point-to analysis), it suffers from poor scalability, limiting its practicality for large operator code.
-
-\paragraph{Partial Evaluation}
-This class specializes code based on known inputs~\cite{Smowton2011MakeWorlda,Malecha2015AutomatedSoftwareWinnowing}, behaving like an interpreter that propagates constants along \emph{specific} paths. It is more path-sensitive and precise than Def-Use analysis. However, challenges include accurately analyzing pointers and selecting paths for specialization. Existing partial evaluators also struggled to infer values for complex pointer-based parameters, such as kernel arguments stored in memory objects.
-
-All discussed approaches rely on point-to analysis to handle memory side effects.
-Because this is a classic challenge, we briefly review the common pointer analysis techniques:
-
+The Ascend architecture as shown in \autoref{fig:ascend_architecture} is designed to efficiently handle a variety of deep learning workloads by incorporating specialized hardware components. The key components of the Ascend architecture include:
 \begin{itemize}
-    \item \textbf{Andersen-style analysis}~\cite{anderson1994program,Pearce2007EfficientFieldsensitivePointer,FastPreciseHandling,Hardekopf2011FlowsensitivePointerAnalysis,Sui2016SVFInterproceduralStatic} builds a comprehensive points-to graph by tracking all possible memory objects a pointer may refer to. However, these methods are often slow to converge and lack a fine-grained model, making it hard to pinpoint accessed sub-fields within objects.
-
-    \item \textbf{Type-based analysis}~\cite{Might2010ResolvingExploitingKCFAa,Xu2022RegVaultHardwareAssisted} uses type information to infer what a pointer might reference. While efficient, this approach is often imprecise, as a single access path (e.g., based on a type) may correspond to many memory allocation sites, resulting in an overly large points-to set.
+    \item \textbf{Computation Units:} The architecture features several computation units, including Scalar Units for control flow processing and instruction dispatching, Vector Units for vectorized operations, and Cube Units for matrix computations. These units work together to execute complex deep learning operations efficiently.
+    
+    \item \textbf{Memory Hierarchy:} Ascend employs a multi-tiered memory hierarchy with specialized buffers. The L0 A/B/C buffers are dedicated to Cube Units, while the Unified Buffer serves Vector Units. This design allows for efficient data movement between different storage tiers, optimizing memory access patterns for various workloads.
+    
+    \item \textbf{Data Movement Mechanisms:} The architecture includes flexible data movement mechanisms that facilitate efficient transfer of data between computation units and memory buffers. This is crucial for maintaining high throughput and minimizing latency during deep learning operations.
 \end{itemize}
 
+These components work together to provide a programmable and high-performance platform for deep learning applications, enabling developers to optimize their workloads effectively.
 
-% To determine constant kernel parameters and their values during the offline deployment, compilers have to perform whole-program constant propagation on an operator's CPU-side host code.
-% This task is challenging, as this code often contains aggregate data types (e.g., structs and arrays) and complex control flow (e.g., checks if the inputs are valid at runtime). 
-% Therefore, an effective analysis must be both \textbf{field-sensitive}, to distinguish between different fields within an object, and \textbf{path-sensitive}, to propagate constants following legal execution paths. 
-% Accordingly, we classify existing work based on how well they meet these two requirements, as shown in \autoref{tab:constant_propagation_comparison}.
+While such programmability and optimization potential surpass that of general-purpose GPUs, it introduces significant challenges in kernel optimization. 
+Developers must carefully manage parallelism and load balancing through parameters controlling tile sizes, iteration orders, buffer counts, and data movement patterns across memory hierarchies. 
+For dynamic-shape models (e.g., Transformers with runtime-variable tensor dimensions), these control parameters, along with shape parameters, ragged tensor offsets, and data formats, become formal arguments of kernel functions. 
+At the beginning of kernel execution, these parameters need to be loaded from the global memory of the device to registers and the unified buffer, which then executes control flow instructions and scalar computations dependent on these parameter variables.
+This process involves many load and store operations, consuming valuable scalar registers, thus leading to considerable initialization overhead on the Scalar Unit.
+In workloads with low computational intensity, the proportion of such initialization overhead becomes significant such as Flash Decoding, whose number of parameters is large and single execution time is small.
 
-% \paragraph{Def-Use Based}
-% This approach, including techniques like sparse conditional constant propagation~\cite{Wegman1991ConstantPropagationConditional,Sharif2018TRIMMERApplicationSpecialization}, traces the flow of values along the program's define-use chains.
-% Its primary strength is efficiency.
-% However, its effectiveness is severely limited by its field insensitivity and path insensitivity.
-% Def-Use chains for fields of aggregates are often implicit, and the analysis relies on auxiliary techniques like pointer alias analysis~\cite{anderson1994program,Might2010ResolvingExploitingKCFAa}, which are imprecise.
-% Besides, it iterates over all execution paths to propagate constants until achieving convergence, ill suiting the tiling functions since there are high level control flows performing runtime shape checks.
+We have analyzed that since most kernel parameters are actually compile-time constants when model configurations (e.g., attention heads, embedding sizes) and hardware specifications are fixed, there exists a potential opportunity to accelerate Ascend kernels by identifying these compile-time constants and generating optimized kernels through DSA-native compilation.
+However, we find it diffucult to automatically identify compile-time constant parameters for operator programs based on C++ implementation, which we will discuss in the next subsection.
 
-% \paragraph{Constraint Guarded Analysis}
-% This approach, typified by symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Gong2019DetectingInterproceduralInfeasible,Yao2024FalconFusedApproach}, explores all feasible program paths by representing program state with symbolic values and path conditions.
-% Its key advantage is achieving the highest possible precision, as it can determine constant values under specific path constraints.
-% However, this comes at the cost of poor scalability.
-% The number of paths can grow exponentially with program complexity, making this method impractical for large-scale, real-world operators due to excessive compilation overhead.
+\subsection{Current Kernel Specialization Methods}
 
-% \paragraph{Partial Evaluation}
-% The approach~\cite{Smowton2011MakeWorlda,Malecha2015AutomatedSoftwareWinnowing} offers to specialize program functions based on the given partial input arguments.
-% These works perform like an interpreter, simulating one instruction at a time within a given context, allowing to select promising paths to transform the codes by replacing variables with its constant values.
-% They can analyze what field a pointer points to and propagate constants along a specific execution path, resulting in more precise analysis than Def-Use analysis.
-% The challenges when handling operators lies in how to enhance pointer alias analysis precision and select paths to perform specialization. 
-% Additionally, existing partial evaluators focus on simplifying functions with simple parameters, not intended for inferring pointer parameters such as kernel parameters $\overrightarrow{p}$ stored in a memory object.
+Currently, there are two common methods for specializing kernel parameters in DSA operator libraries. The first method involves enumerating certain critical kernel parameters (e.g., tile size) during the offline stage and precompiling the corresponding specialized kernels. The second method determines the parameter values at runtime and performs just-in-time (JIT) compilation based on these values.
 
-% Moreover, all the aforementioned approaches depend on point-to analysis to handle memory side effects, which is critical for the propagation of memory objects and also a traditional challenge.
-% Existing point-to analysis works mainly include:
-% (1) \textbf{Anderson-style}\cite{anderson1994program,Pearce2007EfficientFieldsensitivePointer,FastPreciseHandling,Hardekopf2011FlowsensitivePointerAnalysis,Sui2016SVFInterproceduralStatic}: These approaches collect all points-to relationship between pointers by recording the allocation sites of all potential target objects, forming a point-to graph. 
-% Then, based on the point-to graph, point-to relationship propagation is performed until convergence is achieved.
-% However, these methods lack a fine-grained, hierarchical model of address-token memory objects. 
-% As a result, they can only identify a coarse substructure of possible pointed-to objects.
-% Besides, these methods depend on an expensive propagation process because there are numerous point-to edges, and convergence is slow.
-% (2) \textbf{Type-based analysis}\cite{Might2010ResolvingExploitingKCFAa,Xu2022RegVaultHardwareAssisted}: This method records type-based access paths, which allow it to determine both the possible objects a pointer might reference and the specific parts within those objects. 
-% Although this approach is efficient in type-safe, object-oriented languages, each access path corresponds to a large set of potential allocation sites, leading to an excessively large points-to set.
+\begin{minipage}{0.48\textwidth}
+\begin{lstlisting}[language=C++, basicstyle=\tiny, caption={Offline compilation.}]
+void matmul_kernel(float* A, float* B, float* C, int M, int N, int K) {
+    int TILE_SIZE = calculate_tile_size(M, N, K);
+    switch (TILE_SIZE) {
+        case 16: matmul_kernel_16(A, B, C, M, N, K); break;
+        case 32: matmul_kernel_32(A, B, C, M, N, K); break;
+        case 64: matmul_kernel_64(A, B, C, M, N, K); break;
+        default: throw std::runtime_error("Unsupported TILE_SIZE");
+    }
+}
+void matmul_kernel_16(float* A, float* B, float* C, int M, int N, int K) {
+    constexpr int TILE_SIZE = 16;
+    for (int i = 0; i < M; i += TILE_SIZE) {
+        for (int j = 0; j < N; j += TILE_SIZE) {}
+    }
+}
+\end{lstlisting}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+\begin{lstlisting}[language=C++, basicstyle=\tiny, caption={Runtime JIT compilation.}]
+void matmul_kernel(float* A, float* B, float* C, int M, int N, int K) {
+    int TILE_SIZE = auto_tune_tile_size(M, N, K);
+    auto compiled_kernel = jit_compile_kernel(TILE_SIZE);
+    compiled_kernel(A, B, C, M, N, K);
+}
+std::function<void(float*, float*, float*, int, int, int)> 
+jit_compile_kernel(int TILE_SIZE) {
+    return [TILE_SIZE](float* A, float* B, float* C, int M, int N, int K) {
+        for (int i = 0; i < M; i += TILE_SIZE) {
+            for (int j = 0; j < N; j += TILE_SIZE) {}
+        }
+    };
+}
+\end{lstlisting}
+\end{minipage}
+
+
