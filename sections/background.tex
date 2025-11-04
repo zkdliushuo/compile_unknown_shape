@@ -1,3 +1,6 @@
+% \usepackage{listings} % Include the listings package for code listings
+% \usepackage{xcolor} % Include xcolor for syntax highlighting in listings
+
 \section{Background}
 \label{sec:overview}
 
@@ -32,44 +35,66 @@ However, we find it diffucult to automatically identify compile-time constant pa
 
 \subsection{Current Kernel Specialization Methods}
 
-Currently, there are two common methods for specializing kernel parameters in DSA operator libraries. The first method involves enumerating certain critical kernel parameters (e.g., tile size) during the offline stage and precompiling the corresponding specialized kernels. The second method determines the parameter values at runtime and performs just-in-time (JIT) compilation based on these values.
+Currently, there are two common methods for specializing kernel parameters in DSA operator libraries. The first method involves enumerating certain critical kernel parameters (e.g., tile size) during the offline stage and precompiling the corresponding specialized kernels.
+The second method determines the parameter values at runtime and performs just-in-time (JIT) compilation based on these values.
 
-\begin{minipage}{0.48\textwidth}
-\begin{lstlisting}[language=C++, basicstyle=\tiny, caption={Offline compilation.}]
-void matmul_kernel(float* A, float* B, float* C, int M, int N, int K) {
-    int TILE_SIZE = calculate_tile_size(M, N, K);
+\begin{minipage}{0.47\textwidth}
+\begin{lstlisting}[language=C++, basicstyle=\scriptsize, caption={Offline compilation.}]
+void add_kernel(float* A, float* B, float* C, int N) {
+    int TILE_SIZE = calculate_tile_size(N);
     switch (TILE_SIZE) {
-        case 16: matmul_kernel_16(A, B, C, M, N, K); break;
-        case 32: matmul_kernel_32(A, B, C, M, N, K); break;
-        case 64: matmul_kernel_64(A, B, C, M, N, K); break;
+        case 16: add_kernel<16>(A, B, C, N); break;
+        case 32: add_kernel<32>(A, B, C, N); break;
+        case 64: add_kernel<64>(A, B, C, N); break;
         default: throw std::runtime_error("Unsupported TILE_SIZE");
     }
 }
-void matmul_kernel_16(float* A, float* B, float* C, int M, int N, int K) {
-    constexpr int TILE_SIZE = 16;
-    for (int i = 0; i < M; i += TILE_SIZE) {
-        for (int j = 0; j < N; j += TILE_SIZE) {}
+template <int TILE_SIZE>
+void add_kernel(float* A, float* B, float* C, int N) {
+    for (int i = 0; i < N; i += TILE_SIZE) {
+        for (int j = 0; j < TILE_SIZE && i + j < N; ++j) {
+            C[i + j] = A[i + j] + B[i + j];
+        }
     }
 }
 \end{lstlisting}
+\label{lst:offline_compilation}
 \end{minipage}
 \hfill
-\begin{minipage}{0.48\textwidth}
-\begin{lstlisting}[language=C++, basicstyle=\tiny, caption={Runtime JIT compilation.}]
-void matmul_kernel(float* A, float* B, float* C, int M, int N, int K) {
-    int TILE_SIZE = auto_tune_tile_size(M, N, K);
+\begin{minipage}{0.47\textwidth}
+\begin{lstlisting}[language=C++, basicstyle=\scriptsize, caption={Runtime JIT compilation.}]
+void add_kernel(float* A, float* B, float* C, int N) {
+    int TILE_SIZE = auto_tune_tile_size(N);
     auto compiled_kernel = jit_compile_kernel(TILE_SIZE);
-    compiled_kernel(A, B, C, M, N, K);
+    compiled_kernel(A, B, C, N);
 }
-std::function<void(float*, float*, float*, int, int, int)> 
+std::function<void(float*, float*, float*, int)> 
 jit_compile_kernel(int TILE_SIZE) {
-    return [TILE_SIZE](float* A, float* B, float* C, int M, int N, int K) {
-        for (int i = 0; i < M; i += TILE_SIZE) {
-            for (int j = 0; j < N; j += TILE_SIZE) {}
+    return [TILE_SIZE](float* A, float* B, float* C, int N) {
+        for (int i = 0; i < N; i += TILE_SIZE) {
+            for (int j = 0; j < TILE_SIZE && i + j < N; ++j) {
+                C[i + j] = A[i + j] + B[i + j];
+            }
         }
     };
 }
 \end{lstlisting}
+\label{lst:runtime_jit}
 \end{minipage}
 
+\autoref{lst:offline_compilation} shows an example of the offline compilation method, where the kernel function \kw{add\_kernel} specializes the \kw{TILE\_SIZE} parameter by enumerating its possible values and precompiling the corresponding specialized kernels. 
+This method is effective when the number of parameters to be specialized is small and their possible values can be easily enumerated. 
+However, it can lead to code bloat as the number of specialized kernels increases.
+\autoref{lst:runtime_jit} illustrates the runtime JIT compilation method, where the \kw{TILE\_SIZE} parameter is determined at runtime using an auto-tuning function, and the kernel is compiled just-in-time based on this value.
+This approach allows for greater flexibility and adaptability to different input shapes and hardware configurations but incurs runtime overhead due to the compilation process.
 
+Given these limitations, we believe it is necessary to design a constant specialization framework that can automatically identify compile-time constant kernel parameters based on the input shapes and host code of operators, enabling automatic constant specialization of kernels without incurring significant code bloat or runtime overhead, especially for Ascend operator libraries where kernel parameters are too many to be enumerated.
+
+However, existing constant propagation techniques are primarily designed with general-purpose programs in mind, and they often fail to meet the stringent requirements of operator libraries, where the number of deduced constant values is critical. The main challenges that hinder their effectiveness in this context include the following aspects:
+\begin{itemize}
+    \item \textbf{Dynamic Shape Checks:} Operator programs frequently involve dynamic shape checks, resulting in multiple program paths. Accurately identifying and eliminating unreachable paths is essential to maintain precision during constant propagation.
+    \item \textbf{Precise Pointer Analysis:} C++ operator programs heavily rely on polymorphic types and pointers. It is crucial to perform precise pointer analysis throughout the constant propagation process, including resolving function pointers and determining which fields of struct objects are being accessed.
+    \item \textbf{Handling Uncertain Pointer Targets:} When faced with uncertain pointer targets, traditional methods often mark all potential memory regions as \kw{Unknown}, which can contaminate the analysis and reduce its effectiveness.
+\end{itemize}
+
+The above challenges necessitate a specialized constant propagation framework tailored for C++-based operator libraries, which motivates us to develop \mysys.
