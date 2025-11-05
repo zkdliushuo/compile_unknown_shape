@@ -1,60 +1,32 @@
 \section{Motivation}
 
-Current methods face the following key challenges when propagating constants to infer parameter values. 
+Our targeted operator programs involve some challenging patterns that hinder the effectiveness of existing constant propagation techniques.
+In this section, we discuss the impact of these patterns on constant propagation and our key solution.
 
-% It is not trivial to propagate constant information for each tiling parameter. 
-% The following lists troubling challenges that none of the prior works can properly handle.
+\subsection{Dynamic Shape Checks}
 
-\subsection{Early Return Caused by Runtime Shape Checks}
-Dynamic shape operators often require runtime shape checks for several reasons:
-\begin{itemize}
-    \item Some operator implementations restrict supported shapes and require early validation.
-    The tiling algorithm is bypassed if the input shape does not meet these constraints.
-    \item Operator shapes may exceed size limits, violate shape constraints, or fail to meet data layout constraints, requiring error reporting.
-\end{itemize}
+Dynamic shape operators often employ shape checks to detect invalid inputs for seek of robustness dut to several reasons:
+1) Some high-performance algorithms only support specific shapes or data layouts. 
+2) Inputs may exceed resource limits for the target hardware.
+Consequently, runtime shape checks are prevalent in operator implementations, especially for NPU operators, which must satisfy stringent hardware constraints such as mandatory memory alignment, tile vloume should not exceed certain memory buffer size, etc..
+These checks often locate in the beginning of tiling functions, and their error reporting paths usually return early and bypass the rest of the function, called \kw{early return paths}.
 
-Consequently, runtime shape checks are prevalent in operator implementations, especially for NPU operators, which must satisfy stringent hardware constraints such as mandatory memory alignment %for specific tensor dimensions 
-and strict buffer allocation rules.
-For example, all 36 programs in the customized NPU operator library~\cite{ascend_cannopsadv} %, all 36 of its provided programs 
-perform runtime shape checks within their tiling functions.
-
-\autoref{fig:early-return} shows a code snippet of a tiling function implementation.
-Function \texttt{Tiling} first checks if the dimension size \(d\) falls outside the expected range\([0, \text{INT\_MAX}]\).
-If so, it returns early at line 16 with an INVALID status code.
-Otherwise, it continues computing the tiling parameters at line 19.
-After that, the resulting values are stored in  memory object \texttt{o1}.
-%If so, the function returns early at line 16, directly returning an INVALID status code.
-A similar early return occurs at line 21 if the calculated tiling parameters violate hardware constraints.
-We call the pattern that checks on dimension size variables or tiling parameters directly return non-success status code, as \kw{early-return} pattern.
-
-The constant propagation algorithm may fail to determine which path to adopt at line 15 if \(d\) is dynamic.
-The algorithm must merge the tiling parameter values from both paths at the function's exit block, thereby losing all constant information.
-Nevertheless, the early-return paths never perform because only valid shapes (i.e., dimension sizes) are given at runtime.
-
-Such {early-return} paths are common in operator code and disrupt propagation by merging with normal paths.
-Manually eliminating these {early-return} paths is impractical due to engineering complexity, while precise path-sensitive analysis risks path explosion and high overhead.
-
-In  our analysis of LLVM IR, we observe that early-return patterns often manifest multiple control-flow paths converging at the exit block, where a \texttt{PHI} instruction selects the return status. 
-By examining whether the incoming values of this \texttt{PHI} instruction equal \texttt{SUCCESS} or not, one can distinguish early-return paths from normal ones. This insight allows the constant propagation algorithm to skip merging with early-return paths, improving both precision and efficiency.
+These early return paths carry significant implications for constant propagation.
 
 
-\subsection{Imprecise Pointer Point-to Analysis}
-Operator programs are often written in object-oriented languages like C++, where data is organized into aggregates such as structures and arrays (e.g., the \texttt{TData} class in \autoref{fig:early-return-code}). 
-The compiler represents these as address-taken memory objects, which can only be accessed through pointers. 
-Memory instructions like \texttt{STORE} and \texttt{LOAD} in LLVM IR operate on specific fields via pointers, with field addresses computed by \texttt{getelementptr} (\texttt{GEP}) using base pointers and field offsets.
+% Since neither manual constant propagation nor runtime JIT compilation adequately addresses the challenges of constant specialization in operator libraries, 
+% it is necessary to design a specialization framework based on static program analysis at the offline compilation stage. Existing constant propagation techniques can be broadly categorized into two primary methodologies:
 
-During constant propagation, it is common that the precise memory object that a pointer $p$ refers to is unclear.
-In such case, the analysis conservatively computes a point-to set $\mathit{tar}(p)$ (i.e., all possible memory objects that $p$ may point to). 
-A memory write operation with the pointer $p$ (e.g., \texttt{store} $q, p$) may update all objects in $\mathit{tar}(p)$, marking their values as unknown. 
-If $\mathit{tar}(p)$ is overly imprecise, the loss of constant information becomes widespread.
-This is particularly harmful for inferring tiling parameters, as they are stored in memory objects. 
-As a result, constant values of tiling parameters may be invalidated by any \texttt{store} instruction involving a non-constant pointer.
+% \begin{itemize}
+%     \item \textbf{Data Flow Analysis (DFA):} A classic algorithm for constant propagation, DFA models the program as a Control Flow Graph (CFG) and propagates values until a fixed-point is reached. Its theoretical foundation, Abstract Interpretation, ensures soundness and termination by defining abstract value domains (e.g., \textit{Top}, \textit{Constant}, \textit{NAC}) and \texttt{join} operators. While DFA is computationally efficient, it is \textbf{path-insensitive}, leading to a loss of precision at control-flow merge points.
 
-To improve propagation precision, we model each pointer as $\text{Pointer}(\text{Base}, \text{Offsets}_{all})$, where \text{Base} is the allocation site and $\text{Offsets}_{all}$ is a sequence of indices representing the access path to the target field within the object.
-Unlike traditional methods, we track both the base object and the internal offsets of each pointer.
-This helps limit the side effects of \texttt{STORE} instructions by identifying affected subfields.
-% We call this approach \emph{multi-layer-based point-to analysis}.
+%     \item \textbf{Symbolic Execution (SE):} A \textbf{path-sensitive} methodology that explores individual program paths, maintaining variable states as symbolic expressions and tracking branch constraints. SE offers high precision and can identify path-dependent constants missed by DFA. However, it suffers from the \textbf{path explosion} problem, making it computationally expensive and often impractical for this task.
+% \end{itemize}
 
-When \text{Base} is unknown, the analysis degrades to type-based point-to analysis.
-When $\text{Offsets}_{all}$ are partially unknown, it resembles field-sensitive Anderson-style analysis.
-This layered tracking helps preserve constant values, especially for tiling parameters in memory.
+% However, all these existing techniques face the same significant challenges when applied to C++-based operator libraries for the following reasons:
+% \begin{itemize}
+%     \item \textbf{Dynamic Shape Checks:} Operator programs are generally designed to handle a range of input shapes, thus needing to perform checks to ensure input validity. The program returns errors immediately when invalid inputs are detected, leading to .
+%     These checks lead to numerous program paths, that are unreachable given valid inputs.
+%     Besides, patterns of these checks are 
+    
+% \end{itemize}

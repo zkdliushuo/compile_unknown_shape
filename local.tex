@@ -24,7 +24,9 @@
 \usepackage{amsthm}
 \usepackage{threeparttable}
 
-\usepackage{ctex}
+\let\oldbaselinestretch\baselinestretch
+\usepackage[UTF8]{ctex}
+\let\baselinestretch\oldbaselinestretch
 
 % 定义新定理样式：缩进1em，标题斜体，内容正常
 \newtheoremstyle{indenteditalic}
@@ -82,7 +84,7 @@
 \usepackage{algorithm2e}
 % \usepackage{algorithm}
 % \usepackage{algpseudocode}
-\usepackage{CJKutf8}
+% \usepackage{CJKutf8} % Commented out: conflicts with ctex's xeCJK
 \usepackage{arydshln} % Add this package for dashed lines
 
 % 颜色定义
