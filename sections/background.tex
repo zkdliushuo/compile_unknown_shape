@@ -4,7 +4,7 @@
 \subsection{Ascend Architecture and Challenge}
 
 \begin{figure}
-    \includegraphics[width=\textwidth]{figures/motivation/ascend-data-path.png}
+    \includegraphics[width=0.7\textwidth]{figures/motivation/ascend-data-path.png}
     \caption{Overview of Ascend Architecture. The figure illustrates the key components of the Ascend architecture.}
     \label{fig:ascend_architecture}
 \end{figure}
@@ -32,56 +32,72 @@ However, we find it difficult to automatically identify compile-time constant pa
 
 \subsection{Current Kernel Specialization Methods}
 
-Currently, there are two common methods for specializing kernel parameters in DSA operator libraries. The first method involves enumerating certain critical kernel parameters (e.g., tile size) during the offline stage and precompiling the corresponding specialized kernels.
+Currently, there are two common methods for specializing kernel parameters in existing DSA operator libraries. 
+The first is Ahead-of-Time(AoT) compilation, enumerating certain critical kernel parameters (e.g., tile size) before the execution stage and precompiling all the specialized kernels.
 The second method determines the parameter values at runtime and performs just-in-time (JIT) compilation based on these values.
+\autoref{lst:compare_aot_jit_without_graph} shows an example of specializing the \kw{T} parameter in a simple addition kernel using both methods, where the kernel function \kw{add\_kernel} is a template function parameterized by the tile size \kw{T}.
 
-\begin{minipage}{0.47\textwidth}
-\begin{lstlisting}[language=C++, basicstyle=\scriptsize, caption={Offline compilation.}, label={lst:offline_compilation}]
+\begin{figure}
+\begin{minipage}{0.38\textwidth}
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+template <int T>
 void add_kernel(float* A, float* B, float* C, int N) {
-    int TILE_SIZE = calculate_tile_size(N);
-    switch (TILE_SIZE) {
-        case 16: add_kernel<16>(A, B, C, N); break;
-        case 32: add_kernel<32>(A, B, C, N); break;
-        case 64: add_kernel<64>(A, B, C, N); break;
-        default: throw std::runtime_error("Unsupported TILE_SIZE");
+  for (int i = 0; i < N; i += T) {
+    for (int j = 0; j < T; ++j) {
+      int idx = i + j;
+      if (idx < N)
+        C[idx] = A[idx] + B[idx];
     }
-}
-template <int TILE_SIZE>
-void add_kernel(float* A, float* B, float* C, int N) {
-    for (int i = 0; i < N; i += TILE_SIZE) {
-        for (int j = 0; j < TILE_SIZE && i + j < N; ++j) {
-            C[i + j] = A[i + j] + B[i + j];
-        }
-    }
+  }
 }
 \end{lstlisting}
 \end{minipage}
 \hfill
-\begin{minipage}{0.47\textwidth}
-\begin{lstlisting}[language=C++, basicstyle=\scriptsize, caption={Runtime JIT compilation.}, label={lst:runtime_jit}]
-void add_kernel(float* A, float* B, float* C, int N) {
-    int TILE_SIZE = auto_tune_tile_size(N);
-    auto compiled_kernel = jit_compile_kernel(TILE_SIZE);
-    compiled_kernel(A, B, C, N);
-}
-std::function<void(float*, float*, float*, int)> 
-jit_compile_kernel(int TILE_SIZE) {
-    return [TILE_SIZE](float* A, float* B, float* C, int N) {
-        for (int i = 0; i < N; i += TILE_SIZE) {
-            for (int j = 0; j < TILE_SIZE && i + j < N; ++j) {
-                C[i + j] = A[i + j] + B[i + j];
-            }
-        }
-    };
+\begin{minipage}{0.57\textwidth}
+\begin{lstlisting}[firstnumber=11, basicstyle=\ttfamily\footnotesize]
+void aot_add(float* A, float* B, float* C, int N) {
+  switch (dispatch_tile_size(N)) {
+    case 16: add_kernel<16>(A, B, C, N); break;
+    case 32: add_kernel<32>(A, B, C, N); break;
+    case 64: add_kernel<64>(A, B, C, N); break;
+}}
+void jit_add(float* A, float* B, float* C, int N) {
+  int T = autotune_tile_size(N);
+  auto kernel = run_compile(add_kernel, T);
+  kernel(A, B, C, N);
 }
 \end{lstlisting}
 \end{minipage}
+\caption{Comparison of AoT compilation and JIT compilation for kernel specialization without graph execution.}
+\label{lst:compare_aot_jit_without_graph}
+\end{figure}
 
-\autoref{lst:offline_compilation} shows an example of the offline compilation method, where the kernel function \kw{add\_kernel} specializes the \kw{TILE\_SIZE} parameter by enumerating its possible values and precompiling the corresponding specialized kernels. 
-This method is effective when the number of parameters to be specialized is small and their possible values can be easily enumerated. 
-However, it can lead to code bloat as the number of specialized kernels increases.
-\autoref{lst:runtime_jit} illustrates the runtime JIT compilation method, where the \kw{TILE\_SIZE} parameter is determined at runtime using an auto-tuning function, and the kernel is compiled just-in-time based on this value.
-This approach allows for greater flexibility and adaptability to different input shapes and hardware configurations but incurs runtime overhead due to the compilation process.
+The AoT compilation method, a.k.a. the function \kw{aot\_add}, precompiles specialized kernels for all the possible return values of the function \kw{dispatch\_tile\_size}\footnote{The function \kw{dispatch\_tile\_size} is generally a hand-written dispatch function that maps an input shape to its optimal tiling configurations.}.
+However, it can lead to a significant increase in binary size due to the large number of specialized kernels.
+Given a model and hardware setup, the shape parameter N is often fixed, as a result only one specialized kernel is actually needed during execution, while all other specialized kernels are redundant.
+
+On the other hand, the JIT compilation method, a.k.a. the function \kw{jit\_add}, provides flexibility by determining parameter values at runtime. 
+This allows the kernel to adapt to varying input shapes and hardware configurations.
+However, the runtime compilation process introduces additional overhead, which can impact performance, especially for workloads with low computational intensity or frequent kernel launches.
+
+\begin{figure}
+\centering
+\begin{minipage}{0.7\textwidth}
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+void add_kernel(float* A, float* B, float* C, int* N, int* T) {
+  for (int i = 0; i < *N; i += *T)
+    for (int j = 0; j < *T; ++j)
+      if (i + j < *N) C[i + j] = A[i + j] + B[i + j];
+}
+void graph_add(float* A, float* B, float* C, int N) {
+    int T = dispatch_tile_size(N);
+    add_kernel(A, B, C, &N, &T);
+}
+\end{lstlisting}
+\end{minipage}
+\caption{Implementation of the add operator under the graph execution mode.}
+\label{lst:add_with_graph}
+\end{figure}
 
 Given these limitations, we believe it is necessary to design a constant specialization framework that can automatically identify compile-time constant kernel parameters based on the input shapes and host code of operators, enabling automatic constant specialization of kernels without incurring significant code bloat or runtime overhead, especially for Ascend operator libraries where kernel parameters are too many to be enumerated.
 

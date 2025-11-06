@@ -1,34 +1,38 @@
 \section{Introduction}\label{sec:intro}
 
-% With the rapid advancement of deep learning, large-scale models such as Llama 3, DeepSeek, Qwen, and OpenSora have demonstrated exceptional performance across diverse tasks. To accelerate model training and inference while providing substantial computational power, major companies have developed domain-specific architectures (DSAs), including NVIDIA GPUs, Huawei Ascend NPUs, Google TPUs, and Cambricon MLUs. Among these, Ascend NPUs have achieved widespread adoption in supporting influential models like Qwen and DeepSeek series, delivering high performance with low power consumption.
+% 随着深度学习的发展，许多大型模型不断涌现并在众多任务中表现出色，如 Llama 3、DeepSeek、Qwen 和 OpenSora等等。
+% 为了加速大模型的训练和推理，更好地提供庞大的算力支撑，许多公司开发了各自的领域专用架构（DSA），包括英伟达GPU、华为 Ascend NPU、谷歌 TPU 和寒武纪 MLU 等。
+% 作为这些芯片的代表之一，Ascend NPU 目前已经广泛支持了各类有影响力的模型，例如Qwen、DeepSeek系列的模型，Ascend 取得了高性能和低功耗。
 
-% Ascend's architectural innovation lies in its programmable hardware components that enable efficient computation across diverse workloads. These include: 1) computation units featuring Scalar units for control flow processing and instruction dispatching, Vector units for vectorized operations, and Cube units for matrix computations; and 2) flexible memory hierarchy with specialized buffers (L0 A/B/C for Cube units and Unified buffer for Vector units) and efficient data movement mechanisms between storage tiers (detailed in Section~\ref{sec:background}).
+With the development of deep learning, many large models have emerged and performed well in various tasks, such as Llama 3, DeepSeek, and Qwen.
+To accelerate the training and inference of large models and provide substantial computational support, many companies have developed their own domain-specific architectures (DSA), including NVIDIA GPUs, Huawei Ascend NPUs, Google TPUs, and Cambricon MLUs.
+As a representative of these chips, the Ascend NPU has been widely used to support various influential models, such as the Qwen and DeepSeek series, achieving high performance and low power consumption.
 
-% While this design offers superior programmability and optimization potential compared to general-purpose GPUs, it introduces significant challenges in kernel optimization. Developers must carefully manage parallelism and load balancing through parameters controlling tile sizes, iteration orders, buffer counts, and data movement patterns across memory hierarchies. For dynamic-shape models (e.g., Transformers with runtime-variable tensor dimensions), these control parameters, along with shape parameters, ragged tensor offsets, and data formats, become formal arguments of kernel functions. Runtime determination of these parameters consumes valuable scalar registers (only 32 general-purpose 64-bit registers per Davinci core) and creates performance bottlenecks in scalar computation units, particularly evident in workloads like Flash Decoding where complex control flows dominate over compute operations.
+% 相较于通用 GPU，Ascend 的特点是额外引入了几种可编程的硬件部件，以高效支撑不同类型的计算：
+% 1）计算部件，包括处理控制流、执行指令分发和标量数据计算的 Scalar unit，分别处理向量化和矩阵操作的 Vector 和 Cube Unit。
+% 2）多种memory buffer和数据搬运部件：包括面向 Cube Unit 的 L0 A/B/C buffer，以及面向 Vector Unit 的 Unified buffer。这些存储部件之间的数据搬运方式也很灵活，
+% 这些硬件部件之间的数据通路我们将在后文中详细介绍，参见xxx.
 
-% Our analysis of CANNDev and CANN OPS ADV operator libraries reveals critical insights: 1) Hardware utilization metrics show scalar unit bottlenecks limit parallel execution of compute and memory operations; 2) Most kernel parameters become compile-time constants when model configurations (e.g., attention heads, embedding sizes) and hardware specifications are fixed. This observation motivates our key contribution: a constant specialization framework that identifies compile-time constants in kernel parameters and generates optimized kernels through DSA-native compilation.
+Compared to general-purpose GPUs, Ascend introduces several additional programmable hardware components to efficiently support different types of computations:
+1) Computational components, including the Scalar Unit for handling control flow, instruction dispatch, and scalar data computations, as well as the Vector and Cube Units for processing vectorized and matrix operations, respectively.
+2) Various memory buffers and data transfer components: including L0 A/B/C buffers for the Cube Unit and a Unified Buffer for the Vector Unit. The data transfer methods between these storage components are also flexible.
 
-% Existing approaches for parameter specialization face significant limitations: manual constant propagation causes code bloat through exhaustive enumeration, while auto-tuning/immediate compilation introduces runtime overhead. We propose \mysys, a cross-procedural constant propagation framework for C++-based operator libraries that achieves two objectives: 1) Reduces scalar computation overhead and inference latency; 2) Minimizes code size for resource-constrained deployment scenarios. Our technical innovations include: (1) Symbolic shape analysis through dynamic model execution in frameworks like PyTorch Dynamo; (2) Abstract interpretation framework with pointer analysis for precise constant propagation; (3) Aggressive optimization through unreachable path elimination and conservative pointer handling; and (4) Runtime validation mechanism ensuring correctness while maintaining performance benefits.
+% 上述的设计给开发人员提供了超越 GPU 的可编程性和性能优化潜力，
+% 但这也导致 Ascend 核函数的开发者需要更仔细地控制对性能十分重要的并行度以及负载均衡，
+% 开发者通常会为算子内的操作定义一组参数，用于控制核函数的每个层级的存储层级上 macro-kernel 的 tile size、迭代顺序、缓冲区数目，以及各个存储层级之间的数据搬运方式。
+% 为了支持诸如 Transformer 架构的动态形状模型（输入张量的形状是动态、运行时可变的），上述这组控制参数，连同算子的形状参数、ragged tensor(batch 内 tensor 形状不同)的 offsets 数组、输入输出的数据格式等一起，被实现核函数的形式参数。
+% 这些核函数参数需要运行时根据输入形状即时确定再从 Host 传递到 Device，这导致 Scalar Unit 需要实际执行依赖这些参数变量的控制流指令、标量计算并消耗宝贵的通用寄存器（类似于 CPU，每个Davinci Core 核心只有 32 个通用 64 bit 寄存器）存储中间结果。
+% 在一类工作负载降低的核函数中，由于 Cube、 Vector 以及数据搬运类的操作次数较少，难以有效掩藏 Scalar Unit 上的任务。
+% 尤其是诸如 Flash Decoding （用于 LLM 模型自回归解码阶段执行高效注意力计算）这类工作负载较低、计算逻辑又相对复杂的算子，
+% Scalar Unit bound 实际上是这类核函数的一个关键性能瓶颈。
 
-% Experimental results demonstrate that our approach effectively addresses scalar unit bottlenecks while maintaining compatibility with dynamic shape models. The framework enables efficient specialization of kernel parameters through compile-time constant identification, achieving performance improvements without compromising deployment flexibility.
+While the above design provides developers with programmability and performance optimization potential beyond GPUs,
+it also requires Ascend kernel function developers to carefully control parallelism and load balancing, which are crucial for performance.
+Developers typically define a set of parameters for operations within operators to control the tile size of macro-kernels at each level of the memory hierarchy, iteration order, number of buffers, and data transfer methods between different memory levels.
+To support dynamic shapes (where input tensor shapes are compile-time unknown and vary at runtime), all these control parameters and shape sizesnm are definded as formal parameters of the implemented kernel functions. 
+Besides, to support various Transformer-based model variants with different data formats or 
 
-随着深度学习的发展，许多大型模型不断涌现并在众多任务中表现出色，如 Llama 3、DeepSeek、Qwen 和 OpenSora等等。
-为了加速大模型的训练和推理，更好地提供庞大的算力支撑，许多公司开发了各自的领域专用架构（DSA），包括英伟达GPU、华为 Ascend NPU、谷歌 TPU 和寒武纪 MLU 等。
-作为这些芯片的代表之一，Ascend NPU 目前已经广泛支持了各类有影响力的模型，例如Qwen、DeepSeek系列的模型，Ascend 取得了高性能和低功耗。
-
-相较于通用 GPU，Ascend 的特点是额外引入了几种可编程的硬件部件，以高效支撑不同类型的计算：
-1）计算部件，包括处理控制流、执行指令分发和标量数据计算的 Scalar unit，分别处理向量化和矩阵操作的 Vector 和 Cube Unit。
-2）多种memory buffer和数据搬运部件：包括面向 Cube Unit 的 L0 A/B/C buffer，以及面向 Vector Unit 的 Unified buffer。这些存储部件之间的数据搬运方式也很灵活，
-这些硬件部件之间的数据通路我们将在后文中详细介绍，参见xxx.
-
-上述的设计给开发人员提供了超越 GPU 的可编程性和性能优化潜力，
-但这也导致 Ascend 核函数的开发者需要更仔细地控制对性能十分重要的并行度以及负载均衡，
-开发者通常会为算子内的操作定义一组参数，用于控制核函数的每个层级的存储层级上 macro-kernel 的 tile size、迭代顺序、缓冲区数目，以及各个存储层级之间的数据搬运方式。
-为了支持诸如 Transformer 架构的动态形状模型（输入张量的形状是动态、运行时可变的），上述这组控制参数，连同算子的形状参数、ragged tensor(batch 内 tensor 形状不同)的 offsets 数组、输入输出的数据格式等一起，被实现核函数的形式参数。
-这些核函数参数需要运行时根据输入形状即时确定再从 Host 传递到 Device，这导致 Scalar Unit 需要实际执行依赖这些参数变量的控制流指令、标量计算并消耗宝贵的通用寄存器（类似于 CPU，每个Davinci Core 核心只有 32 个通用 64 bit 寄存器）存储中间结果。
-在一类工作负载降低的核函数中，由于 Cube、 Vector 以及数据搬运类的操作次数较少，难以有效掩藏 Scalar Unit 上的任务。
-尤其是诸如 Flash Decoding （用于 LLM 模型自回归解码阶段执行高效注意力计算）这类工作负载较低、计算逻辑又相对复杂的算子，
-Scalar Unit bound 实际上是这类核函数的一个关键性能瓶颈。
+% , this set of control parameters, along with the operator's shape parameters, offsets arrays for ragged tensors (where tensor shapes differ within a batch), and input/output data formats, are all formal parameters of the implemented kernel functions.
 
 我们统计了 CANNDev、CANN OPS ADV 两个在 Ascend 设备上最广泛使用的算子库的部分算子的各类硬件部件的利用率。
 图中纵轴代表算子执行中，一种硬件部件的 active 周期数目。
