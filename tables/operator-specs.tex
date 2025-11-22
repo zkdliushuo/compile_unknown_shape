@@ -1,18 +1,31 @@
-\begin{table}[h]
+\begin{table*}[t]
 \centering
-\caption{Operator Specifications}
-\label{tab:operator-specs}
-\resizebox{\linewidth}{!}{%
+\caption{Overview of dynamic shape operator configurations used in experiments.}
+\label{tab:dynamic_operators}
+% 使用 resizebox 确保表格适应文本宽度
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lll}
 \toprule
-\textbf{Operator} & \textbf{Abbr.} & \textbf{Input Shapes} \\
+\textbf{Operator Category} & \textbf{Representative Operators} & \textbf{Layout \& Dynamic Dimension (Range)} \\
 \midrule
-Matrix Multiply & MM & [B × S, 7168], [7168, 1536] \\
-Batch Matrix Multiply & BMM & [B, N, S, D], [B, N, S, D] \\
-LayerNorm & LN & [B, S, 7168] \\
-FlashAttentionScoreGrad & FAG & [B, S, 8192], [B, S, 8192], [B, S, 8192] \\
-IncreFlashAttention & IFA & [B, N, 1, D], [S, N, D], [S, N, D] \\
+\multirow{3}{*}{Normalization} & \texttt{LayerNorm}, \texttt{RmsNorm}, \texttt{AddRmsNorm} & Layout: \texttt{[B, S, D]}, Dynamic: \textbf{S} (Sequence) in \texttt{[128, 1024]} or \textbf{B} (Batch) in \texttt{[1, 8]} \\
+& \texttt{BatchNormV3}, \texttt{GroupNormSilu} & Layout: \texttt{[N, C, H, W]}, Dynamic: \textbf{N} (Batch) in \texttt{[1, 8]} \\
+& \texttt{GroupNormGrad} & Layout: \texttt{[N, C, H, W]}, Dynamic: \textbf{C} (Channel) in \texttt{[48, 80]} \\
+\midrule
+\multirow{2}{*}{Attention \& RNN} & \texttt{MultiHeadAttention}, \texttt{DynamicRNN} & Layout: \texttt{[B, S, D]}, Dynamic: \textbf{S} (Sequence) in \texttt{[128, 1024]} \\
+& \texttt{RotaryPositionEmbedding} & Layout: \texttt{[B, H, D, S]}, Dynamic: \textbf{S} (Sequence) in \texttt{[64, 256]} \\
+\midrule
+\multirow{2}{*}{Matrix Multiplication} & \texttt{MatMulV3}, \texttt{MatmulAllReduce} & Layout: \texttt{[M, K]}, Dynamic: \textbf{M} in \texttt{[64, 8192]} \\
+& \texttt{BatchMatMulV3}, \texttt{GroupedMatmul} & Layout: \texttt{[B, M, K]}, Dynamic: \textbf{B} (Batch) in \texttt{[1, 16]} \\
+\midrule
+Pooling \& Resampling & \texttt{AvgPool3D}, \texttt{Upsample} (e.g., \texttt{Bicubic}), \texttt{GridSample} & Layout: \texttt{[N, C, H, W]} or \texttt{[N, C, D, H, W]}, Dynamic: \textbf{N} (Batch) in \texttt{[1, 8]} \\
+\midrule
+\multirow{2}{*}{MoE Layers} & \texttt{MoeInitRouting}, \texttt{MoeGating} & Layout: \texttt{[B, S, D]}, Dynamic: \textbf{B} (Batch) in \texttt{[1, 8]} \\
+& \texttt{MoeTokenPermute}, \texttt{Moe} (Grad ops) & Layout: \texttt{[T, D]} (T=Tokens), Dynamic: \textbf{T} in \texttt{[80, 960]} \\
+\midrule
+\multirow{2}{*}{Element-wise \& Data} & \texttt{Foreach} (e.g., \texttt{Add}, \texttt{Log}), \texttt{Gather} & Layout: \texttt{[N, ..., ]}, Dynamic: \textbf{N} (Batch/Dim) in \texttt{[1, 9]} \\
+& \texttt{IsInf}, \texttt{ScatterElements} & Layout: \texttt{[..., S, ...]}, Dynamic: \textbf{S} (Sequence) in \texttt{[128, 1024]} \\
 \bottomrule
-\end{tabular}%
+\end{tabular}
 }
-\end{table}
+\end{table*}

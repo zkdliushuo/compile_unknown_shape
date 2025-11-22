@@ -1,9 +1,12 @@
 % \usepackage{cite}
-\usepackage[numbers,sort]{natbib}
+% \usepackage[numbers,sort]{natbib}
 \usepackage{amsmath,amsfonts}
 \usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
+
+\usepackage{wrapfig}
+
 % \usepackage[hyphens]{url}
 \usepackage[linesnumbered,ruled,vlined]{algorithm2e}
 \usepackage[utf8]{inputenc}
@@ -23,10 +26,6 @@
 \usepackage{dutchcal}
 \usepackage{amsthm}
 \usepackage{threeparttable}
-
-\let\oldbaselinestretch\baselinestretch
-\usepackage[UTF8]{ctex}
-\let\baselinestretch\oldbaselinestretch
 
 % 定义新定理样式：缩进1em，标题斜体，内容正常
 \newtheoremstyle{indenteditalic}
@@ -132,6 +131,31 @@
   mathescape=true,
   aboveskip=0.5em, % 控制代码块上方的距离
   belowskip=0em  % 控制代码块下方的距离
+}
+\lstdefinestyle{cppsimple}{
+  language=C++, 
+  numbers=none, 
+  frame=none, 
+  basicstyle=\small\ttfamily\color{codefont}, 
+  keywordstyle=\color{keywordcolor}, 
+  commentstyle=\color{commentcolor}\itshape, 
+  stringstyle=\color{stringcolor}, 
+  numberstyle=\tiny\color{gray}, 
+  showstringspaces=false, 
+  breaklines=true, 
+  tabsize=2, 
+  aboveskip=0.5em, 
+  belowskip=0em, 
+  morekeywords={align,define,declare,call,ret,br,phi,load,store,add,sub,mul,icmp,fcmp,bitcast,ptrtoint,inttoptr,alloca,getelementptr,select,unreachable}, 
+  alsoletter={\%,@}, 
+  morekeywords={[2]\%[a-zA-Z_][a-zA-Z0-9_]*,@[a-zA-Z_][a-zA-Z0-9_]*}, 
+  keywordstyle={[2]\color{blue!70}}, 
+  emph={TilingData,Status,T,BaseParams,SingleCoreParams,TData,OpTiling,TilingAlgo,AlgoBase,Algo1,Algo2,PartData,assert}, 
+  emphstyle=\color{typecolor}, 
+  moredelim=**[is][\colorbox{blue!20}]{@HL@}{@HL@}, 
+  mathescape=true, 
+  escapeinside={+@}{@+}, 
+  captionpos=b
 }
 
 \newcommand{\myparagraph}[1]{\noindent\textbf{#1}}

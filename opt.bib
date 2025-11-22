@@ -2116,11 +2116,11 @@ doi={10.1109/JPROC.2017.2761740}
   month = {aug}
 }
 
-@misc{ onednn,
+@misc{ intel2021onednn,
   title={{oneAPI} Deep Neural Network Library},
   author={Intel},
   howpublished="\url{https://github.com/oneapi-src/oneDNN}, \url{https://01.org/oneDNN}",
-  year={2020}
+  year={2021}
 }
 
 %袁进辉，大规模分布式
@@ -2473,4 +2473,20 @@ address={Conference Location Unknown},
   booktitle={Proceedings of the 26th ACM International Conference on Architectural Support for Programming Languages and Operating Systems},
   pages={928--942},
   year={2021}
+}
+
+@inproceedings{chenTVMAutomatedEndtoend2018,
+  title = {{{TVM}}: An Automated End-to-End Optimizing Compiler for Deep Learning},
+  shorttitle = {{{TVM}}},
+  booktitle = {Proceedings of the 13th {{USENIX}} Conference on {{Operating Systems Design}} and {{Implementation}}},
+  author = {Chen, Tianqi and Moreau, Thierry and Jiang, Ziheng and Zheng, Lianmin and Yan, Eddie and Cowan, Meghan and Shen, Haichen and Wang, Leyuan and Hu, Yuwei and Ceze, Luis and Guestrin, Carlos and Krishnamurthy, Arvind},
+  year = 2018,
+  month = oct,
+  series = {{{OSDI}}'18},
+  pages = {579--594},
+  publisher = {USENIX Association},
+  address = {USA},
+  urldate = {2025-11-20},
+  abstract = {There is an increasing need to bring machine learning to a wide diversity of hardware devices. Current frameworks rely on vendor-specific operator libraries and optimize for a narrow range of server-class GPUs. Deploying workloads to new platforms - such as mobile phones, embedded devices, and accelerators (e.g., FPGAs, ASICs) - requires significant manual effort. We propose TVM, a compiler that exposes graph-level and operator-level optimizations to provide performance portability to deep learning workloads across diverse hardware back-ends. TVM solves optimization challenges specific to deep learning, such as high-level operator fusion, mapping to arbitrary hardware primitives, and memory latency hiding. It also automates optimization of low-level programs to hardware characteristics by employing a novel, learning-based cost modeling method for rapid exploration of code optimizations. Experimental results show that TVM delivers performance across hardware back-ends that are competitive with state-of-the-art, hand-tuned libraries for low-power CPU, mobile GPU, and server-class GPUs. We also demonstrate TVM's ability to target new accelerator back-ends, such as the FPGA-based generic deep learning accelerator. The system is open sourced and in production use inside several major companies.},
+  isbn = {978-1-931971-47-8}
 }
