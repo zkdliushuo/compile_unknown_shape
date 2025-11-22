@@ -1,0 +1,1726 @@
+
+STATUS_SUCCESS = "succeeded"
+
+STATUS_MISSING_BINARY_CONFIG = "error_missing_binary_config"
+
+STATUS_GEN_TESTCASE_FAILED = "error_gen_testcase_failed"
+
+STATUS_COMPILE_ERROR = "error_compile"
+
+STATUS_RUNTIME_ERROR = "error_runtime"
+
+STATUS_RUN_INCOMPLETE = "error_run_incomplete" 
+
+STATUS_PENDING = "pending"
+
+STATUS_TILING_ERROR = "RunTilingError"
+
+STATUS_OUTPUT_MISSING = "RunOutputMissing"
+
+STATUS_PYTHON_ATTRIBUTE_ERROR = "RunPythonAttributeError"
+
+STATUS_TIMEOUT = "RunTimeout"
+
+STATUS_UNKNOWN_ERROR = "RunUnknownError" 
+
+STATUS_RUN_SKIPPED = "SkipFailingOps"
+
+STATUS_FAIL_MERGE_JSON = "MergePartialDyanmicJsonError"
+
+STATUS_GEN_PD_TILINGBIN = "GeneratePDTilingDataBinError"
+
+STATUS_MSPROF_ERROR = "error_msprof" 
+
+
+
+class OpTestWorkflow:
+
+    """
+
+    一个封装了CANN算子动态形状测试全流程的类。
+
+    (已重构，支持 Rerun 状态合并)
+
+    """
+
+    def __init__(self, canndev_path, workspace_path, soc_version="ascend910b", limit=0, max_workers=10, regenerate_dynamic_settings=False, regenerate_op_template=False, rerun_fail_ops=False, rerun_msprof_errors=False, op_list=None, no_jitspec=False, no_foreach=True):
+
+        self.canndev_path = Path(canndev_path).resolve()
+
+        self.workspace_path = Path(workspace_path).resolve()
+
+        self.soc_version = soc_version
+
+        self.limit = limit 
+
+        self.max_workers = max_workers
+
+        self.regenerate_dynamic_settings = regenerate_dynamic_settings
+
+        self.regenerate_op_template = regenerate_op_template
+
+        self.no_jitspec = no_jitspec
+
+        self.no_foreach = no_foreach
+
+        
+
+        # --- (新增) Rerun 模式检测 ---
+
+        self.rerun_fail_ops = rerun_fail_ops 
+
+        self.rerun_msprof_errors = rerun_msprof_errors 
+
+        self.op_list = op_list
+
+        self.is_rerun_mode = rerun_fail_ops or rerun_msprof_errors or (op_list is not None)
+
+
+
+        # --- 派生路径 ---
+
+        self.ops_impl_path = self.canndev_path / "ops/built-in/tbe/impl/ascendc"
+
+        self.binary_config_base_path = self.canndev_path / f"ops/built-in/kernel/binary_config/{self.soc_version}"
+
+        self.op_tiling_ut_base_path = self.canndev_path / "ops/built-in/tests/ut/op_tiling_test"
+
+        
+
+        # --- 工作区路径 ---
+
+        self.op_templates_path = self.workspace_path / "op_templates"
+
+        self.op_cases_path = self.workspace_path / "op_cases"
+
+        self.op_results_path = self.workspace_path / "op_results"
+
+        self.reports_path = self.workspace_path / "reports"
+
+        self.report_file_path = self.reports_path / "final_op_status_report.json" 
+
+        
+
+        # --- 脚本路径 ---
+
+        self.gen_testcase_script = Path("./gen_testcase_json.sh") 
+
+        self.run_script = Path("./run.sh") 
+
+        
+
+        # --- (新增) 状态跟踪与工具 ---
+
+        self.tiling_merger = op_test_utils.TilingMerger()
+
+        self.op_binary_configs = {} # 辅助字典，存储本次要运行的算子
+
+        
+
+        # --- (修改) 智能加载报告 ---
+
+        self._ensure_dirs() # 确保目录存在
+
+        self.report_data = self._load_previous_report()
+
+        # --------------------------
+
+        
+
+        print("工作流初始化完成:")
+
+        print(f"  - CANNDEV 根目录: {self.canndev_path}")
+
+        print(f"  - 工作区根目录:    {self.workspace_path}")
+
+        if self.is_rerun_mode:
+
+            print(f"  - Rerun 模式:      已激活 (将合并到 {self.report_file_path})")
+
+        if self.limit > 0:
+
+            print(f"  - 算子数量限制:    最多 {self.limit} 个")
+
+        print(f"  - LLM 并发数:      {self.max_workers}")
+
+        print(f"  - 是否重新生成动态形状测试例子: {self.regenerate_dynamic_settings}")
+
+        print(f"  - 是否重新生成算子模板: {self.regenerate_op_template}")
+
+        if self.rerun_fail_ops: 
+
+            print("  - 重新运行模式:    已启用 (仅运行失败的算子)")
+
+        if self.rerun_msprof_errors: 
+
+            print("  - Msprof 错误重运行模式: 已启用")
+
+        if self.op_list: 
+
+             print(f"  - 算子列表模式:    已启用 (仅运行 {len(self.op_list)} 个指定算子)")
+
+        print("-" * 30)
+
+
+
+    
+
+    def _ensure_dirs(self):
+
+        """创建所有需要的工作目录。"""
+
+        self.op_templates_path.mkdir(parents=True, exist_ok=True)
+
+        self.op_cases_path.mkdir(parents=True, exist_ok=True)
+
+        self.op_results_path.mkdir(parents=True, exist_ok=True)
+
+        self.reports_path.mkdir(parents=True, exist_ok=True)
+
+
+
+    def _find_tiling_files(self, work_dir: Path):
+
+        """在工作目录中查找 tiling.bin 和 tiling_parse_result.json"""
+
+        bin_path_list = list(work_dir.rglob("tiling_data_tiling_key*.bin"))
+
+        if not bin_path_list:
+
+            return None, None
+
+        
+
+        tiling_bin_path = bin_path_list[0]
+
+        # 假设 json 和 bin 在同一目录
+
+        json_path = tiling_bin_path.parent / "tiling_parse_result.json"
+
+        
+
+        if not json_path.exists():
+
+            return tiling_bin_path, None
+
+        
+
+        return tiling_bin_path, json_path
+
+
+
+    def _generate_tiling_bin_from_json(self, json_path: Path, tiling_json: Path, work_dir: Path):
+
+        print(f"    Running 'ascendebug tiling' on {json_path}...")
+
+        
+
+        env_setup = "export CANN_INSTALL_PATH=/home/ustc/cann_0317 && source $CANN_INSTALL_PATH/set_env_ascendebug.sh $CANN_INSTALL_PATH"
+
+        tiling_cmd = "ascendebug tiling --work-dir . --repo-path {} --json-file {} --tiling-json {} --repo-type cann_dev".format(
+
+            str(self.canndev_path), str(json_path), str(tiling_json)
+
+        )
+
+        full_cmd = f"{env_setup} && {tiling_cmd}"
+
+
+
+        try:
+
+            result = subprocess.run(full_cmd, capture_output=True, shell=True, text=True, check=True, cwd=work_dir)
+
+            print(f"    'ascendebug tiling' stdout: {result.stdout}")
+
+            tiling_bin_path, json_path = self._find_tiling_files(work_dir)
+
+            if tiling_bin_path and tiling_bin_path.exists():
+
+                print(f"    ✅ 成功生成 PDS bin: {tiling_bin_path}")
+
+                return tiling_bin_path
+
+            else:
+
+                print(f"    ❌ 'ascendebug tiling' 生成 PDS bin 命令执行成功，但未找到输出文件: {tiling_bin_path}")
+
+                return None
+
+        
+
+        except subprocess.CalledProcessError as e:
+
+            print(f"    ❌ 'ascendebug tiling' 失败 (Exit Code: {e.returncode}):")
+
+            print(f"    STDOUT: {e.stdout}")
+
+            print(f"    STDERR: {e.stderr}")
+
+            return None
+
+        except FileNotFoundError:
+
+            print(f"    ❌ 错误: 'ascendebug' 命令未找到。请确保它在系统 PATH 中。")
+
+            return None
+
+        except Exception as e:
+
+            print(f"    ❌ 执行 'ascendebug tiling' 时发生未知错误: {e}")
+
+            return None
+
+
+
+    def discover_operators(self):
+
+        """
+
+        步骤 1: (修改) 发现所有算子，并智能合并到 self.report_data。
+
+        """
+
+        print("�� [步骤 1/5] 开始发现算子并合并配置...")
+
+        if not self.ops_impl_path.is_dir():
+
+            print(f"  ❌ 错误: 算子实现目录不存在: {self.ops_impl_path}")
+
+            return
+
+        
+
+        # (修改) 每次重新发现时，都清空旧的 "unconfigurable_ops" 列表
+
+        self.report_data["unconfigurable_ops"] = []
+
+        
+
+        # (修改) 跟踪磁盘上找到的 op，以便后续清理 report_data
+
+        found_ops_on_disk = set()
+
+            
+
+        for op_snake_case_dir in self.ops_impl_path.iterdir():
+
+            if not op_snake_case_dir.is_dir(): continue
+
+            
+
+            op_snake_case = op_snake_case_dir.name
+
+            op_camel_case = op_test_utils.to_upper_camel_case(op_snake_case)
+
+
+
+            # --- (新增) 禁掉所有以 "Foreach" 为前缀的算子 ---
+
+            if self.no_foreach and op_camel_case.startswith("Foreach"):
+
+                print(f"  ⏭️  跳过被禁用的算子: {op_camel_case}")
+
+                continue
+
+            # --- (新增) 结束 ---
+
+            
+
+            found_ops_on_disk.add(op_camel_case)
+
+            
+
+            binary_config_dir = self.binary_config_base_path / op_camel_case
+
+            if not binary_config_dir.is_dir():
+
+                self.report_data["unconfigurable_ops"].append(op_camel_case)
+
+                continue
+
+
+
+            json_files = list(binary_config_dir.glob("*.json"))
+
+            if len(json_files) != 1:
+
+                self.report_data["unconfigurable_ops"].append(op_camel_case)
+
+                continue
+
+            
+
+            binary_config_path = json_files[0]
+
+            
+
+            ut_path = None
+
+            for ext in ["cpp", "cc"]:
+
+                for name_pattern in [f"test_{op_snake_case}_tiling.{ext}", f"test_{op_snake_case}.{ext}"]:
+
+                    potential_ut_path = self.op_tiling_ut_base_path / name_pattern
+
+                    if potential_ut_path.exists():
+
+                        ut_path = str(potential_ut_path)
+
+                        break
+
+                if ut_path: break
+
+            
+
+            # --- (修改) 关键的合并逻辑 ---
+
+            op_info_new = {
+
+                "binary_config_path": str(binary_config_path),
+
+                "ut_path": ut_path
+
+            }
+
+            
+
+            target_dict = self.report_data["configurable_ops_with_ut"] if ut_path else self.report_data["configurable_ops_without_ut"]
+
+            other_dict = self.report_data["configurable_ops_without_ut"] if ut_path else self.report_data["configurable_ops_with_ut"]
+
+
+
+            if op_camel_case in target_dict:
+
+                # Op 已经在正确分类中，更新路径
+
+                target_dict[op_camel_case].update(op_info_new)
+
+            elif op_camel_case in other_dict:
+
+                # Op 切换了分类 (e.g., UT 被添加/删除)
+
+                print(f"  ℹ️  算子 {op_camel_case} 更改了分类 (UT 状态变更)。")
+
+                existing_data = other_dict.pop(op_camel_case)
+
+                existing_data.update(op_info_new)
+
+                target_dict[op_camel_case] = existing_data
+
+            else:
+
+                # 全新算子
+
+                op_info_new["status"] = STATUS_PENDING
+
+                op_info_new["cases"] = {}
+
+                target_dict[op_camel_case] = op_info_new
+
+            
+
+            # (修改) 始终填充 op_binary_configs，后续的 rerun 逻辑会过滤它
+
+            self.op_binary_configs[op_camel_case] = binary_config_path
+
+            
+
+            if self.limit > 0 and len(self.op_binary_configs) >= self.limit:
+
+                print(f"  ℹ️  已达到 --limit={self.limit} 的算子数量限制，停止发现。")
+
+                break
+
+        
+
+        # --- (新增) 清理 report_data 中存在、但磁盘上已删除的算子 ---
+
+        all_ops_in_report = set(self.report_data["configurable_ops_with_ut"].keys()) | \
+
+                            set(self.report_data["configurable_ops_without_ut"].keys())
+
+        
+
+        ops_to_remove = all_ops_in_report - found_ops_on_disk
+
+        if ops_to_remove:
+
+            print(f"  ℹ️  正在清理 {len(ops_to_remove)} 个在报告中但磁盘上已删除的算子...")
+
+            for op_name in ops_to_remove:
+
+                self.report_data["configurable_ops_with_ut"].pop(op_name, None)
+
+                self.report_data["configurable_ops_without_ut"].pop(op_name, None)
+
+                self.op_binary_configs.pop(op_name, None)
+
+
+
+        print(f"✅ [步骤 1/5] 发现与合并完成。")
+
+        print(f"  - {len(self.report_data['configurable_ops_with_ut'])} 个算子: 有配置且有UT")
+
+        print(f"  - {len(self.report_data['configurable_ops_without_ut'])} 个算子: 有配置但无UT")
+
+        print(f"  - {len(self.report_data['unconfigurable_ops'])} 个算子: 不可配置")
+
+
+
+
+
+    def _apply_fixed_attrs(self, op_name, case_name, case_json, fixed_attr_map, map_name_to_value):
+
+        """(重构) 辅助方法：将固定属性应用到 case_json"""
+
+        for attr_name, value in fixed_attr_map.items():
+
+            try:
+
+                value = [map_name_to_value[v] if isinstance(v, str) else v for v in value ]
+
+            except Exception as e:
+
+                pass
+
+            target_attr = next((a for a in case_json.get("attrs", []) if a.get("name") == attr_name), None)
+
+            
+
+            if target_attr:
+
+                target_attr["value"] = value
+
+                continue
+
+            
+
+            # 尝试在 inputs/outputs 中查找同名张量（作为属性）
+
+            target_tensor_as_attr = None
+
+            for io_type in ["inputs", "outputs"]:
+
+                tensor_desc_list = case_json.get(io_type, [])
+
+                if not tensor_desc_list: continue
+
+                
+
+                for item in tensor_desc_list:
+
+                    items_to_check = [item] if isinstance(item, dict) else (item if isinstance(item, list) else [])
+
+                    found_t = next((t for t in items_to_check if t.get("name") == attr_name), None)
+
+                    if found_t:
+
+                        target_tensor_as_attr = found_t
+
+                        break
+
+                if target_tensor_as_attr: break
+
+            
+
+            if target_tensor_as_attr:
+
+                target_tensor_as_attr["value"] = value
+
+            else:
+
+                print(f" ⚠️ 警告: 在 {op_name} ({case_name}) 中找不到名为 {attr_name} 的属性或张量。")
+
+
+
+    def _calculate_and_apply_shapes(self, op_name, case_name, case_json, tensors_config, map_name_to_value):
+
+        """(重构) 辅助方法：计算并应用新的张量形状"""
+
+        for tensor_config in tensors_config:
+
+            tensor_name = tensor_config.get("name")
+
+            symbolic_shape = tensor_config.get("shape")
+
+            if not tensor_name or not symbolic_shape: continue
+
+            
+
+            target_tensor = None
+
+            for io_type in ["inputs", "outputs"]:
+
+                tensor_desc_list = case_json.get(io_type, [])
+
+                if not tensor_desc_list: continue
+
+                
+
+                for item in tensor_desc_list:
+
+                    items_to_check = [item] if isinstance(item, dict) else (item if isinstance(item, list) else [])
+
+                    found_t = next((t for t in items_to_check if t.get("name") == tensor_name), None)
+
+                    if found_t:
+
+                        target_tensor = found_t
+
+                        break
+
+                if target_tensor: break
+
+            
+
+            if not target_tensor:
+
+                print(f"  ⚠️ 警告: 在 {op_name} ({case_name}) 模板中找不到名为 {tensor_name} 的张量。")
+
+                continue
+
+            
+
+            new_shape = []
+
+            for dim_symbol in symbolic_shape:
+
+                if isinstance(dim_symbol, str):
+
+                    new_shape.append(map_name_to_value.get(dim_symbol, dim_symbol))
+
+                else:
+
+                    new_shape.append(dim_symbol)
+
+            
+
+            target_tensor["shape"] = new_shape
+
+
+
+    def _validate_tensors_and_log_errors(self, op_name, case_name, case_json):
+
+        """(重构) 辅助方法：验证张量 shape 并记录 'required' 错误"""
+
+        tensors_to_check = []
+
+        for io_type in ["inputs", "outputs"]:
+
+            tensor_desc_list = case_json.get(io_type, [])
+
+            if not tensor_desc_list: continue
+
+            
+
+            for item in tensor_desc_list:
+
+                if isinstance(item, dict):
+
+                    tensors_to_check.append(item)
+
+                elif isinstance(item, list):
+
+                    tensors_to_check.extend(item)
+
+
+
+        for tensor in tensors_to_check:
+
+            shape = tensor.get("shape")
+
+            if shape == []:
+
+                # 1. 清理: 将 [] 转换成 null (None)
+
+                tensor["shape"] = None
+
+                
+
+                # 2. 验证: 检查 'required'
+
+                if tensor.get("param_type") == "required":
+
+                    tensor_name = tensor.get("name", "N/A")
+
+                    error_msg = f"张量 '{tensor_name}' 被标记为 'required'，但其 shape 为空 []"
+
+                    print(f"  ❌ [验证错误] {op_name} ({case_name}): {error_msg}")
+
+                    
+
+                    # 记录到 CSV 列表中
+
+                    self._shape_errors_list.append([
+
+                        op_name, case_name, tensor_name,
+
+                        tensor.get("param_type"), error_msg
+
+                    ])
+
+    
+
+    def _process_single_op_shapes(self, op_name, op_data, config, base_json):
+
+        """(重构) 辅助方法：处理单个算子的所有动态形状配置"""
+
+        
+
+        # --- 1. 获取动态维度和配置列表 ---
+
+        dim_names = config.get("dims", []) 
+
+        shape_configurations = config.get("values", []) 
+
+        
+
+        # --- 2. 处理固定的属性 ---
+
+        fixed_attr_map = {
+
+            attr.get("name"): attr.get("value") 
+
+            for attr in config.get("attrs", [])
+
+            if attr.get("name") is not None and attr.get("value") is not None
+
+        }
+
+        
+
+        # --- 3. 检查是否有任何配置 (形状或属性) ---
+
+        if not shape_configurations and not fixed_attr_map:
+
+            print(f"  - {op_name} 没有定义 'values' 列表或 'attrs'，跳过。")
+
+            return
+
+
+
+        if not shape_configurations and fixed_attr_map:
+
+            shape_configurations = [{}] # 注入一个空配置, 循环将运行一次
+
+
+
+        # --- 4. 遍历每个具体的配置 ---
+
+        for shape_config in shape_configurations:
+
+            case_json = copy.deepcopy(base_json)
+
+            map_name_to_value = shape_config
+
+
+
+            # --- 4.1. 根据动态维度信息生成 case_name ---
+
+            case_name_parts = [
+
+                f"{dim_name}_{map_name_to_value[dim_name]}"
+
+                for dim_name in (dim_names if dim_names else sorted(map_name_to_value.keys()))
+
+                if dim_name in map_name_to_value
+
+            ]
+
+            case_name = "-".join(sorted(list(set(case_name_parts)))) or "default_case"
+
+
+
+            # --- 4.2. 应用固定属性 ---
+
+            self._apply_fixed_attrs(op_name, case_name, case_json, fixed_attr_map, map_name_to_value)
+
+
+
+            # --- 4.3. 计算并应用新 shape ---
+
+            self._calculate_and_apply_shapes(op_name, case_name, case_json, 
+
+                                             config.get("tensors", []), map_name_to_value)
+
+            
+
+            # --- 4.4 验证张量并清理空 shape ---
+
+            self._validate_tensors_and_log_errors(op_name, case_name, case_json)
+
+
+
+            # --- 4.5. 保存测例 ---
+
+            case_dir = self.op_cases_path / op_name / case_name
+
+            case_dir.mkdir(parents=True, exist_ok=True)
+
+            with open(case_dir / f"{op_name}.json", 'w') as f:
+
+                json.dump(case_json, f, indent=4)
+
+            
+
+            # (修改) 仅在 case 状态不存在时，才设置为 PENDING
+
+            # 这样在 Rerun 模式下，可以保留旧的 FAILED/SUCCESS 状态
+
+            if case_name not in op_data.get("cases", {}):
+
+                 self._update_case_status(op_name, case_name, STATUS_PENDING)
+
+
+
+
+
+    def generate_dynamic_shape_cases(self, dynamic_settings_file):
+
+        
+
+        # (修改) 只为 self.op_binary_configs 中的算子生成
+
+        ops_to_process = self.op_binary_configs.keys()
+
+        if not ops_to_process:
+
+            print("ℹ️ [步骤 3/5] 没有需要生成动态测例的算子，跳过。")
+
+            return
+
+            
+
+        print(f"�� [步骤 3/5] 开始处理 {len(ops_to_process)} 个算子的动态形状测例...")
+
+        
+
+        # --- (新增) 初始化用于收集 shape 错误的列表 ---
+
+        self._shape_errors_list = []
+
+        self.csv_report_path = self.workspace_path / "required_shape_errors.csv"
+
+        
+
+        settings_path = self.workspace_path / dynamic_settings_file
+
+        settings = self._get_or_generate_dynamic_settings(settings_path)
+
+
+
+        if not settings:
+
+            print("  ❌ 无法获取动态配置，跳过测例生成。")
+
+            return
+
+            
+
+        # (修改) 只遍历 self.op_binary_configs (本次运行的)
+
+        for op_name in ops_to_process:
+
+            op_data = self._get_op_data(op_name)
+
+            if not op_data: continue # 不应发生
+
+
+
+            config = settings.get(op_name)
+
+            if not config:
+
+                # print(f"  - {op_name} 在配置文件中未找到，跳过。") # 日志过多
+
+                continue
+
+                
+
+            if op_data.get("status") == STATUS_GEN_TESTCASE_FAILED:
+
+                continue
+
+
+
+            template_json_path = self.op_templates_path / op_name / f"{op_name}.json"
+
+            if not template_json_path.exists():
+
+                print(f"  ⚠️ 警告: 找不到算子 {op_name} 的模板JSON，无法生成动态测例。")
+
+                continue
+
+
+
+            try:
+
+                with open(template_json_path, 'r') as f:
+
+                    base_json = json.load(f)
+
+            except Exception as e:
+
+                print(f"  ⚠️ 警告: 读取 {template_json_path} 失败: {e}, 跳过 {op_name}")
+
+                continue
+
+
+
+            # (重构) 调用辅助函数处理
+
+            self._process_single_op_shapes(op_name, op_data, config, base_json)
+
+
+
+        # --- (新增) 步骤结束时，将收集到的错误写入 CSV 文件 ---
+
+        if self._shape_errors_list:
+
+            print(f"\n  ⚠️  在验证期间发现 {len(self._shape_errors_list)} 个 'required' 张量的 shape 为空。")
+
+            print(f"  - 详细报告已保存到: {self.csv_report_path}")
+
+            try:
+
+                with open(self.csv_report_path, 'w', newline='', encoding='utf-8') as f:
+
+                    writer = csv.writer(f)
+
+                    writer.writerow(["op_name", "case_name", "tensor_name", "param_type", "error_message"])
+
+                    writer.writerows(self._shape_errors_list)
+
+            except IOError as e:
+
+                print(f"  ❌ 错误: 无法写入错误报告 CSV: {e}")
+
+        
+
+        print("✅ [步骤 3/5] 动态形状测例生成完成。")
+
+    
+
+    # --- (重构) run_benchmarks 的辅助方法 ---
+
+
+
+    def _run_op_phase_ori(self, op_name, op_data) -> Tuple[bool, dict, list]:
+
+        """(重构) 运行 'ori' 阶段"""
+
+        print(f" [阶段 1/3] 运行 'ori' (无特化) for {op_name}...")
+
+        op_tiling_jsons = []  # 存储 'ori' 成功的 json 路径 (List[Path])
+
+        op_case_bins = {}     # 存储 'ori' 成功的 bin 路径 (Dict[case_name, Path])
+
+        op_failed_ori = False   # 标记此 op 的 'ori' 阶段是否失败
+
+        
+
+        suffix = "ori_noopt" if self.no_jitspec else "ori"
+
+
+
+        # (修改) 只运行状态为 PENDING 的 case，除非是 msprof 错误
+
+        cases_to_run = {
+
+            name: status for name, status in op_data["cases"].items()
+
+            if status == STATUS_PENDING or (self.rerun_msprof_errors and status == STATUS_MSPROF_ERROR)
+
+        }
+
+        
+
+        if not cases_to_run:
+
+            print(f"  ℹ️ {op_name} 没有需要运行 'ori' 的测例，跳过。")
+
+            # (修改) 仍需收集已成功的旧 case，以便 PDS 生成
+
+            for case_name, status in op_data["cases"].items():
+
+                if status == STATUS_SUCCESS:
+
+                    ori_work_dir = self.op_results_path / op_name / case_name / suffix
+
+                    bin_path, json_path = self._find_tiling_files(ori_work_dir)
+
+                    if bin_path and json_path:
+
+                        op_tiling_jsons.append(json_path)
+
+                        op_case_bins[case_name] = bin_path
+
+            return op_failed_ori, op_case_bins, op_tiling_jsons
+
+
+
+        for case_name in cases_to_run:
+
+            case_dir = self.op_cases_path / op_name / case_name
+
+            case_json_path = case_dir / f"{op_name}.json"
+
+            if not case_json_path.exists(): 
+
+                print(f"  ⚠️ 未找到 Case JSON: {case_json_path}，跳过。")
+
+                continue
+
+            
+
+            print(f"\n --- 正在运行 '{suffix}': {op_name} ({case_name}) ---")
+
+            ori_work_dir = self.op_results_path / op_name / case_name / suffix
+
+            ori_work_dir.mkdir(parents=True, exist_ok=True)
+
+            
+
+            ori_success, status = self._run_single_case(case_json_path, ori_work_dir)
+
+            
+
+            if not ori_success:
+
+                self._update_case_status(op_name, case_name, status)
+
+                if status != STATUS_SUCCESS: 
+
+                    op_failed_ori = True 
+
+                    print(f"  ❌ '{suffix}' 运行失败 (Status: {status}), {op_name} 的后续 JIT 测试将被跳过。")
+
+                    # (修改) 'ori' 失败，跳出此算子的 ori 循环
+
+                    break 
+
+            else:
+
+                bin_path, json_path = self._find_tiling_files(ori_work_dir)
+
+                if bin_path and json_path:
+
+                    op_tiling_jsons.append(json_path)
+
+                    op_case_bins[case_name] = bin_path
+
+                else:
+
+                    print(f"  ❌ '{suffix}' 运行成功，但未找到 tiling 文件。{op_name} 的 JIT 测试将被跳过。")
+
+                    self._update_case_status(op_name, case_name, STATUS_RUN_INCOMPLETE)
+
+                    op_failed_ori = True
+
+                    break 
+
+        
+
+        return op_failed_ori, op_case_bins, op_tiling_jsons
+
+
+
+    def _run_op_phase_pds_gen(self, op_name, op_data, op_tiling_jsons) -> Tuple[Path, str]:
+
+        """(重构) 运行 'pds_gen' 阶段 (合并与生成)"""
+
+        print(f"\n [阶段 2/3] 生成 'jit_pds' (部分动态) bin for {op_name}...")
+
+        
+
+        case_name_0 = list(op_data["cases"].keys())[0]
+
+        case_dir_0 = self.op_cases_path / op_name / case_name_0
+
+        case_json_path_0 = case_dir_0 / f"{op_name}.json"
+
+
+
+        print(f"  Merging {len(op_tiling_jsons)} tiling JSONs for {op_name}...")
+
+        merged_json_data = self.tiling_merger.merge_files(op_tiling_jsons)
+
+        
+
+        if merged_json_data is None:
+
+            print(f"  ❌ 为 {op_name} 合并 JSON 失败。将跳过 'jit_pds' 测试。")
+
+            return None, STATUS_FAIL_MERGE_JSON
+
+        
+
+        pds_meta_dir = self.op_results_path / op_name / "_meta_pds"
+
+        pds_meta_dir.mkdir(parents=True, exist_ok=True)
+
+        merged_json_path = pds_meta_dir / "tiling_parse_result.merged.json"
+
+        
+
+        try:
+
+            with open(merged_json_path, 'w') as f:
+
+                json.dump(merged_json_data, f, indent=4)
+
+            print(f"  Merged JSON saved to: {merged_json_path}")
+
+
+
+            print(f"  Generating 'jit_pds' tiling bin for {op_name}...")
+
+            pds_bin_path = self._generate_tiling_bin_from_json(case_json_path_0, merged_json_path, pds_meta_dir)
+
+            
+
+            if pds_bin_path is None:
+
+                print(f"  ❌ 为 {op_name} 生成 'jit_pds' bin 失败。将跳过 'jit_pds' 测试。")
+
+                return None, STATUS_GEN_PD_TILINGBIN
+
+            else:
+
+                return pds_bin_path, STATUS_SUCCESS
+
+        
+
+        except Exception as e:
+
+            print(f"  ❌ 保存或生成 'jit_pds' bin 失败: {e}。将跳过 'jit_pds' 测试。")
+
+            return None, STATUS_GEN_PD_TILINGBIN
+
+
+
+    def _run_op_phase_jit(self, op_name, op_data, op_case_bins, pds_bin_path):
+
+        """(重构) 运行 'jit' 阶段 (jit_c 和 jit_pds)"""
+
+        print(f"\n [阶段 3/3] 运行 'jit_c' (常量) 和 'jit_pds' (部分动态) for {op_name}...")
+
+        if not pds_bin_path:
+
+                print(f"  ℹ️ {op_name} 缺少 'jit_pds' bin，将仅运行 'jit_c' 测试。")
+
+        
+
+        # (修改) 只运行 'ori' 成功的 case
+
+        cases_to_run_jit = op_case_bins.keys()
+
+
+
+        for case_name in cases_to_run_jit:
+
+            case_dir = self.op_cases_path / op_name / case_name
+
+            case_json_path = case_dir / f"{op_name}.json"
+
+            if not case_json_path.exists(): continue
+
+            
+
+            # (修改) Rerun 模式下，如果 case 已经是 SUCCESS，则跳过 JIT
+
+            if self.is_rerun_mode and op_data["cases"].get(case_name) == STATUS_SUCCESS:
+
+                print(f"  ℹ️ [Rerun 跳过] JIT: {op_name} ({case_name}) (已成功)。")
+
+                continue
+
+            
+
+            case_specific_bin_path = op_case_bins[case_name] # 已知存在
+
+
+
+            print(f"\n --- 正在运行 JIT: {op_name} ({case_name}) ---")
+
+            
+
+            # --- 运行 'jit_c' (常量特化) ---
+
+            jit_c_work_dir = self.op_results_path / op_name / case_name / "jit_c"
+
+            jit_c_work_dir.mkdir(parents=True, exist_ok=True)
+
+            
+
+            jit_c_success, jit_c_status = self._run_single_case(
+
+                case_json_path, jit_c_work_dir, tiling_bin=case_specific_bin_path
+
+            )
+
+            
+
+            # --- 运行 'jit_pds' (部分动态) ---
+
+            jit_pds_success = True
+
+            jit_pds_status = STATUS_SUCCESS
+
+            
+
+            if pds_bin_path:
+
+                jit_pds_work_dir = self.op_results_path / op_name / case_name / "jit_pds"
+
+                jit_pds_work_dir.mkdir(parents=True, exist_ok=True)
+
+                
+
+                jit_pds_success, jit_pds_status = self._run_single_case(
+
+                    case_json_path, jit_pds_work_dir, tiling_bin=pds_bin_path
+
+                )
+
+            
+
+            # --- 确定最终状态并更新 ---
+
+            final_status = STATUS_SUCCESS
+
+            if not jit_c_success:
+
+                final_status = jit_c_status
+
+            elif not jit_pds_success:
+
+                final_status = jit_pds_status
+
+            
+
+            self._update_case_status(op_name, case_name, final_status)
+
+
+
+    def run_benchmarks(self):
+
+        """
+
+        步骤 4: (重构) 运行所有生成的测例，收集性能数据。
+
+        """
+
+        # (修改) 只为 self.op_binary_configs 中的算子运行
+
+        ops_to_run = self.op_binary_configs.keys()
+
+        
+
+        if not ops_to_run:
+
+            print("ℹ️ [步骤 4/5] 没有需要运行 benchmark 的算子，跳过。")
+
+            return
+
+            
+
+        print(f"�� [步骤 4/5] 开始批量运行 {len(ops_to_run)} 个算子的测例...")
+
+
+
+        for op_name in ops_to_run:
+
+            op_data = self._get_op_data(op_name)
+
+            if not op_data or not op_data.get("cases"):
+
+                print(f"  ℹ️ {op_name} 没有测例，跳过运行。")
+
+                continue
+
+            
+
+            print(f"\n{'='*20}\nProcessing Operator: {op_name}\n{'='*20}")
+
+
+
+            # 阶段 1: 运行 'ori'
+
+            op_failed_ori, op_case_bins, op_tiling_jsons = self._run_op_phase_ori(op_name, op_data)
+
+
+
+            if op_failed_ori:
+
+                print(f"\n ❌ 由于 'ori' 阶段失败，跳过 {op_name} 的 JIT 阶段。")
+
+                continue
+
+            
+
+            if not op_tiling_jsons:
+
+                print(f"\n ℹ️ {op_name} 没有 'ori' 成功测例，跳过 JIT 阶段。")
+
+                continue
+
+            
+
+            if self.no_jitspec:
+
+                continue
+
+            
+
+            # 阶段 2: 生成 'jit_pds' bin
+
+            pds_bin_path, pds_gen_status = self._run_op_phase_pds_gen(op_name, op_data, op_tiling_jsons)
+
+            
+
+            if pds_bin_path is None:
+
+                # 标记一个代表性 case 的失败
+
+                self._update_case_status(op_name, list(op_data["cases"].keys())[0], pds_gen_status)
+
+
+
+            # 阶段 3: 运行 'jit_c' 和 'jit_pds'
+
+            self._run_op_phase_jit(op_name, op_data, op_case_bins, pds_bin_path)
+
+        
+
+        print("\n✅ [步骤 4/5] 所有算子处理完毕。")
+
+
+
+    def _analyze_run_failure(self, e: Exception, work_dir: Path) -> str:
+
+        """(重构) 辅助方法：分析运行失败的日志"""
+
+        
+
+        debug_log_path = work_dir / "debug_op.log"
+
+        err_msg = str(e)
+
+        
+
+        if isinstance(e, subprocess.CalledProcessError): 
+
+            err_msg = e.stderr or e.stdout
+
+        
+
+        print(f" 错误信息：{err_msg[:500]}...") # 截断
+
+        
+
+        errcode, compile_err, tiling_err, log_exists = op_test_utils.check_log_for_errors(debug_log_path)
+
+        
+
+        if not log_exists:
+
+            print("  分析结果: 未知错误 (debug_op.log 未找到)。")
+
+            return STATUS_UNKNOWN_ERROR
+
+
+
+        if tiling_err or "generate tiling data exit with return code" in err_msg:
+
+            print("  分析结果: Tiling 错误。")
+
+            return STATUS_TILING_ERROR
+
+        
+
+        if compile_err:
+
+                print("  分析结果: 编译错误 (ld.lld)。")
+
+                return STATUS_COMPILE_ERROR
+
+
+
+        if errcode:
+
+            print("  分析结果: 运行时错误 (ErrCode)。")
+
+            return STATUS_RUNTIME_ERROR
+
+
+
+        if "run output data" in err_msg and "not found" in err_msg:
+
+            print("  分析结果: 运行错误 (输出 .bin 文件未找到)。")
+
+            return STATUS_OUTPUT_MISSING
+
+        
+
+        if "AttributeError: 'NoneType' object has no attribute 'group'" in err_msg:
+
+            print("  分析结果: 内部 Python 错误 (AttributeError: NoneType.group)。")
+
+            return STATUS_PYTHON_ATTRIBUTE_ERROR
+
+
+
+        # 检查 debug_log 中的其他编译错误
+
+        try:
+
+            log_content = debug_log_path.read_text(encoding='utf-8', errors='ignore')
+
+            if "ld.lld: error: cannot open" in log_content or re.search(r'error: .*? was not declared', log_content):
+
+                print("  分析结果: 编译错误。")
+
+                return STATUS_COMPILE_ERROR
+
+        except Exception as log_e:
+
+            print(f"  ⚠️ 警告: 读取 debug_op.log 失败: {log_e}")
+
+        
+
+        print(f"  分析结果: 未知运行时错误。")
+
+        return STATUS_RUNTIME_ERROR
+
+
+
+    def _run_single_case(self, json_path, work_dir, tiling_bin=None):
+
+        """
+
+        (重构) 辅助函数，运行单次测试并返回 (is_success, status_string)。
+
+        """
+
+        command = ['bash', str(self.run_script.resolve()), str(json_path)]
+
+        if tiling_bin: 
+
+            command.append(str(tiling_bin))
+
+        
+
+        print("Execute command: " + " ".join(command))
+
+        
+
+        try:
+
+            subprocess.run(["pkill", "-f", "npu_kernel_laun"], check=False)
+
+            subprocess.run(command, cwd=work_dir, check=True, capture_output=True, text=True, timeout=300) 
+
+            
+
+            if not list(work_dir.rglob("op_summary*.csv")):
+
+                print(f"  ❌ {work_dir.name} 运行成功但未找到 op_summary.csv。")
+
+                errcode, compile_err, tiling_err, log_exists = op_test_utils.check_log_for_errors(work_dir / "debug_op.log")
+
+                is_real_error = errcode or compile_err or tiling_err or not log_exists
+
+                if not is_real_error:
+
+                    print("  分析结果: Msprof 错误 (无算子错误，但缺少 summary.csv)。")
+
+                    return False, STATUS_MSPROF_ERROR
+
+                else:
+
+                    print("  分析结果: 输出丢失 (存在算子错误，且缺少 summary.csv)。")
+
+                    return False, STATUS_OUTPUT_MISSING 
+
+                
+
+            print(f"  ✅ {work_dir.name} 运行成功。")
+
+            return True, STATUS_SUCCESS
+
+            
+
+        except subprocess.TimeoutExpired as e:
+
+            print(f"  ❌ {work_dir.name} 运行超时 (300s)。")
+
+            return False, STATUS_TIMEOUT
+
+            
+
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+
+            print(f"  ❌ {work_dir.name} 运行失败。正在分析日志...")
+
+            status = self._analyze_run_failure(e, work_dir)
+
+            return False, status
+
+
+
+        except Exception as e:
+
+            print(f"  ❌ {work_dir.name} 发生意外的 Python 错误: {e}")
+
+            return False, STATUS_UNKNOWN_ERROR
+
+
+
+    def finalize_and_report(self):
+
+        """
+
+        步骤 5: (修改) 分析Tiling并生成最终报告。
+
+        (现在会保存包含所有算子历史的完整 report_data)
+
+        """
+
+        print("\n�� [步骤 5/5] 生成最终状态报告...")
+
+        
+
+        summary = defaultdict(int)
+
+        
+
+        # (修改) 遍历 self.report_data 中的所有算子
+
+        all_configurable_ops = {
+
+            **self.report_data["configurable_ops_with_ut"], 
+
+            **self.report_data["configurable_ops_without_ut"]
+
+        }
+
+        
+
+        summary["total_configurable_ops_with_ut"] = len(self.report_data["configurable_ops_with_ut"])
+
+        summary["total_configurable_ops_without_ut"] = len(self.report_data["configurable_ops_without_ut"])
+
+        summary["total_unconfigurable_ops"] = len(self.report_data["unconfigurable_ops"])
+
+        
+
+        # 聚合所有 case 状态
+
+        op_status_summary = defaultdict(int)
+
+
+
+        for op_name, op_data in all_configurable_ops.items():
+
+            op_cases = op_data.get("cases", {})
+
+            if not op_cases:
+
+                # 算子没有 case (例如模板生成失败)
+
+                op_status = op_data.get("status", STATUS_PENDING)
+
+                if op_status == "template_generated": # 模板生成了但没 case
+
+                    op_status = STATUS_PENDING 
+
+                op_status_summary[op_status] += 1
+
+                continue
+
+            
+
+            # 聚合 case 状态
+
+            for case_status in op_cases.values():
+
+                summary[case_status] += 1
+
+            
+
+            # 确定算子的总体状态 (用于 op_status_summary)
+
+            if all(s == STATUS_SUCCESS for s in op_cases.values()):
+
+                op_status_summary[STATUS_SUCCESS] += 1
+
+            elif any(s == STATUS_MSPROF_ERROR for s in op_cases.values()):
+
+                op_status_summary[STATUS_MSPROF_ERROR] += 1
+
+            elif any(s == STATUS_TILING_ERROR for s in op_cases.values()):
+
+                op_status_summary[STATUS_TILING_ERROR] += 1
+
+            elif any(s == STATUS_RUNTIME_ERROR for s in op_cases.values()):
+
+                op_status_summary[STATUS_RUNTIME_ERROR] += 1
+
+            elif any(s == STATUS_COMPILE_ERROR for s in op_cases.values()):
+
+                op_status_summary[STATUS_COMPILE_ERROR] += 1
+
+            else: # 其他失败
+
+                op_status_summary[STATUS_UNKNOWN_ERROR] += 1 # 归类为未知
+
+
+
+        
+
+        self.report_data["summary"] = {
+
+            "by_case": dict(summary),
+
+            "by_op": dict(op_status_summary)
+
+        }
+
+        
+
+        report_path = self.report_file_path
+
+        
+
+        # 排序
+
+        self.report_data["unconfigurable_ops"].sort()
+
+        self.report_data["configurable_ops_with_ut"] = dict(sorted(self.report_data["configurable_ops_with_ut"].items()))
+
+        self.report_data["configurable_ops_without_ut"] = dict(sorted(self.report_data["configurable_ops_without_ut"].items()))
+
+            
+
+        try:
+
+            with open(report_path, 'w') as f:
+
+                json.dump(self.report_data, f, indent=4)
+
+        except IOError as e:
+
+            print(f"  ❌ 错误: 无法写入最终报告 {report_path}: {e}")
+
+            
+
+        print(f"✅ 所有流程结束！最终报告已保存至: {report_path}")
+
+        print("\n--- 报告摘要 (按 Case 统计) ---")
+
+        if self.report_data["summary"].get("by_case"):
+
+            for status, count in self.report_data["summary"]["by_case"].items():
+
+                print(f"  - {status}: {count}")
+
+        else:
+
+            print("  - (无 Case)")
+
+        print("\n--- 报告摘要 (按 Op 统计) ---")
+
+        if self.report_data["summary"].get("by_op"):
+
+             for status, count in self.report_data["summary"]["by_op"].items():
+
+                print(f"  - {status}: {count}")
+
+        else:
+
+            print("  - (无 Op)")
+
+        print("-----------------")
+
+        
+
+def main():
+
+    parser = argparse.ArgumentParser(description="CANN算子动态形状性能测试与分析工作流 (重构版)")
+
+    parser.add_argument("--canndev_path", type=str, required=True, help="CANN canndev 代码库的根目录路径。")
+
+    parser.add_argument("--workspace_path", type=str, required=True, help="用于存放中间产物和最终报告的工作区目录路径。")
+
+    parser.add_argument("--dynamic_settings", type=str, default="op_dynamic_dimension_settings.json", 
+
+                        help="定义算子动态维度的JSON配置文件路径。如果文件不存在，将尝试自动生成。")
+
+    parser.add_argument("--soc", type=str, default="ascend910b", help="目标昇腾芯片型号, 如 ascend910b。")
+
+    parser.add_argument("--no_jitspec", action="store_true",
+
+                        help="[可选] 不启用 hiipu-jit-specialization")
+
+    
+
+    args = parser.parse_args()
+
+
+
+    op_list_from_arg = None
+
+
+
+    workflow = OpTestWorkflow(
+
+        canndev_path=args.canndev_path,
+
+        workspace_path=args.workspace_path,
+
+        soc_version=args.soc,
+
+        limit=args.limit,
+
+        max_workers=args.max_workers, 
+
+        regenerate_dynamic_settings=args.regenerate_dynamic_settings,
+
+        regenerate_op_template=args.regenerate_op_template,
+
+        rerun_fail_ops=args.rerun_fail_ops,
+
+        rerun_msprof_errors=args.rerun_msprof_errors,
+
+        op_list=op_list_from_arg,
+
+        no_jitspec=args.no_jitspec,
+
+        no_foreach=args.no_foreach
+
+    )
+
+
+
+    workflow.discover_operators()
+
+    workflow.generate_dynamic_shape_cases(args.dynamic_settings)
+
+    workflow.run_benchmarks()
+
+    workflow.finalize_and_report()
+
+
+
+
+
+if __name__ == "__main__":
+
+    main()
+
+
+
+上面是我之前跑算子常量特化加速比的一个统一的评测脚本。现在我的实验方法发生了变化，我需要重新修改这个脚本。下面我会描述我新的需求，请你先分析这个脚本。最终我需要你给我一套代码简短、可以跑完我所有实验的完整的可运行的脚本
