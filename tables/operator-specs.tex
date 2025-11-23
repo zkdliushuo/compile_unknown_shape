@@ -1,30 +1,58 @@
 \begin{table*}[t]
 \centering
-\caption{Overview of dynamic shape operator configurations used in experiments.}
+\caption{Expanded overview of dynamic shape operator benchmarks. Symbols: $T$: Total tokens (sum of sequence lengths), $B$: Batch size, $N$: Total physical memory blocks, $P$: Page size, $H$: Heads, $D$: Hidden dim, $C$: Channels, $E$: Experts. \textbf{Aux. Input} denotes geometric metadata (e.g., offsets, block tables) required for non-contiguous memory addressing.}
 \label{tab:dynamic_operators}
-% 使用 resizebox 确保表格适应文本宽度
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lll}
+\begin{tabular}{lllllll}
 \toprule
-\textbf{Operator Category} & \textbf{Representative Operators} & \textbf{Layout \& Dynamic Dimension (Range)} \\
+\textbf{Domain} & \textbf{Phase / Scenario} & \textbf{Operator} & \textbf{Abbr.} & \textbf{Main Layout} & \textbf{Aux. Input} & \textbf{Dynamic Range} \\
 \midrule
-\multirow{3}{*}{Normalization} & \texttt{LayerNorm}, \texttt{RmsNorm}, \texttt{AddRmsNorm} & Layout: \texttt{[B, S, D]}, Dynamic: \textbf{S} (Sequence) in \texttt{[128, 1024]} or \textbf{B} (Batch) in \texttt{[1, 8]} \\
-& \texttt{BatchNormV3}, \texttt{GroupNormSilu} & Layout: \texttt{[N, C, H, W]}, Dynamic: \textbf{N} (Batch) in \texttt{[1, 8]} \\
-& \texttt{GroupNormGrad} & Layout: \texttt{[N, C, H, W]}, Dynamic: \textbf{C} (Channel) in \texttt{[48, 80]} \\
+% LLM Domain (14 rows now: 5 Prefill + 6 Decoding + 3 MoE)
+\multirow{14}{*}{\shortstack{\textbf{LLM}\\\textit{Llama 2}\\\textit{Qwen 2}\\\textit{DeepSeek}}} & \multirow{5}{*}{\shortstack[l]{Prefill Phase\\(Ragged Input)}} & FlashAttention & \textbf{P-Attn} & \texttt{[T, H, D]} & \texttt{Offsets[B+1]} & $T \in [2k, 32k]$ \\
+\cmidrule{3-7}
+& & RotaryPosEmb & \textbf{P-RoPE} & \texttt{[T, H, D]} & \texttt{PosIds[T]} & $T \in [2k, 32k]$ \\
+\cmidrule{3-7}
+& & FusedFFN & \textbf{P-FFN} & \texttt{[T, D]} & - & $T \in [2k, 32k]$ \\
+\cmidrule{3-7}
+& & RmsNorm & \textbf{P-RMS} & \texttt{[T, D]} & - & $T \in [2k, 32k]$ \\
+\cmidrule{3-7}
+& & MatMul & \textbf{P-MM} & \texttt{[T, K]} & - & $T \in [2k, 32k]$ \\
+\cmidrule{2-7}
+% Decoding Phase
+& \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} & \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q$: \texttt{[B, 1, H, D]} & \multirow{2}{*}{\texttt{BlockTbl[B, M]}} & $T \in [2k, 32k]$ \\
+& & & & $K,V$: \texttt{[N, P, H, D]} & & $B \in [1, 256]$ \\
+\cmidrule{3-7}
+& & RotaryPosEmb & \textbf{D-RoPE} & \texttt{[B, 1, H, D]} & \texttt{PosIds[B]} & $B \in [1, 256]$ \\
+\cmidrule{3-7}
+& & FusedFFN & \textbf{D-FFN} & \texttt{[B, D]} & - & $B \in [1, 256]$ \\
+\cmidrule{3-7}
+& & RmsNorm & \textbf{D-RMS} & \texttt{[B, 1, D]} & - & $B \in [1, 256]$ \\
+\cmidrule{3-7}
+& & MatMul & \textbf{D-MM} & \texttt{[B, K]} & - & $B \in [1, 256]$ \\
+\cmidrule{2-7}
+% MoE Layer (Added to LLM)
+& \multirow{3}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & \texttt{[T, E]} & - & $T \in [2k, 32k]$ \\
+\cmidrule{3-7}
+& & MoeTokenPermute & \textbf{Perm} & \texttt{[T, D]} & \texttt{Indices[T]} & $T \in [2k, 32k]$ \\
+\cmidrule{3-7}
+& & GroupedMatmul & \textbf{G-MM} & \texttt{[E, T\_e, K]} & \texttt{Splits[E]} & $T \in [2k, 32k]$ \\
 \midrule
-\multirow{2}{*}{Attention \& RNN} & \texttt{MultiHeadAttention}, \texttt{DynamicRNN} & Layout: \texttt{[B, S, D]}, Dynamic: \textbf{S} (Sequence) in \texttt{[128, 1024]} \\
-& \texttt{RotaryPositionEmbedding} & Layout: \texttt{[B, H, D, S]}, Dynamic: \textbf{S} (Sequence) in \texttt{[64, 256]} \\
+% CV Domain (6 rows)
+\multirow{6}{*}{\shortstack{\textbf{CV}\\\textit{ResNet,}\\\textit{YOLO}}} & \multirow{3}{*}{\shortstack[l]{General Inference\\(Standard Batch)}} & Conv2d & \textbf{Conv} & \texttt{[B, C, H, W]} & - & $B \in [1, 32]$ \\
+\cmidrule{3-7}
+& & GroupNormSilu & \textbf{GN} & \texttt{[B, C, H, W]} & - & $C \in [48, 80]$ \\
+\cmidrule{3-7}
+& & AvgPool3D & \textbf{Pool3D} & \texttt{[B, C, D, H, W]} & - & $B \in [1, 8]$ \\
+\cmidrule{2-7}
+& \multirow{3}{*}{\shortstack[l]{Object Detection\\(Dyn. Resolution)}} & Resize / Upsample & \textbf{Resize} & \texttt{[B, C, H, W]} & - & \shortstack[l]{$H, W \in [224, 1024]$} \\
+\cmidrule{3-7}
+& & GridSample & \textbf{Grid} & \texttt{[B, C, H, W]} & \texttt{Grid[B, H, W, 2]} & $H, W \in [224, 800]$ \\
+\cmidrule{3-7}
+& & BatchNorm & \textbf{BN} & \texttt{[B, C, H, W]} & - & $B \in [1, 32]$ \\
 \midrule
-\multirow{2}{*}{Matrix Multiplication} & \texttt{MatMulV3}, \texttt{MatmulAllReduce} & Layout: \texttt{[M, K]}, Dynamic: \textbf{M} in \texttt{[64, 8192]} \\
-& \texttt{BatchMatMulV3}, \texttt{GroupedMatmul} & Layout: \texttt{[B, M, K]}, Dynamic: \textbf{B} (Batch) in \texttt{[1, 16]} \\
-\midrule
-Pooling \& Resampling & \texttt{AvgPool3D}, \texttt{Upsample} (e.g., \texttt{Bicubic}), \texttt{GridSample} & Layout: \texttt{[N, C, H, W]} or \texttt{[N, C, D, H, W]}, Dynamic: \textbf{N} (Batch) in \texttt{[1, 8]} \\
-\midrule
-\multirow{2}{*}{MoE Layers} & \texttt{MoeInitRouting}, \texttt{MoeGating} & Layout: \texttt{[B, S, D]}, Dynamic: \textbf{B} (Batch) in \texttt{[1, 8]} \\
-& \texttt{MoeTokenPermute}, \texttt{Moe} (Grad ops) & Layout: \texttt{[T, D]} (T=Tokens), Dynamic: \textbf{T} in \texttt{[80, 960]} \\
-\midrule
-\multirow{2}{*}{Element-wise \& Data} & \texttt{Foreach} (e.g., \texttt{Add}, \texttt{Log}), \texttt{Gather} & Layout: \texttt{[N, ..., ]}, Dynamic: \textbf{N} (Batch/Dim) in \texttt{[1, 9]} \\
-& \texttt{IsInf}, \texttt{ScatterElements} & Layout: \texttt{[..., S, ...]}, Dynamic: \textbf{S} (Sequence) in \texttt{[128, 1024]} \\
+% RecSys Domain (1 row)
+\textbf{RecSys} & \multirow{2}{*}{\shortstack[l]{Feature Interaction\\(Sparse Update)}} & \multirow{2}{*}{ScatterElements} & \multirow{2}{*}{\textbf{Scat}} & \multirow{2}{*}{\texttt{[T, D]}} & \multirow{2}{*}{\texttt{Indices[T]}} & \multirow{2}{*}{$S \in [128, 1024]$} \\
+\textit{DLRM} & & & & & & \\
 \bottomrule
 \end{tabular}
 }

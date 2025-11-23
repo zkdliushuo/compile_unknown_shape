@@ -1,4 +1,44 @@
 \section{Evaluation}
 \label{sec:eval}
 
+Our evaluation mainly focuses on the following questions:
+\begin{itemize}
+    \item Can \mysys enhance performance across a diverse set of operators and neural networks on Ascend devices?
+    \item Can \mysys effectively infer more invariable parameters for kernels with a reasonable compilation overhead compared to current compilers?
+    \item Can \mysys be useful for accelerators beyond Ascend which almost not have scalar bottlenecks, such as GPUs?
+\end{itemize}
+Apart from the above main questions, we evaluate the detailed performance metrics differnce brought by \mysys, the performance improvement under different shape configurations.
+
+\subsection{Experimental Setup}
+\label{sec:eval:setup}
+
+\paragraph{Hardware and Software Platforms}
+The main evaluation is on a platform equipped with an Ascend 910B1 NPU and an Intel Core i7-8700 CPU.
+The version of Ascend Compute Architecture for Neural Networks(CANN) is 8.0.RC1.
+The version of LLVM is 15.0.5 and the version of PyTorch is 2.6.0.
+To ensure accuracy, the reported data represents the average of the last 90 runs out of 100 total executions.
+
+\paragraph{Benchmarks}
+\label{sec:eval:bench}
+To ensure a comprehensive evaluation, we construct a benchmark suite consisting of representative operators derived from mainstream deep learning models, including Large Language Models (e.g., Llama, Qwen), Computer Vision models (e.g., ResNet, ViT), and Mixture-of-Experts (MoE) architectures.
+These operators cover various computation patterns and dynamic shape scenarios.
+
+We place particular emphasis on \textbf{fused operators in LLM serving scenarios}, such as \texttt{FlashAttention}, \texttt{FeedForward} (FFN), and \texttt{BatchMatMul}.
+In modern LLM serving systems (e.g., vLLM, TGI), techniques like continuous batching introduce highly dynamic batch sizes during the decoding phase, while variable sequence lengths are prevalent in the prefill phase.
+Optimizing these kernels is critical as they dominate the end-to-end inference latency.
+Conversely, we exclude simple element-wise (pointwise) operators from our main evaluation.
+Such operators typically involve minimal scalar arguments (often just tensor metadata) and are memory-bound, leaving little room for the scalar-related optimizations that \mysys targets.
+\autoref{tab:dynamic_operators} summarizes the categorization and configurations of the evaluated operators.
+
 \input{tables/operator-specs.tex}
+
+
+\subsection{Performance Results}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/evaluation/model-speedup/multi_model_speedup.png}
+    \caption{Overall normalized performance of \mysys compared to PyTorch baseline based on CANN compiler across various dynamic shape operators.}
+    \Description{Overall normalized performance of \mysys compared to PyTorch baseline based on CANN compiler across various dynamic shape operators.}
+    \label{fig:eval:model-overall}
+\end{figure}

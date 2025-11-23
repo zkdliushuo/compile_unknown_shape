@@ -43,11 +43,11 @@ void add(Tensor& A, Tensor& B, Tensor& C) {
 \hfill
 % LLVM IR View
 \begin{minipage}{0.47\textwidth}
-\begin{lstlisting}[language=C++, caption={LLVM IR of the operator \kw{add}}, label={lst:llvm_view}, frame=tlrb]
+\begin{lstlisting}[language=llvm, caption={LLVM IR of the operator \kw{add}}, label={lst:llvm_view}, frame=tlrb]
 %impl_ptr = load %struct.TensorImpl*, %struct.Tensor* %a_ptr
 %sizes_base = getelementptr i8, i8* %impl_ptr, i64 24
 %dim0_addr = bitcast i8* %sizes_base to i64*
-// We should replace the following load instruction with constant 4
+; We should replace the following load instruction with constant 4
 %val = load i64, i64* %dim0_addr
 \end{lstlisting}
 \end{minipage}
@@ -72,11 +72,11 @@ Consequently, this reconstructed context provides the necessary initial state fo
 
 \subsection{Dynamic Shape Checks leading to Early Return Paths}
 
-Dynamic shape operators need to employ shape checks to detect invalid inputs for robustness dut to several reasons:
+Dynamic shape operators need to employ shape checks to detect invalid inputs for robustness due to several reasons:
 1) Some high-performance algorithms only support specific shapes or data layouts. 
 2) Inputs may exceed resource limits for the target hardware.
-Consequently, runtime shape checks are prevalent in operator implementations, especially for NPU operators, which must satisfy hardware constraints such as mandatory memory alignment, tile vloume should not exceed certain memory buffer size, etc..
-These checks often locate in the beginning of tiling functions, and the error reporting path usually return an error status code and bypass the rest of the function, called \kw{early return path}.
+Consequently, runtime shape checks are prevalent in operator implementations, especially for NPU operators, which must satisfy hardware constraints such as mandatory memory alignment, tile volume should not exceed certain memory buffer size, etc.
+These checks often locate in the beginning of tiling functions, and the error reporting path usually returns an error status code and bypasses the rest of the function, called \kw{early return path}.
 
 \begin{figure}[H]
     \centering
@@ -107,32 +107,39 @@ int tiling(int s, int& t) {
 \end{figure}
 
 As shown in \autoref{lst:early_return_code}, the function \kw{tiling} contains a dynamic shape check in the called function \kw{check}.
-If the input shape parameter \kw{s} is not aligned to 32, the function \kw{check} returns an error code, leading to an early return in \kw{tiling} that bypasses the assignment of the output parameter \kw{t}.
-Assume the initial value of \kw{t} is 0.
-The actual trouble comes when we try to deduce the constant value of \kw{t} using constant propagation at block 3.
+If the input shape parameter \kw{s} is not aligned to 32 (i.e., \kw{s} \% 32 $\neq$ 0), the function \kw{check} returns an error code, leading to an early return in \kw{tiling} that bypasses the assignment of the output parameter \kw{t}.
+% [Modification: Explicitly stating the initial value assumption]
+Assuming the initial value of \kw{t} is 0 passed from the caller, the actual trouble arises when we try to deduce the constant value of \kw{t} using constant propagation at block 3.
 As shown in \autoref{fig:dynamic_shape_check_demo}, there are two possible paths to reach block 3:
-1) The valid path is from block 2 where \kw{s} $\leq$ 1024, \kw{t} is assigned the constant value 32.
-2) The early return path is from block 1 where \kw{s} $>$ 1024, \kw{t} remains its initial value 0.
-Consequently, at block 3, \kw{t} can be either 0 or 32, making it impossible to deduce a constant value.
-Although the symbolic execution technique can explore and deduce the constant value of \kw{t} along all the paths, it suffers from path explosion and is computationally expensive, making it impractical for our task.
-The key here is to identify that the control flow edge from Block 1 to 3 is unreachable given valid inputs where \kw{s} $\leq$ 1024.
-Given this information, we can safely ignore the early return path during constant propagation and deduce that \kw{t} is always 32 at block 3.
+1) The valid path is from block 2 where \kw{s} is a multiple of 32, and \kw{t} is assigned the constant value 32.
+2) The early return path is from block 1 where \kw{s} is not aligned, and \kw{t} remains its initial value 0.
+Consequently, at block 3, the value of \kw{t} is a merge of 0 and 32, resulting in a non-constant value (often denoted as \textit{Top} in lattice theory).
+Although symbolic execution techniques may explore paths and deduce values under symbolic guards, they suffer from path explosion and are computationally expensive, making them impractical for our task.
 
-Determining the reachability of control flow edges through static program analysis is non-trivial in general. 
-Forunately, dynamic shape operator programs follow certain patterns that can be exploited to identify unreachable paths.
-First, these programs commonly use compile-time known status codes to indicate success or failure of dynamics checks.
+% [Modification: Correcting "Unreachable" to "Irrelevant for valid inputs/Data flow analysis"]
+The key insight is that the control flow edge from Block 1 to 3 represents an error handling routine triggered by invalid inputs.
+Under the assumption that the optimized kernel is intended for valid workloads, and following the API contract that output parameters are undefined upon failure, the data flow values from this early return path can be safely ignored.
+By excluding this path from data-flow analysis, we can deduce that \kw{t} is consistently 32 at block 3 for all successful executions.
+
+Determining which control flow edges belong to error handling paths through static program analysis is non-trivial in general, as distinguishing error reporting paths from normal conditional branches relies on semantic information typically absent in low-level intermediate representations. 
+Fortunately, dynamic shape operator programs follow certain patterns that can be exploited.
+First, these programs commonly use compile-time known status codes to indicate success or failure of dynamic checks.
 For example, the SUCCESS code is always 0, and the ERROR code is always -1 in all the built-in operator libraries. 
 Second, the usage of these status codes follows a consistent pattern:
-1) A function performing some dynamic shape checks will return a status code to indicate success or failure to its caller.
-2) The caller may just return the status code directly, or check the callee's status by comparing its return value against SUCCESS or ERROR code.
-If the comparison indicates failure, the return value or ERROR code will be returned immediately.
+1) A function performing dynamic shape checks will return a status code to indicate success or failure to its caller.
+2) The caller checks the callee's status; if the comparison indicates failure, the return value or ERROR code will be returned immediately.
 
-Based on the above observations, we have designed an early return path identification algorithm to identify unreachable early return paths caused by dynamic shape checks.
-In general, for a given function that performs dynamic shape checks, we first extract all possible check failure branches, then we analyze if on all the paths from a check failure branch to the function's exit block, the return codes are all ERRORs.
-If so, we mark these paths as early return paths that can be ignored during constant propagation.
+Based on the above observations, we identify early return paths by leveraging the explicit return of error status codes.
+In general, we identify paths that consistently lead to a function return of an ERROR code. 
+Once identified, we mark these paths as Early-Return and modify the constant propagation pass to selectively merge incoming values only from non-error paths.
+This strategy ensures that the constant propagation is not polluted by the uninitialized or default values from error handling logic, while preserving correctness for valid program executions.
 
-Due to the coorectness requirement, we only ignore early return paths when we are sure that they are unreachable given valid inputs.
-This is a conservative strategy that may miss some optimization opportunities, but it guarantees the correctness of the optimized program.
+% Based on the above observations, we have designed an early return path identification algorithm to identify unreachable early return paths caused by dynamic shape checks.
+% In general, for a given function that performs dynamic shape checks, we first extract all possible check failure branches, then we analyze if on all the paths from a check failure branch to the function's exit block, the return codes are all ERRORs.
+% If so, we mark these paths as early return paths that can be ignored during constant propagation.
+
+% Due to the coorectness requirement, we only ignore early return paths when we are sure that they are unreachable given valid inputs.
+% This is a conservative strategy that may miss some optimization opportunities, but it guarantees the correctness of the optimized program.
 
 
 

@@ -1,0 +1,64 @@
+\begin{algorithm}[ht]
+\caption{Early-Return Edges Detection}
+\label{algo:runtime-shape-check-detection}
+\footnotesize
+\SetKwFunction{RunOnFunction}{RunOnFunction}
+\SetKwFunction{MarkEarlyReturnEdge}{MarkEarlyReturnEdge}
+\SetKwFunction{MarkNormalEdge}{MarkNormalEdge}
+\SetKwFunction{PropagateBack}{PropagateBack}
+\SetKwFunction{ProcessShapeCheckBlock}{ProcessShapeCheckBlock}
+\SetKwFunction{IsConstant}{IsConstant}
+\SetKwFunction{GetPhiOperand}{GetPhiOperand}
+\SetKwFunction{PushBack}{PushBack}
+\SetKwFunction{IsNormal}{IsNormal}
+\SetKwFunction{IsEarlyReturn}{IsEarlyReturn}
+\SetKwFunction{ReverseReachableEdges}{ReverseReachableEdges}
+
+\SetKwProg{Fn}{Function}{:}{}
+\Fn{\RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}}{
+    $B \gets$ exit block of $F$\;
+    \lIf{return value of $B$ is not a \texttt{phi} instruction}{\Return}
+    $\phi \gets \GetPhiOperand(B)$\;
+    \ForEach{$(v,P) \in \phi$}{
+        \eIf{\IsConstant{$v$} $\land\ v \in \mathcal{E}$}{
+            % 若对应的路径尚未被标记为NormalEdge，则标记为EarlyReturnEdge
+            \PropagateBack{$P,\;\mathcal{E},\;\text{Early-Return}$}\;
+        }{
+            % 当前边对应的路径从entry直到此处均为正常逻辑；
+            % 若该边已被EarlyReturnEdge标记，则用NormalEdge覆盖
+            \PropagateBack{$P,\;\mathcal{E},\;\text{Normal}$}\;
+        }
+    }
+    \ForEach{$B \in F$ has both Normal and Early-Return outgoing edges}{
+        \ProcessShapeCheckBlock{$B,\;\mathcal{E},\;\mathcal{S}$}\;
+    }
+}
+\medskip
+% \tcp{Traverse all control-flow edges reachable in reverse from $B$}
+\Fn{\PropagateBack{$B,\;\mathcal{E},\;T$}}{
+    \ForEach{Edge $e \in $\ReverseReachableEdges$(B)$}{
+        \eIf{$T = \text{Normal}$}{
+            \MarkNormalEdge$(e)$\;
+        }{
+            \If{$\neg$\IsNormal$(e)$}{
+                \MarkEarlyReturnEdge$(e)$\;
+            }
+        }
+    }
+}
+    
+\medskip 
+\Fn{\ProcessShapeCheckBlock{$B,\;\mathcal{E},\;\mathcal{S}$}}{
+    br $v \bowtie s,\,S_1,\,S_2 \gets$ conditional branch instruction in \(B\)\;
+    \lIf{\(v\) is not a function call}{\Return}
+    \tcp{Assume \(\bowtie \in \{eq,\,neq\}\) and \(v = \text{call } F(\ldots)\)}
+    Let $e \gets \text{Edge}(B \rightarrow S_1)$\;
+    \If{\IsNormal(e) $\land ((\bowtie = eq \land s \in \mathcal{S}) \lor (\bowtie = neq \land s \in \mathcal{E}))$}{
+        \RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}\;
+    }
+    \If{\IsEarlyReturn(e) $\land ((\bowtie = eq \land s \in \mathcal{E}) \lor (\bowtie = neq \land s \in \mathcal{S}))$}{
+        \RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}\;
+    }
+}
+
+\end{algorithm}

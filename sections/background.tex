@@ -33,7 +33,7 @@ However, identifying these constants automatically from C++ based operator libra
 
 \subsection{Current Kernel Specialization Methods}
 
-Two primary methods are currently employed for specializing kernel parameters in DSA operator libraries: Ahead-of-Time (AoT) compilation and Just-in-Time (JIT) compilation.
+There are two primary methods are currently employed for specializing kernel parameters in other DSA operator libraries(e.g., GPU): Ahead-of-Time (AoT) compilation and Just-in-Time (JIT) compilation.
 \autoref{lst:compare_aot_jit_without_graph} demonstrates specializing the tile size parameter \kw{T} in a simple addition kernel using both methods.
 
 \begin{figure}[htbp]
@@ -55,19 +55,19 @@ void kernel(float* A, float* B, float* C, int s) {
 \begin{minipage}{0.56\textwidth}
 \begin{lstlisting}[firstnumber=11, basicstyle=\ttfamily\footnotesize, caption={AoT and JIT implementations of operator \kw{add}}, captionpos=b, frame=single]
 status aot_add(Tensor& A, Tensor& B, Tensor& C) {
-  int t = 0; tiling(A.size[0], t);
+  int t = 0; tiling(A.size(0), t);
   switch (t) {
-    case 16: kernel<16>(..., A.szie[0]); break;
-    case 32: kernel<32>(..., A.szie[0]); break;
+    case 16: kernel<16>(..., A.size(0)); break;
+    case 32: kernel<32>(..., A.size(0)); break;
 }}
 void jit_add(Tensor& A, Tensor& B, Tensor& C) {
-  int t = 0; tiling(A.size[0], t);
+  int t = 0; tiling(A.size(0), t);
   auto kernel_ = run_compile(kernel, t);
-  kernel_(A.ptr, B.ptr, C.ptr, A.szie[0]);
+  kernel_(A.ptr, B.ptr, C.ptr, A.size(0));
 }
 \end{lstlisting}
 \end{minipage}
-\caption{Comparison of AoT compilation and JIT compilation for kernel specialization of add operator. For simplicity, we omit error handling and the definition of the \kw{tiling} function.}
+\caption{Comparison of AoT compilation and JIT compilation for kernel specialization of add operator.}
 \label{lst:compare_aot_jit_without_graph}
 \end{figure}
 
