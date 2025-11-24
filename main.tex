@@ -158,7 +158,18 @@
 %% The abstract is a short summary of the work to be presented in the
 %% article.
 \begin{abstract}
-  Abstract here.
+% Evolution of deep learning models motives various Domin-Specific Accelerators (DSAs) to deliver high performance and efficiency.
+% Among these DSAs, Huawei Ascend series NPUs have been widely adopted in both cloud and edge scenarios.
+Industrial deep learning (DL) frameworks and serving systems depend on DL operator libraries to support various model architectures and dynamic input shapes.
+Conseqeuently, device kernel functions of deep learning operators are designed in a unified manner, highly configurable through parameters that govern inter-core parallelism and intra-core pipelining strategies, adjusting to different input shapes and models.
+However, current compiler stack faces challenges when optimize these operators with numerous kernel parameters, especially on Ascend, a widely used domin-specific accelerator (DSA) which is excellent at tensor and vector computation but relatively weak at scalar computation.
+It is observed that many of these parameters are actually invariable given model and hardware configurations.
+The key to optimize is to identify and leverage such invariable parameters during compilation to reduce scalar operations and thus improve kernel performance. 
+In this paper, we present \mysys, a framework that automatically infers invariable parameters for deep learning operators and then specializes kernels.
+\mysys is designed to tackle a series of challenges when propagate information of invariants across multiple compilation layers from front-end Python runtime to host-side programs and finally to device kernel functions.
+We implement \mysys on Ascend platform and evaluate it with a variety of dynamic shape operators from mainstream deep learning models.
+The results demonstrate that \mysys can achieve up to 1.17$\times$ speedup on operators compared to the baseline compiler with reasonable compilation overhead, and 1.04$\times$ speedup on end-to-end Large Language Models (LLMs) inference.
+Besides, \mysys shows potential on debloating operator libraries using inferred invariants for accelerators like GPUs.
 \end{abstract}
 
 %%
