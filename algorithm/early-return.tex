@@ -40,7 +40,7 @@
                             {$E_{fail} \gets S_{false}$}
                         
                         \If{$E_{fail} \neq \text{null} \land E_{fail} \text{ dominates } B$}{
-                            \If{(\IsCall{$x$} $\land\ v = x$) \lor (\IsCall{$x$} $\land\ v \in \mathcal{E}$)}{
+                            \If{(\IsCall{$x$} $\land\ v = x$) $\lor$ (\IsCall{$x$} $\land\ v \in \mathcal{E}$)}{
                                 \MarkEarlyReturnEdge($E_{fail}$)\;
                                 \RunOnFunction{callee of $x$, $\mathcal{E},\ \mathcal{S}$}\;
                                 $is\_detected \gets \text{true}$\;

@@ -4,8 +4,8 @@
 Our evaluation mainly focuses on the following questions:
 \begin{itemize}
     \item Can \mysys enhance performance across a diverse set of operators and neural networks on Ascend devices?
-    \item Can \mysys effectively infer more invariable parameters for kernels with a reasonable compilation overhead compared to current compilers?
-    \item Can \mysys be useful for accelerators beyond Ascend which almost not have scalar bottlenecks, such as GPUs?
+    \item Can \mysys effectively infer more invariable parameters for kernels with a reasonable compilation overhead compared to current compilers given same context information?
+    \item Can \mysys be useful for accelerators beyond Ascend which have high scalar capablity, such as GPUs?
 \end{itemize}
 Apart from the above main questions, we evaluate the detailed performance metrics differnce brought by \mysys, the performance improvement under different shape configurations.
 
@@ -13,14 +13,14 @@ Apart from the above main questions, we evaluate the detailed performance metric
 \label{sec:eval:setup}
 
 \paragraph{Hardware and Software Platforms}
-The main evaluation is on a platform equipped with an Ascend 910B1 NPU and an Intel Core i7-8700 CPU.
+The main evaluation is on a platform equipped with an Ascend 910B1 NPU with 64GB HBM, an Intel Core i7-8700 CPU and 64GB DRAM.
 The version of Ascend Compute Architecture for Neural Networks(CANN) is 8.0.RC1.
 The version of LLVM is 15.0.5 and the version of PyTorch is 2.6.0.
 To ensure accuracy, the reported data represents the average of the last 90 runs out of 100 total executions.
 
 \paragraph{Benchmarks}
 \label{sec:eval:bench}
-To ensure a comprehensive evaluation, we construct a benchmark suite consisting of representative operators derived from mainstream deep learning models, including Large Language Models (e.g., Llama, Qwen), Computer Vision models (e.g., ResNet, ViT), and Mixture-of-Experts (MoE) architectures.
+To ensure a comprehensive evaluation, we construct a benchmark suite consisting of representative operators derived from mainstream deep learning models, including Large Language Models (e.g., Llama, Qwen, DeepSeek with Mixture-of-Experts architectures), Computer Vision models (e.g., ResNet, YOLO), and recommendation models (e.g. DLRMs).
 These operators cover various computation patterns and dynamic shape scenarios.
 
 We place particular emphasis on \textbf{fused operators in LLM serving scenarios}, such as \texttt{FlashAttention}, \texttt{FeedForward} (FFN), and \texttt{BatchMatMul}.
@@ -32,10 +32,7 @@ Such operators typically involve minimal scalar arguments (often just tensor met
 
 \input{tables/operator-specs.tex}
 
-
 \subsection{Performance Results}
-
-
 
 \begin{figure}
     \centering

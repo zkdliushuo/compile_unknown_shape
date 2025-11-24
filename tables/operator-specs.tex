@@ -8,34 +8,34 @@
 \textbf{Domain} & \textbf{Phase / Scenario} & \textbf{Operator} & \textbf{Abbr.} & \textbf{Main Layout} & \textbf{Aux. Input} & \textbf{Dynamic Range} \\
 \midrule
 % LLM Domain (14 rows now: 5 Prefill + 6 Decoding + 3 MoE)
-\multirow{14}{*}{\shortstack{\textbf{LLM}\\\textit{Llama 2}\\\textit{Qwen 2}\\\textit{DeepSeek}}} & \multirow{5}{*}{\shortstack[l]{Prefill Phase\\(Ragged Input)}} & FlashAttention & \textbf{P-Attn} & \texttt{[T, H, D]} & \texttt{Offsets[B+1]} & $T \in [2k, 32k]$ \\
+\multirow{14}{*}{\shortstack{\textbf{LLM}\\\textit{Llama 2}\\\textit{Qwen 2}\\\textit{DeepSeek}}} & \multirow{5}{*}{\shortstack[l]{Prefill Phase\\(Ragged Input)}} & FlashAttention & \textbf{P-Attn} & \texttt{[T, H, D]} & \texttt{Offsets[B+1]} & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & RotaryPosEmb & \textbf{P-RoPE} & \texttt{[T, H, D]} & \texttt{PosIds[T]} & $T \in [2k, 32k]$ \\
+& & RotaryPosEmb & \textbf{P-RoPE} & \texttt{[T, H, D]} & \texttt{PosIds[T]} & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & FusedFFN & \textbf{P-FFN} & \texttt{[T, D]} & - & $T \in [2k, 32k]$ \\
+& & FusedFFN & \textbf{P-FFN} & \texttt{[T, D]} & - & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & RmsNorm & \textbf{P-RMS} & \texttt{[T, D]} & - & $T \in [2k, 32k]$ \\
+& & RmsNorm & \textbf{P-RMS} & \texttt{[T, D]} & - & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & MatMul & \textbf{P-MM} & \texttt{[T, K]} & - & $T \in [2k, 32k]$ \\
+& & MatMul & \textbf{P-MM} & \texttt{[T, K]} & - & $T \in [256, 8k]$ \\
 \cmidrule{2-7}
 % Decoding Phase
-& \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} & \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q$: \texttt{[B, 1, H, D]} & \multirow{2}{*}{\texttt{BlockTbl[B, M]}} & $T \in [2k, 32k]$ \\
-& & & & $K,V$: \texttt{[N, P, H, D]} & & $B \in [1, 256]$ \\
+& \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} & \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q$: \texttt{[B, 1, H, D]} & \texttt{BlockTbl[B, M]} & $T \in [256, 8k]$ \\
+& & & & $K,V$: \texttt{[N, P, H, D]} & \texttt{Offsets[B+1]} & $B \in [1, 8]$ \\
 \cmidrule{3-7}
-& & RotaryPosEmb & \textbf{D-RoPE} & \texttt{[B, 1, H, D]} & \texttt{PosIds[B]} & $B \in [1, 256]$ \\
+& & RotaryPosEmb & \textbf{D-RoPE} & \texttt{[B, 1, H, D]} & \texttt{PosIds[B]} & $B \in [1, 8]$ \\
 \cmidrule{3-7}
-& & FusedFFN & \textbf{D-FFN} & \texttt{[B, D]} & - & $B \in [1, 256]$ \\
+& & FusedFFN & \textbf{D-FFN} & \texttt{[B, D]} & - & $B \in [1, 8]$ \\
 \cmidrule{3-7}
-& & RmsNorm & \textbf{D-RMS} & \texttt{[B, 1, D]} & - & $B \in [1, 256]$ \\
+& & RmsNorm & \textbf{D-RMS} & \texttt{[B, 1, D]} & - & $B \in [1, 8]$ \\
 \cmidrule{3-7}
-& & MatMul & \textbf{D-MM} & \texttt{[B, K]} & - & $B \in [1, 256]$ \\
+& & MatMul & \textbf{D-MM} & \texttt{[B, K]} & - & $B \in [1, 8]$ \\
 \cmidrule{2-7}
 % MoE Layer (Added to LLM)
-& \multirow{3}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & \texttt{[T, E]} & - & $T \in [2k, 32k]$ \\
+& \multirow{3}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & \texttt{[T, E]} & - & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & MoeTokenPermute & \textbf{Perm} & \texttt{[T, D]} & \texttt{Indices[T]} & $T \in [2k, 32k]$ \\
+& & MoeTokenPermute & \textbf{Perm} & \texttt{[T, D]} & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & GroupedMatmul & \textbf{G-MM} & \texttt{[E, T\_e, K]} & \texttt{Splits[E]} & $T \in [2k, 32k]$ \\
+& & GroupedMatmul & \textbf{G-MM} & \texttt{[E, T\_e, K]} & \texttt{Splits[E]} & $T \in [256, 8k]$ \\
 \midrule
 % CV Domain (6 rows)
 \multirow{6}{*}{\shortstack{\textbf{CV}\\\textit{ResNet,}\\\textit{YOLO}}} & \multirow{3}{*}{\shortstack[l]{General Inference\\(Standard Batch)}} & Conv2d & \textbf{Conv} & \texttt{[B, C, H, W]} & - & $B \in [1, 32]$ \\
