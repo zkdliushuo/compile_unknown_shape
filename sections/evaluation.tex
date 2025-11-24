@@ -20,24 +20,57 @@ To ensure accuracy, the reported data represents the average of the last 90 runs
 
 \paragraph{Benchmarks}
 \label{sec:eval:bench}
-To ensure a comprehensive evaluation, we construct a benchmark suite consisting of representative operators derived from mainstream deep learning models, including Large Language Models (e.g., Llama, Qwen, DeepSeek with Mixture-of-Experts architectures), Computer Vision models (e.g., ResNet, YOLO), and recommendation models (e.g. DLRMs).
-These operators cover various computation patterns and dynamic shape scenarios.
+To ensure a comprehensive evaluation, our benchmark suite comprises two main components: individual operator latency and end-to-end model inference.
 
-We place particular emphasis on \textbf{fused operators in LLM serving scenarios}, such as \texttt{FlashAttention}, \texttt{FeedForward} (FFN), and \texttt{BatchMatMul}.
-In modern LLM serving systems (e.g., vLLM, TGI), techniques like continuous batching introduce highly dynamic batch sizes during the decoding phase, while variable sequence lengths are prevalent in the prefill phase.
-Optimizing these kernels is critical as they dominate the end-to-end inference latency.
-Conversely, we exclude simple element-wise (pointwise) operators from our main evaluation.
-Such operators typically involve minimal scalar arguments (often just tensor metadata) and are memory-bound, leaving little room for the scalar-related optimizations that \mysys targets.
+The operator testbed is derived from mainstream deep learning workloads, encompassing Large Language Models, Computer Vision models, and recommendation models.
 \autoref{tab:dynamic_operators} summarizes the categorization and configurations of the evaluated operators.
 
 \input{tables/operator-specs.tex}
 
-\subsection{Performance Results}
+Within this set, we particularly emphasize on complex fused operators widely adopted in industrial serving scenarios, such as \texttt{FlashAttention}, \texttt{FeedForward} (FFN), and \texttt{BatchMatMul}.
+These operators are characterized by complex implementations and a substantial number of kernel arguments, making them the primary targets for our optimization.
+For the end-to-end model evaluation, we select Qwen2-1.5B and Llama2-7B to represent varying scales of modern LLMs.
+We assume batch size of LLMs is fixed and the sequence length of the input prompt and kv cache is variable.
+
+\paragraph{Implementation and Experimental Setup}
+All evaluations for both operators and models are conducted using PyTorch 2.6.0.
+We encapsulate the target operators and models as \texttt{nn.Module} instances.
+Dynamic dimensions are explicitly marked using the \texttt{Dynamic} API, and we utilize PyTorch Dynamo with dynamic compilation enabled.
+
+For the operator benchmark, we compare \textbf{\mysys} against the following methods:
+\begin{itemize}
+    \item \textbf{Baseline:} The standard offline compilation approach. It compiles the operator library based on standard LLVM passes without access to any runtime operator invocation context.
+    \item \textbf{LLVM-spec:} A specialization method relying on standard LLVM capabilities. Leveraging the host-side entry function context provided by \mysys, we identify LLVM IR instructions that access constant function arguments and replace them with their corresponding constant values. We then enable the standard LLVM pass pipeline related to constant optimization.
+    \item \textbf{Optimal:} An oracle approach serving as the performance upper bound. For each specific input shape, we first execute the operator to capture the actual runtime values of the scalar arguments passed to the kernel. We then perform constant substitution on the kernel's LLVM IR using these captured values and apply the kernel specialization module of \mysys.
+\end{itemize}
+
+\subsection{Performance Result of Operators and Models}
 
 \begin{figure}
     \centering
-    \includegraphics[width=0.9\linewidth]{figures/evaluation/model-speedup/multi_model_speedup.png}
+    \includegraphics[width=\textwidth]{figures/evaluation/op-speedup/speedup_histogram.pdf}
+    \caption{Overall normalized performance of \mysys compared to compiler baselines }
+    \label{fig:eval:op-overall}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\textwidth]{figures/evaluation/model-speedup/multi_model_speedup.png}
     \caption{Overall normalized performance of \mysys compared to PyTorch baseline based on CANN compiler across various dynamic shape operators.}
     \Description{Overall normalized performance of \mysys compared to PyTorch baseline based on CANN compiler across various dynamic shape operators.}
     \label{fig:eval:model-overall}
 \end{figure}
+
+\subsection{Comparison between \mysys and specialization based on Standard LLVM}
+% Comparison of performance, compilation overhead, inferred parameters
+
+\subsection{Analysis on benefits of kernel specialization}
+
+\paragraph{Detailed metrics about compiled binary size, I-cache miss, scalar ratio, memory access times after specialization}
+
+\paragraph{Speedup ratio under different constant dimensions settings}
+
+\paragraph{Analysis on the compilation pipelines of the kernel specialization}
+
+\subsection{Generalize to other architectures: reducing binary size of AoT compiled operator libraries on GPU}
+

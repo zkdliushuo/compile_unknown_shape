@@ -23,8 +23,7 @@ Modern deep learning models involve dynamic shapes where input tensor dimensions
 To handle these dynamics and mitigate load imbalance, kernel developers must define a substantial number of parameters, e.g., inter-core parallelism, loop tiling strategies, and buffer counts, to schedule the kernel adaptively.
 These schedule parameters, along with shape parameters (e.g., actual sequence length) and operator attributes (e.g., is causal masked), are defined as formal parameters of the kernel functions.
 \autoref{lst:add_kernel_with_formal_param} shows an implementation of the \kw{add} operator, where \kw{s} and \kw{t} are formal parameters of the \kw{kernel} function.
-When the implementation is complex, kernels often suffer from an excessive number of parameters.
-For instance, the Ascend implementation of Flash Decoding, an efficient fused kernel for the auto-regressive decoding phase of LLMs, involves over 200 schedule parameters.
+
 
 \begin{figure}[htbp]
     \centering
@@ -56,6 +55,10 @@ status add(Tensor& A, Tensor& B, Tensor& C) {
     \label{lst:add_kernel_with_formal_param}
 \end{figure}
 
+When the implementation is complex, kernels often suffer from an excessive number of parameters.
+For instance, the Ascend implementation of Flash Decoding, an efficient fused kernel for the auto-regressive decoding phase of LLMs, involves over 200 schedule parameters.
+
+
 % 过多的核函数参数会导致 Ascend 遭遇“标量瓶颈”（Scalar Bottleneck）。
 % 这一瓶颈主要源于两方面原因：
 % 1. 有限的通用寄存器导致频繁的寄存器溢出到慢速的局部内存。
@@ -67,6 +70,15 @@ First, the limited register file size (e.g., only 32 general-purpose registers) 
 Second, variable parameters prevent the compiler from optimizing away redundant instructions (e.g., conditional branches) and constant folding, increasing instruction cache (I-cache) misses and execution cycles of the scalar unit.
 Since other hardware components units rely on the scalar unit for instruction dispatch, these scalar latencies cause severe pipeline stalls, becoming a primary performance degradation for kernels.
 
+\begin{figure}[htbp]
+    \centering
+\includegraphics[width=\linewidth]{figures/motivation/combined_analysis.pdf}
+    \caption{Some representative operators involves a number of parameters, meanwhile the operators shows scalar bound (scalar units are busy for over 60\% cycles) and significant instruction cache miss.
+    % D-Attn and P-Attn represent Flash Attention operator at  the decoding and prefill phase.  
+    The detailed operators information are shown in \autoref{tab:dynamic_operators}.}
+    \label{lst:invariable_params_scalar_ratio}
+\end{figure}
+
 
 % 为了证明这一点，我们对 CANNDev 和 CANN OPS ADV 算子库中的算子进行了 Profiling。
 % 结果表明，Ascend 核函数性能对参数数量高度敏感。
@@ -74,7 +86,8 @@ Since other hardware components units rely on the scalar unit for instruction di
 % 这揭示了一个潜在的加速机会：识别这些编译期常量参数，并将其替换为常量值，从而生成针对特定模型和硬件特化的核函数。
 To demonstrate this impact, we profiled various operators from widely used Ascend libraries (ops-nn and ops-transformer).
 Our analysis reveals that kernel performance is highly sensitive to the parameter count, with scalar units often becoming overwhelmed.
-Crucially, we observed that once model hyperparameters (e.g., hidden size) and hardware configurations are fixed, the majority of these kernel parameters become compile-time constants.
+Crucially, we observed that once model hyper-parameters (e.g., hidden size) and hardware configurations are fixed, the majority of these kernel parameters become compile-time constants.
+\autoref{lst:invariable_params_scalar_ratio} shows some representative operators whose 
 This reveals a significant optimization opportunity: identifying and replacing these parameters with constant values at compile time to generate specialized kernels tailored for specific models and hardware.
 
 % 据我们所知，现有的算子特化方法主要有两种：
@@ -104,7 +117,7 @@ However, implementing such a framework faces two inevitable challenges, which we
     \item \textbf{Patterns of Dynamic Shape Checks:} Defensive checks for dynamic shapes in operator libraries often lead to precision loss in static analysis. We tackle this through \textbf{Early Return Path Identification}, which detects and prunes infeasible error handling paths through the whole program to maintain analysis precision.
 \end{enumerate}
 
-%sxy% 介绍两项核心挑战的部分可能需要更详细的介绍，现在跨度有点大。
+%sxy% 介绍两项核心挑战的部分可能需要更详细的介绍，现在跨度有点大。我看到你在Background和challenge章节中有详细分析，但是我感觉在intro中需要适当详细帮助理解。
 
 % 大量的实验表明，\mysys 显著降低了推理时延，尤其是标量计算开销。
 Extensive experiments demonstrate that \mysys significantly reduces inference latency, particularly scalar computation overhead, effectively mitigating the scalar bottleneck.
