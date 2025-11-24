@@ -64,7 +64,7 @@ status add(Tensor& A, Tensor& B, Tensor& C) {
 Excessive kernel parameters expose Ascend to a critical performance issue known as the \textbf{Scalar Bottleneck}.
 The root cause is twofold.
 First, the limited register file size (e.g., only 32 general-purpose registers) forces the scalar unit to frequently spill intermediate variables to high-latency local memory.
-Second, variable parameters prevent the compiler from optimizing away redundant instructions (e.g., conditional branches) and constant folding, increasing instruction cache (I-cache) misses and execution sycles of the scalar unit.
+Second, variable parameters prevent the compiler from optimizing away redundant instructions (e.g., conditional branches) and constant folding, increasing instruction cache (I-cache) misses and execution cycles of the scalar unit.
 Since other hardware components units rely on the scalar unit for instruction dispatch, these scalar latencies cause severe pipeline stalls, becoming a primary performance degradation for kernels.
 
 
