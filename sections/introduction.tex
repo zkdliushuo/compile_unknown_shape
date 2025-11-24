@@ -64,7 +64,7 @@ status add(Tensor& A, Tensor& B, Tensor& C) {
 Excessive kernel parameters expose Ascend to a critical performance issue known as the \textbf{Scalar Bottleneck}.
 The root cause is twofold.
 First, the limited register file size (e.g., only 32 general-purpose registers) forces the scalar unit to frequently spill intermediate variables to high-latency local memory.
-Second, variable parameters prevent the compiler from optimizing away redundant instructions (e.g., conditional branches) and constant folding, increasing instruction cache (I-cache) misses and execution sycles of the scalar unit.
+Second, variable parameters prevent the compiler from optimizing away redundant instructions (e.g., conditional branches) and constant folding, increasing instruction cache (I-cache) misses and execution cycles of the scalar unit.
 Since other hardware components units rely on the scalar unit for instruction dispatch, these scalar latencies cause severe pipeline stalls, becoming a primary performance degradation for kernels.
 
 
@@ -104,5 +104,9 @@ However, implementing such a framework faces two inevitable challenges, which we
     \item \textbf{Patterns of Dynamic Shape Checks:} Defensive checks for dynamic shapes in operator libraries often lead to precision loss in static analysis. We tackle this through \textbf{Early Return Path Identification}, which detects and prunes infeasible error handling paths through the whole program to maintain analysis precision.
 \end{enumerate}
 
+%sxy% 介绍两项核心挑战的部分可能需要更详细的介绍，现在跨度有点大。
+
 % 大量的实验表明，\mysys 显著降低了推理时延，尤其是标量计算开销。
 Extensive experiments demonstrate that \mysys significantly reduces inference latency, particularly scalar computation overhead, effectively mitigating the scalar bottleneck.
+
+%sxy% 可以在intro的结尾更详细的介绍实验和成效，给出具体的数值。
