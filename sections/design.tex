@@ -327,4 +327,4 @@ Using predefined ABI (Application Binary Interface) rules, we map the launch API
 Following parameter substitution, we employ a tailored pipeline of standard LLVM optimization passes to exploit the newly exposed optimization opportunities. 
 As implemented in our pass manager, this pipeline iteratively applies \texttt{Interprocedural Sparse Conditional Constant Propagation (IPSCCP)} and \texttt{Instruction Combining} to fold computations involving the new constants. 
 Furthermore, we execute aggressive loop transformations—including \texttt{Loop Unrolling} and \texttt{Loop Invariant Code Motion (LICM)}, alongside \texttt{Global Value Numbering (GVN)} and \texttt{CFG Simplification}. 
-These passes work in concert to eliminate dead code, simplify control flow, and remove redundancies, significantly reducing the runtime overhead of the specialized kernel.
+These passes work in concert to eliminate dead code, simplify control flow, and remove redundancies, significantly reducing the runtime overhead of the specialized kernel. 

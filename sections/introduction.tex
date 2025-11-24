@@ -55,16 +55,14 @@ status add(Tensor& A, Tensor& B, Tensor& C) {
     \label{lst:add_kernel_with_formal_param}
 \end{figure}
 
-When the implementation is complex, kernels often suffer from an excessive number of parameters.
-For instance, the Ascend implementation of Flash Decoding, an efficient fused kernel for the auto-regressive decoding phase of LLMs, involves over 200 schedule parameters.
-
 
 % 过多的核函数参数会导致 Ascend 遭遇“标量瓶颈”（Scalar Bottleneck）。
 % 这一瓶颈主要源于两方面原因：
 % 1. 有限的通用寄存器导致频繁的寄存器溢出到慢速的局部内存。
 % 2. 变量参数阻碍了冗余指令（如分支跳转和地址计算）的消除，导致代码膨胀并增加指令缓存（I-cache）未命中。
 % 这些标量延迟阻塞了向其他部件（Vector/Cube）的指令分发，严重降低了算子性能。
-Excessive kernel parameters expose Ascend to a critical performance issue known as the \textbf{Scalar Bottleneck}.
+When the implementation is complex, kernels often suffer from an excessive number of parameters.
+Excessive kernel parameters may expose the device to a critical performance issue known as the \textbf{Scalar Bottleneck}.
 The root cause is twofold.
 First, the limited register file size (e.g., only 32 general-purpose registers) forces the scalar unit to frequently spill intermediate variables to high-latency local memory.
 Second, variable parameters prevent the compiler from optimizing away redundant instructions (e.g., conditional branches) and constant folding, increasing instruction cache (I-cache) misses and execution cycles of the scalar unit.
@@ -87,7 +85,7 @@ Since other hardware components units rely on the scalar unit for instruction di
 To demonstrate this impact, we profiled various operators from widely used Ascend libraries (ops-nn and ops-transformer).
 Our analysis reveals that kernel performance is highly sensitive to the parameter count, with scalar units often becoming overwhelmed.
 Crucially, we observed that once model hyper-parameters (e.g., hidden size) and hardware configurations are fixed, the majority of these kernel parameters become compile-time constants.
-\autoref{lst:invariable_params_scalar_ratio} shows some representative operators whose 
+\autoref{lst:invariable_params_scalar_ratio} shows some representative operators whose parameters are mostly invariable under fixed model and hardware settings, while the operators suffer from severe scalar bottleneck and instruction cache miss.
 This reveals a significant optimization opportunity: identifying and replacing these parameters with constant values at compile time to generate specialized kernels tailored for specific models and hardware.
 
 % 据我们所知，现有的算子特化方法主要有两种：
