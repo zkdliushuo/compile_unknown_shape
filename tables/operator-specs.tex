@@ -29,7 +29,7 @@
 % MoE Layer (Updated: 4 rows now)
 & \multirow{4}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & \texttt{[T, E]} & - & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & Sinkhorn Step & \textbf{Sink} & \texttt{[T, E]} & - & $E \in [8, 64]$ \\ % Added Sinkhorn here for Balanced Routing
+& & Sinkhorn & \textbf{Sink} & \texttt{[T, E]} & - & $E \in [8, 64]$ \\ % Added Sinkhorn here for Balanced Routing
 \cmidrule{3-7}
 & & MoeTokenPermute & \textbf{Perm} & \texttt{[T, D]} & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
 \cmidrule{3-7}

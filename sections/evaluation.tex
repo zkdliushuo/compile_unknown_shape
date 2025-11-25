@@ -22,7 +22,7 @@ To ensure accuracy, the reported data represents the average of the last 90 runs
 \label{sec:eval:bench}
 To ensure a comprehensive evaluation, our benchmark suite comprises two main components: individual operator latency and end-to-end model inference.
 
-The operator testbed is derived from mainstream deep learning workloads, encompassing Large Language Models, Computer Vision models, and recommendation models.
+The operator benchmark is derived from mainstream deep learning workloads, encompassing Large Language Models, Computer Vision models, and recommendation models.
 \autoref{tab:dynamic_operators} summarizes the categorization and configurations of the evaluated operators.
 
 \input{tables/operator-specs.tex}
@@ -96,16 +96,28 @@ Key observations from the model benchmarks include:
     \label{fig:eval:model-overall}
 \end{figure}
 
-\subsection{Comparison between \mysys and specialization based on Standard LLVM}
+\paragraph{Comparison between \mysys and specialization based on Standard LLVM}
 % Comparison of performance, compilation overhead, inferred parameters
 
 \subsection{Analysis on benefits of kernel specialization}
 
 \paragraph{Detailed metrics about compiled binary size, I-cache miss, scalar ratio, memory access times after specialization}
 
+% 需要增加一个表格
+
 \paragraph{Speedup ratio under different constant dimensions settings}
 
+\begin{figure}
+    \centering
+    \includegraphics[width=\textwidth]{figures/evaluation/combined_jit_p_speedup.png}
+    \caption{Speedup of D-Attn and P-Attn under different dynamic shape configurations compared to Baseline.}
+    \Description{Speedup of \mysys under different dynamic shape configurations compared to Baseline.}
+    \label{fig:eval:shape-configs}
+\end{figure}
+
 \paragraph{Analysis on the compilation pipelines of the kernel specialization}
+
+
 
 \subsection{Generalize to other architectures: reducing binary size of AoT compiled operator libraries on GPU}
 
