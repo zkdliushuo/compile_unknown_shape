@@ -67,7 +67,7 @@ void jit_add(Tensor& A, Tensor& B, Tensor& C) {
 }
 \end{lstlisting}
 \end{minipage}
-\caption{Comparison of AoT compilation and JIT compilation for kernel specialization of add operator.}
+\caption{Comparison of AoT compilation and JIT compilation for kernel specialization of add operator.\scnote{\kw{aot\_add} returns status but \kw{jit\_add} returns void}}
 \label{lst:compare_aot_jit_without_graph}
 \end{figure}
 
