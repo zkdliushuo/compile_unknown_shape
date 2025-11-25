@@ -140,7 +140,7 @@ This rule-based instantiation mechanism can generalize to other framework-specif
 Although trace analysis preserves rich symbolic information for Python-level arguments (e.g., symbolic tensor dimensions), this information is disconnected from the concrete memory layout used by C++ operator implementations.
 In particular, there is no automatically available mapping from a framework-level symbolic variable to its exact byte offset and container object in the C++ layout (e.g., an element of \texttt{TensorImpl::sizes\_} inside a nested \texttt{std::vector<int>}).
 Reconstructing such a mapping would require precisely tracking how values flow from the Python runtime into C++ auxiliary buffers.
-These behaviors are dispersed across the Python–C/C++ boundary and lose high-level semantics, making a fully automatic and sound “Python symbol $\leftrightarrow$ C++ field offset” mapping impractical.
+These behaviors are dispersed across the Python–C/C++ boundary and lose high-level semantics, making a fully automatic and sound "Python runtime values $\leftrightarrow$ C++ field offset" mapping impractical.
 
 Therefore, \mysys adopts a pragmatic design: for a small set of core C++ types (such as \texttt{Tensor}), we manually define instantiation rules that specify how Python-level argument values (including symbolic dimensions) are embedded into the C++ memory state.
 In practice, the parameter types of C++ operators are very limited—primarily \texttt{Tensor}, several container types (e.g., \texttt{vector<T>}), and scalar types—so a small number of hand-written rules suffice to support a wide range of operators across libraries.

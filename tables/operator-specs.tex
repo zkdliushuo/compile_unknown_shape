@@ -1,6 +1,6 @@
 \begin{table*}[t]
 \centering
-\caption{Expanded overview of dynamic shape operator benchmarks. Symbols: $T$: Total tokens, $B$: Batch size, $N$: Seq len, $P$: Page size, $H$: Heads, $D$: Hidden dim, $C$: Channels, $E$: Experts. \textbf{Aux. Input} denotes geometric metadata.}
+\caption{Expanded overview of dynamic shape operator benchmarks. Symbols: $T$: Total tokens, $B$: Batch size, $P$: Page size of KV Cache buffer, $N$: Number of Attention Heads ($N_Q$ for query heads, $N_{KV}$ for key/value heads), $D$: Hidden dim, $C$: Channels, $E$: Experts, $H$: Height of images, $W$: Width of images. \textbf{Aux. Input} denotes geometric metadata.}
 \label{tab:dynamic_operators}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lllllll}
@@ -8,50 +8,47 @@
 \textbf{Domain} & \textbf{Phase / Scenario} & \textbf{Operator} & \textbf{Abbr.} & \textbf{Main Layout} & \textbf{Aux. Input} & \textbf{Dynamic Range} \\
 \midrule
 % LLM Domain (13 rows: 4 Prefill + 6 Decoding + 4 MoE)
-\multirow{13}{*}{\shortstack{\textbf{LLM}\\\textit{Llama 2}\\\textit{Qwen 2}\\\textit{DeepSeek}}} & \multirow{5}{*}{\shortstack[l]{Prefill Phase\\(Ragged Input)}} & FlashAttention & \textbf{P-Attn} & \texttt{[T, H, D]} & \texttt{Offsets[B+1]} & $T \in [256, 8k]$ \\
+\multirow{13}{*}{\shortstack{\textbf{LLM}\\\textit{Llama 2}\\\textit{Qwen 2}\\\textit{DeepSeek}}} & \multirow{5}{*}{\shortstack[l]{Prefill Phase\\(Ragged Input)}} & FlashAttention & \textbf{P-Attn} & $[T, H, D]$ & \texttt{Offsets[B+1]} & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & FusedFFN & \textbf{P-FFN} & \texttt{[T, D]} & - & $T \in [256, 8k]$ \\
+& & FusedFFN & \textbf{FFN} & $[T, D]$ & - & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & RmsNorm & \textbf{P-RMS} & \texttt{[T, D]} & - & $T \in [256, 8k]$ \\
+& & RmsNorm & \textbf{RMS} & $[T, D]$ & - & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & MatMul & \textbf{P-MM} & \texttt{[T, K]} & - & $T \in [256, 8k]$ \\
+& & MatMul & \textbf{MM} & $[T, K]$ & - & $T \in [256, 8k]$ \\
 \cmidrule{2-7}
 % Decoding Phase
-& \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} & \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q$: \texttt{[B, 1, H, D]} & \texttt{BlockTbl[B, M]} & $T \in [256, 8k]$ \\
-& & & & $K,V$: \texttt{[N, P, H, D]} & \texttt{Offsets[B+1]} & $B \in [1, 8]$ \\
+& \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} & \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q: [B, 1, H, D]$ & \texttt{BlockTbl[B, M]} & $T \in [256, 8k]$ \\
+& & & & $K,V: [N, P, H, D]$ & \texttt{Offsets[B+1]} & $B \in [1, 8]$ \\
 \cmidrule{3-7}
-& & FusedFFN & \textbf{D-FFN} & \texttt{[B, D]} & - & $B \in [1, 8]$ \\
+& & FusedFFN & \textbf{FFN} & $[B, D]$ & - & $B \in [1, 8]$ \\
 \cmidrule{3-7}
-& & RmsNorm & \textbf{D-RMS} & \texttt{[B, 1, D]} & - & $B \in [1, 8]$ \\
+& & RmsNorm & \textbf{RMS} & $[B, D]$ & - & $B \in [1, 8]$ \\
 \cmidrule{3-7}
-& & MatMul & \textbf{D-MM} & \texttt{[B, K]} & - & $B \in [1, 8]$ \\
+& & MatMul & \textbf{MM} & $[B, K]$ & - & $B \in [1, 8]$ \\
 \cmidrule{2-7}
 % MoE Layer (Updated: 4 rows now)
-& \multirow{4}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & \texttt{[T, E]} & - & $T \in [256, 8k]$ \\
+& \multirow{4}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & $[T, E]$ & - & $T \in [256, 8k]$ \\
 \cmidrule{3-7}
-& & Sinkhorn & \textbf{Sink} & \texttt{[T, E]} & - & $E \in [8, 64]$ \\ % Added Sinkhorn here for Balanced Routing
+& & Sinkhorn & \textbf{Sink} & $[T, E]$ & - & $E \in [8, 64]$ \\ 
 \cmidrule{3-7}
-& & MoeTokenPermute & \textbf{Perm} & \texttt{[T, D]} & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
-\cmidrule{3-7}
-& & GroupedMatmul & \textbf{G-MM} & \texttt{[E, T\_e, K]} & \texttt{Splits[E]} & $T \in [256, 8k]$ \\
+& & MoeTokenPermute & \textbf{Perm} & $[T, D]$ & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
 \midrule
 % CV Domain (7 rows - kept pows)
-\multirow{7}{*}{\shortstack{\textbf{CV}\\\textit{ResNet,}\\\textit{YOLO}}} & \multirow{4}{*}{\shortstack[l]{General Inference\\(Standard Batch)}} & Conv2d & \textbf{Conv} & \texttt{[B, C, H, W]} & - & $B \in [1, 32]$ \\
+\multirow{7}{*}{\shortstack{\textbf{CV}\\\textit{ResNet,}\\\textit{YOLO}}} & \multirow{4}{*}{\shortstack[l]{General Inference\\(Standard Batch)}} 
+& Conv2d(img2col) & \textbf{MM} & $[B, C, H, W]$ & - & $B \in [1, 32]$ \\
 \cmidrule{3-7}
-& & GroupNormSilu & \textbf{GN} & \texttt{[B, C, H, W]} & - & $C \in [48, 80]$ \\
+& & GroupNorm & \textbf{GN} & $[B, C, H, W]$ & - & $C \in [48, 80]$ \\
 \cmidrule{3-7}
-& & AvgPool3D & \textbf{Pool3D} & \texttt{[B, C, D, H, W]} & - & $B \in [1, 8]$ \\
+& & AvgPool3D & \textbf{Pool3D} & $[B, C, D, H, W]$ & - & $B \in [1, 8]$ \\
 \cmidrule{3-7}
-& & ElementWise Pow & \textbf{Pow} & \texttt{[B, C, H, W]} & - & $B \in [1, 32]$ \\
+& & ElementWise Pow & \textbf{Pow} & $[B, C, H, W]$ & - & $B \in [1, 32]$ \\
 \cmidrule{2-7}
-& \multirow{3}{*}{\shortstack[l]{Object Detection\\(Dyn. Resolution)}} & Resize / Upsample & \textbf{Resize} & \texttt{[B, C, H, W]} & - & \shortstack[l]{$H, W \in [224, 1024]$} \\
+& \multirow{2}{*}{\shortstack[l]{Object Detection\\(Dyn. Resolution)}} & Resize / Upsample & \textbf{Resize} & $[B, C, H, W]$ & - & \shortstack[l]{$H, W \in [224, 1024]$} \\
 \cmidrule{3-7}
-& & GridSample & \textbf{Grid} & \texttt{[B, C, H, W]} & \texttt{Grid[B, H, W, 2]} & $H, W \in [224, 800]$ \\
-\cmidrule{3-7}
-& & BatchNorm & \textbf{BN} & \texttt{[B, C, H, W]} & - & $B \in [1, 32]$ \\
+& & BatchNorm & \textbf{BN} & $[B, C, H, W]$ & - & $B \in [1, 32]$ \\
 \midrule
 % RecSys Domain (1 row - Reverted)
-\textbf{RecSys} & \multirow{2}{*}{\shortstack[l]{Feature Interaction\\(Sparse Update)}} & \multirow{2}{*}{ScatterElements} & \multirow{2}{*}{\textbf{Scat}} & \multirow{2}{*}{\texttt{[T, D]}} & \multirow{2}{*}{\texttt{Indices[T]}} & \multirow{2}{*}{$S \in [128, 1024]$} \\
+\textbf{RecSys} & \multirow{2}{*}{\shortstack[l]{Feature Interaction\\(Sparse Update)}} & \multirow{2}{*}{ScatterElements} & \multirow{2}{*}{\textbf{Scat}} & \multirow{2}{*}{$[T, D]$} & \multirow{2}{*}{\texttt{Indices[T]}} & \multirow{2}{*}{$S \in [128, 1024]$} \\
 \textit{DLRM} & & & & & & \\
 \bottomrule
 \end{tabular}
