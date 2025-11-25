@@ -51,7 +51,7 @@ status add(Tensor& A, Tensor& B, Tensor& C) {
     \caption{Example of the add operator. The \kw{kernel} function has two parameters \kw{s} and \kw{t}, representing the size of the input tensors and the tiling factor, respectively. 
     The \kw{tiling} function computes the tiling factor based on the input size. The \kw{add} function serves as the operator interface, extracting input sizes and invoking the kernel with the appropriate parameters. 
     For simplicity, the definition of the \kw{tiling} function is shown in \autoref{lst:early_return_code}. 
-    \texttt{Tensor} is a data structure representing a multi-dimensional array adopted in deep learning frameworks, with a method \texttt{size} that retrieves the size of a specific dimension.}
+    \texttt{Tensor} is a data structure representing a multi-dimensional array adopted in deep learning frameworks, with a method \texttt{size} that retrieves the size of a specific dimension.\scnote{\kw{add} returns status, but \kw{kernel} returns void.}}
     \label{lst:add_kernel_with_formal_param}
 \end{figure}
 
