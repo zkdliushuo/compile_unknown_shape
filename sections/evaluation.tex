@@ -61,7 +61,7 @@ We observe distinct performance behaviors across different operator categories d
     
     \item \textbf{Normalization and Up/Down sampling (GN, RMS, Resize):} Computation-intensive element-wise or reduction ops like GroupNorm (GN) and Resize also benefit notably, showing speedups of approximately \textbf{1.11$\times$} and \textbf{1.10$\times$} respectively. The constant specialization allows for the elimination of redundant boundary checks and simplifies division operations related to channel or spatial dimensions.
     
-    \item \textbf{Performance degradation:} As shown in the breakdown (e.g., for \textit{Pool3D} and \textit{P-MM}), \textbf{LLVM-spec} sometimes yields negligible improvements or even slight regressions (speedup $<$ 1.0). This indicates that merely replacing constant arguments without analyzing their propagation paths (as \mysys does) is insufficient to trigger high-level compiler optimizations on the Ascend NPU.
+    % \item \textbf{Performance degradation:} As shown in the breakdown (e.g., for \textit{Pool3D} and \textit{P-MM}), \textbf{LLVM-spec} sometimes yields negligible improvements or even slight regressions (speedup $<$ 1.0). This indicates that merely replacing constant arguments without analyzing their propagation paths (as \mysys does) is insufficient to trigger high-level compiler optimizations on the Ascend NPU.
 \end{itemize}
 
 \paragraph{End-to-End Model Performance Analysis}
