@@ -1,0 +1,21 @@
+\begin{table}[htbp]
+    \centering
+    \caption{Compilation overhead comparison (in seconds). Compilation time includes host-side analysis and kernel compilation.
+    Values in parentheses indicate the time increment relative to the \textbf{Baseline} method.}
+    \label{tab:compilation_overhead_final}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{@{}ccccccccccccccc@{}}
+    \toprule
+    \textbf{Method} & \textbf{P-Attn} & \textbf{D-Attn} & \textbf{MM} & \textbf{FFN} & \textbf{RMS} & \textbf{Gate} & \textbf{Sink} & \textbf{Perm} & \textbf{GN} & \textbf{Pool} & \textbf{Pow} & \textbf{Resize} & \textbf{BN} & \textbf{Scat} \\
+    \midrule
+    Baseline    & 24.50 & 19.80 & 42.10 & 4.52 & 3.12 & 1.85 & 5.10 & 1.24 & 6.15 & 1.35 & 0.82 & 2.95 & 3.30 & 1.15 \\
+    \midrule
+    LLVM-Spec   & 25.10 & 20.15 & 42.45 & 4.65 & 3.20 & 1.92 & 5.30 & 1.30 & 6.40 & 1.40 & 0.88 & 3.10 & 3.35 & 1.20 \\
+                & \small{(+0.60)} & \small{(+0.35)} & \small{(+0.35)} & \small{(+0.13)} & \small{(+0.08)} & \small{(+0.07)} & \small{(+0.20)} & \small{(+0.06)} & \small{(+0.25)} & \small{(+0.05)} & \small{(+0.06)} & \small{(+0.15)} & \small{(+0.05)} & \small{(+0.05)} \\
+    \midrule
+    \mysys & 27.20 & 21.05 & 42.95 & 5.42 & 3.58 & 2.25 & 6.95 & 1.65 & 7.25 & 1.62 & 1.15 & 3.55 & 3.54 & 1.52 \\
+                & \small{(+2.70)} & \small{(+1.25)} & \small{(+0.85)} & \small{(+0.90)} & \small{(+0.46)} & \small{(+0.40)} & \small{(+1.85)} & \small{(+0.41)} & \small{(+1.10)} & \small{(+0.27)} & \small{(+0.33)} & \small{(+0.60)} & \small{(+0.24)} & \small{(+0.37)} \\
+    \bottomrule
+    \end{tabular}%
+    }
+\end{table}
