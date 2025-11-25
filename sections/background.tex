@@ -60,7 +60,7 @@ status aot_add(Tensor& A, Tensor& B, Tensor& C) {
     case 16: kernel<16>(..., A.size(0)); break;
     case 32: kernel<32>(..., A.size(0)); break;
 }}
-void jit_add(Tensor& A, Tensor& B, Tensor& C) {
+status jit_add(Tensor& A, Tensor& B, Tensor& C) {
   int t = 0; tiling(A.size(0), t);
   auto kernel_ = run_compile(kernel, t);
   kernel_(A.ptr, B.ptr, C.ptr, A.size(0));

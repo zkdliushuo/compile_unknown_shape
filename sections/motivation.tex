@@ -83,13 +83,13 @@ These checks often locate in the beginning of tiling functions, and the error re
     \hfill
     \begin{minipage}{0.5\textwidth}
     \begin{lstlisting}[language=C++, caption={Early return path due to dynamic shape check.}, label={lst:early_return_code}, frame=single]
-const int SUCCESS = 0, ERROR = -1;
-int check(int s) {
+const status SUCCESS = 0, ERROR = -1;
+status check(int s) {
     if(s % 32 != 0)
         return ERROR; // fails
     return SUCCESS;
 }
-int tiling(int s, int& t) {
+status tiling(int s, int& t) {
     int ret = check(s);
     if (ret != SUCCESS) // check
         return ret; // check fails
