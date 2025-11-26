@@ -18,6 +18,10 @@ The version of Ascend Compute Architecture for Neural Networks(CANN) is 8.0.RC1.
 The version of LLVM is 15.0.5 and the version of PyTorch is 2.6.0.
 To ensure accuracy, the reported data represents the average of the last 90 runs out of 100 total executions.
 
+For the GPU library debloating experiment, we use a platform equipped with an NVIDIA RTX 34090 GPU with 24GB memory and an Intel Xeon Gold 6348 CPU.
+The version of CUDA is 12.2 and the version of PyTorch is 2.6.0.
+The version of vLLM is 0.9.1 and the version of FlashInfer is v0.2.
+
 \paragraph{Benchmarks}
 \label{sec:eval:bench}
 To ensure a comprehensive evaluation, our benchmark suite comprises two main components: individual operator latency and end-to-end model inference.
@@ -45,18 +49,20 @@ For the operator benchmark, we compare \textbf{\mysys} against the following met
     \item \textbf{Optimal:} An oracle approach serving as the performance upper bound. For each specific input shape, we first execute the operator to capture the actual runtime values of the scalar arguments passed to the kernel. We then perform constant substitution on the kernel's LLVM IR using these captured values and apply the kernel specialization module of \mysys.
 \end{itemize}
 
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=\textwidth]{figures/evaluation/op-speedup/speedup_histogram.pdf}
-    \caption{Overall normalized performance of \mysys compared to compiler baselines }
-    \label{fig:eval:op-overall}
-\end{figure}
 
 \subsection{Performance Result of Operators and Models}
 \label{sec:eval:result}
 
+
 \paragraph{Operator Performance Analysis}
 \autoref{fig:eval:op-overall} presents the normalized speedup of the evaluated operators across three methods: \textbf{LLVM-spec}, \textbf{\mysys}, and the \textbf{Optimal} upper bound. All results are normalized to the \textbf{Baseline} (standard offline compilation).
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/evaluation/op-speedup/speedup_histogram.pdf}
+    \caption{Overall normalized performance of \mysys compared to compiler baselines }
+    \label{fig:eval:op-overall}
+\end{figure}
 
 Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.05$\times$} across all operators, significantly outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the performance of \textbf{\mysys} is nearly identical to the \textbf{Optimal} oracle (within 0.5\% difference on average), demonstrating that our framework effectively captures and leverages almost all available runtime constant information for specialization without the heavy overhead of full compilation for each possible shape.
 
@@ -151,17 +157,17 @@ Therefore, optimizations in the instruction stream do not translate into visible
 \begin{figure}[H]
     \centering
     \hfill
-    \begin{minipage}{0.47\textwidth}
+    \begin{minipage}{0.42\textwidth}
         \includegraphics[width=\linewidth]{figures/evaluation/op-speedup/d_attn_kv_length_speedup.pdf}
         % 图11: 强调针对 Decoding Attention 算子，在不同 KV 长度和配置下的表现
         \caption{Speedup ratio of \texttt{D-Attn} under varying cached KV sequence lengths and configurations.} 
         \label{fig:eval:d_attn_kv}
     \end{minipage}
     \hfill
-    \begin{minipage}{0.47\textwidth}
+    \begin{minipage}{0.42\textwidth}
         \includegraphics[width=\linewidth]{figures/evaluation/op-speedup/d_attn_execution_speedup.pdf}
         % 图12: 强调加速比与基准延迟（即任务量）的相关性/分布
-        \caption{Distribution of speedup ratios of \texttt{D-Attn} relative to baseline kernel latency.} 
+        \caption{Distribution of speedup ratios of \mysys for the operator \texttt{D-Attn} relative to baseline kernel latency.} 
         \label{fig:eval:latency_dist}
     \end{minipage}
     \hfill
@@ -175,20 +181,39 @@ The results demonstrate a clear correlation: the speedup ratio gradually decreas
 This trend implies that the performance benefits derived from kernel specialization, primarily the elimination of scalar calculations, control flow overhead and the improvement of instruction cache utilization, are relatively fixed in absolute time and are largely independent of the total task volume.
 Consequently, this fixed reduction in overhead translates into significant speedup ratios for small-scale, low-latency kernels, but becomes little by the dominant computation and memory access time in heavy workloads.
 
-\paragraph{Analysis on the compilation pipelines of the kernel specialization}
+% \paragraph{Analysis on the compilation pipelines of the kernel specialization}
 
 % TODO:
 % 绘制几种算子启动kernel特化后的 IR 指令数目随pass执行的变化情况，其中只标注 JIT spec pass
 
 \subsection{Generalize to other architectures: reducing binary size of AoT compiled operator libraries on GPU}
+\label{sec:eval:gpu}
 
+While our primary evaluation focuses on Ascend NPUs, we also explore the applicability of \mysys to other accelerators, specifically GPUs.
+Applying \mysys to optimize kernel execution latency on GPUs presents unique challenges compared to NPUs.
+Modern GPUs are equipped with powerful scalar computation capabilities (e.g., via CUDA Cores) and abundant register resources.
+More importantly, mainstream GPU operator libraries have evolved to be highly mature.
+Critical parameters that impact control flow and pipeline scheduling are often manually specialized through C++ templates.
+By enumerating all possible values of these template parameters, these libraries instantiate multiple kernel versions at compile time and have achieved full loop unrolling and optimal instruction scheduling, leaving limited room for the runtime scalar propagation optimization that \mysys excels at on NPUs.
 
-% 我的论文的实验的最后一小节是 \subsection{Generalize to other architectures: reducing binary size of AoT compiled operator libraries on GPU}。这里我想讨论的是，\mysys 如何应用到其他的架构上。我需要你为我生成这一节的内容，要点如下：
+However, this exhaustive specialization strategy comes at a cost of binary bloat as shown in \autoref{lst:compare_aot_jit_without_graph}.
+To support a wide range of models and hardware configurations, a single kernel function often preserves many template parameters, leading to it being instantiated into hundreds versions.
+But in a specific serving scenario, the model architecture and hardware are fixed and only a small subset of these instantiated kernels are actually invoked, leading to the vast majority of these kernels dead code.
+This redundancy results in excessive disk usage and increased library loading time, especially increase storage and memory footprint on resource-constrained edge devices and serverless environments.
 
-% 1. 需要首先承认，应用到诸如 GPU 等其他加速器架构上是困难的，这一点主要来自于：
+We adapted \mysys to address this issue by eliminating dead code through inter-procedural propagation on the GPU operators.
+We targeted FlashInfer~\cite{ye2025flashinfer}, a state-of-the-art attention kernel library widely used in LLM serving systems like vLLM.
+Instead of optimizing the kernel code itself, we utilized \mysys to construct the precise invocation context from the PyTorch frontend based on the target LLM configuration (e.g., Llama2-7B or Qwen2).
+This context is propagated to the host-side C++ code of the operator same as in \autoref{sec:design:context_construction}.
+By analyzing the host-side dispatch logic with the provided context, \mysys identifies the specific set of kernels that are actually reachable.
+We then re-compile the library, stripping away the definitions and call sites of all unreachable kernel instantiations.
 
-% 当代 GPU 等硬件的寄存器资源丰富、标量计算能力强（CUDA Core），尤其重要的是，当代GPU上的主流算子库已经演进的相当成熟，对性能影响较大的参数已经通过预先枚举所有可能的模板参数取值被手工常量特化了（这类参数通常是与控制流相关的参数，特化这些参数可以对循环做完全展开，从而避免控制流导致的SIMT架构不擅长处理的branch，同时还能通过更大范围的指令调度使能更好的流水线调度优化）。
+The results of this optimization are presented in \autoref{tab:gpu_binary_reduction}.
+We evaluated the binary size reduction for different LLM families (Llama and Qwen) with various model sizes.
+\mysys demonstrates remarkable effectiveness in eliminating redundant code, reducing the binary size of the FlashInfer library from approximately 520MB to roughly 20MB.
+On average, \mysys achieves a \textbf{96.2\% reduction} in binary size.
+Other DSA architectures with AoT compiled operator libraries that suffer from similar code bloat issues could also benefit from \mysys.
 
-% 2. 但是，我们发现当前的 GPU 算子库普遍采用 AoT 的编译方式。在编译时，为了支持各种可能的模型、硬件，一个核函数通常需要实例化出很多个版本。但其中的绝大多数在特定的模型、特定的硬件上完全不会调用。这实际上造成了极大的代码冗余。
+In summary, \mysys remains a powerful tool imporoves the performance of operator libraries on different DSA architectures, whether for latency reduction on NPUs or storage efficiency on GPUs.
 
-% 3. 我们对于 FlashInfer 这一GPU上用于 LLM serving 的关键算子库（vLLM在GPU后端上的默认会调用的算子库）初步适配了 \mysys 。我们基于 \mysys 的 context generation module，从 pytorch前端为 FlashInfer 算子构建了调用上下文，基于 LLVM 编译 FlashInfer 算子程序，并对算子的 Host-side 代码做跨程序的信息传播，并标记所有被发射的核函数对象。最终，我们收集了算子库中所有可能被调用的核函数，并将确定不被调用的核函数的定义以及调用点删除（本质是一个枚举了模板参数取值后实例化的核函数）。最终，我们验证发现 \mysys 最多可以将 FlashInfer 这一算子库裁剪到原体积的 
+\input{figures/evaluation/op-reduction/library_reduction.tex}

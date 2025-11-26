@@ -149,7 +149,7 @@ Operator developers provide these rules, and the context synthesis module interp
 
 \subsection{Identify Early Return Pattern}\label{sec:design:early-return}
 
-\input{algorithm/early-return}
+% \input{algorithm/early-return}
 
 The early-return path bypasses the normal execution path, and these two paths often join at the function's ending block. 
 At join points, merging values from both paths results in losing specialized constant information. 
@@ -176,66 +176,141 @@ We detail the detection process using four common patterns found in operator lib
 
 \begin{figure}[ht]
   \centering
-  % Row 1: Pattern 1 & 2
-  \begin{minipage}{0.25\textwidth}
-      \centering
-      % 顶格写
-      \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
-  %ret = call @check
-  %c = icmp ne %ret, 0
-  br %c, %exit, %nxt
-exit: ; Joined block
-  %v = phi i32 [%ret, %pred], ...
-  ret i32 %v
-      \end{lstlisting}
-      \textbf{(a) Pass-through}
-  \end{minipage}
-  \hfill
-  \begin{minipage}{0.25\textwidth}
-      \centering
-      % 顶格写
-      \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
-  %ret = call @check
-  %c = icmp ne %ret, 0
-  br %c, %exit, %nxt
-exit: ; Joined block
-  %v = phi i32 [-1, %pred], ...
-  ret i32 %v
-      \end{lstlisting}
-      \textbf{(b) Explicit Error}
-  \end{minipage}
-  \hfill
-  \begin{minipage}{0.25\textwidth}
-      \centering
-      % 顶格写
-      \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
-  %rem = srem i32 %s, 32
-  %c = icmp ne i32 %rem, 0
-  br %c, %exit, %nxt
-exit: ; Joined block
-  %v = phi i32 [-1, %pred], ...
-  ret i32 %v
-      \end{lstlisting}
-      \textbf{(c) Local Constant Error}
-  \end{minipage}
-  \hfill
-  % Row 2: Pattern 3 & 4
-  \begin{minipage}{0.2\textwidth}
-      \centering
-      % 顶格写
-      \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
+  % ==========================
+  % 左侧：算法 (占据约 45% 宽度)
+  % ==========================
+  \begin{minipage}{0.65\textwidth}
+    \centering
+    % 直接引入你的算法文件
+    % 务必确保该文件里的 \begin{algorithm} 带上了 [H] 参数！
+    \input{algorithm/early-return}
+  \end{minipage}%
+  \hfill % 左右之间的弹性间距
+  % ==========================
+  % 右侧：代码示例 (占据约 52% 宽度)
+  % ==========================
+  \begin{minipage}{0.31\textwidth}
+    \centering
+    % 字体和间距设置
+    \setlength{\tabcolsep}{1pt}
+    
+    % --- 第一行代码 (Pattern 1 & 2) ---
+    \begin{minipage}{\linewidth}
+        \begin{lstlisting}[language=llvm, basicstyle=\tiny\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=1pt, xrightmargin=1pt]
+%ret = call @check
+%c = icmp ne %ret, 0
+br %c, %exit, %nxt
+exit: 
+%v = phi i32 [%ret, %pred]
+ret i32 %v
+        \end{lstlisting}
+        \centerline{\textbf{(a) Pass-through}}
+    \end{minipage}
+    \vspace{4pt} % 上下行间距
+    \begin{minipage}{\linewidth}
+        \begin{lstlisting}[language=llvm, basicstyle=\tiny\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=1pt, xrightmargin=1pt]
+%ret = call @check
+%c = icmp ne %ret, 0
+br %c, %exit, %nxt
+exit: 
+%v = phi i32 [-1, %pred]
+ret i32 %v
+        \end{lstlisting}
+        \centerline{\textbf{(b) Explicit Error}}
+    \end{minipage}
+    \vspace{4pt} % 上下行间距
+    % --- 第二行代码 (Pattern 3 & 4) ---
+    \begin{minipage}{\linewidth}
+        \begin{lstlisting}[language=llvm, basicstyle=\tiny\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=1pt, xrightmargin=1pt]
+%rem = srem i32 %s, 32
+%c = icmp ne i32 %rem, 0
+br %c, %exit, %nxt
+exit: 
+%v = phi i32 [-1, %pred]
+ret i32 %v
+        \end{lstlisting}
+        \centerline{\textbf{(c) Local Const Err}}
+    \end{minipage}
+    \vspace{4pt} % 上下行间距
+    \begin{minipage}{\linewidth}
+        \begin{lstlisting}[language=llvm, basicstyle=\tiny\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=1pt, xrightmargin=1pt]
 %ret = call @check
 ; Direct return
 ; No local check
 ret i32 %ret
-      \end{lstlisting}
-      \textbf{(d) Tail Call}
-  \end{minipage}
+        \end{lstlisting}
+        \centerline{\textbf{(d) Tail Call}}
+    \end{minipage}
 
-  \Description{Simplified LLVM IR examples showing four common early return patterns: Pass-through, Explicit Error, Local Constant Error, and Tail Call.}
-  \caption{Simplified LLVM IR examples of common early return patterns handled by Algorithm~\ref{algo:runtime-shape-check-detection}}
-  \label{fig:early-return-patterns}
+    % 右侧整体的 Caption
+    \captionof{figure}{Simplified LLVM IR examples of common early return patterns alongside the detection algorithm.}
+    \label{fig:early-return-patterns}
+  \end{minipage}
 \end{figure}
+
+
+% \begin{figure}[ht]
+%   \centering
+%   % Row 1: Pattern 1 & 2
+%   \begin{minipage}{0.25\textwidth}
+%       \centering
+%       % 顶格写
+%       \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
+%   %ret = call @check
+%   %c = icmp ne %ret, 0
+%   br %c, %exit, %nxt
+% exit: ; Joined block
+%   %v = phi i32 [%ret, %pred], ...
+%   ret i32 %v
+%       \end{lstlisting}
+%       \textbf{(a) Pass-through}
+%   \end{minipage}
+%   \hfill
+%   \begin{minipage}{0.25\textwidth}
+%       \centering
+%       % 顶格写
+%       \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
+%   %ret = call @check
+%   %c = icmp ne %ret, 0
+%   br %c, %exit, %nxt
+% exit: ; Joined block
+%   %v = phi i32 [-1, %pred], ...
+%   ret i32 %v
+%       \end{lstlisting}
+%       \textbf{(b) Explicit Error}
+%   \end{minipage}
+%   \hfill
+%   \begin{minipage}{0.25\textwidth}
+%       \centering
+%       % 顶格写
+%       \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
+%   %rem = srem i32 %s, 32
+%   %c = icmp ne i32 %rem, 0
+%   br %c, %exit, %nxt
+% exit: ; Joined block
+%   %v = phi i32 [-1, %pred], ...
+%   ret i32 %v
+%       \end{lstlisting}
+%       \textbf{(c) Local Constant Error}
+%   \end{minipage}
+%   \hfill
+%   % Row 2: Pattern 3 & 4
+%   \begin{minipage}{0.2\textwidth}
+%       \centering
+%       % 顶格写
+%       \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
+% %ret = call @check
+% ; Direct return
+% ; No local check
+% ret i32 %ret
+%       \end{lstlisting}
+%       \textbf{(d) Tail Call}
+%   \end{minipage}
+
+%   \Description{Simplified LLVM IR examples showing four common early return patterns: Pass-through, Explicit Error, Local Constant Error, and Tail Call.}
+%   \caption{Simplified LLVM IR examples of common early return patterns handled by Algorithm~\ref{algo:runtime-shape-check-detection}}
+%   \label{fig:early-return-patterns}
+% \end{figure}
 
 \textbf{Pass-through.} 
 As shown in \autoref{fig:early-return-patterns}(a), the code checks a status variable returned by a subroutine and returns it directly upon failure.

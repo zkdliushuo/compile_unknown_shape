@@ -1,20 +1,28 @@
 \begin{table}[htbp]
     \centering
-    \caption{Compilation overhead comparison (in seconds). Compilation time includes host-side analysis and kernel compilation.
-    Values in parentheses indicate the time increment relative to the \textbf{Baseline} method.}
-    \label{tab:compilation_overhead_final}
+    \caption{Detailed comparison of compilation overhead and parameter specialization. 
+    \textbf{Total Params} indicates the number of parameter fields defined in the operator program.
+    \textbf{Time} is total compilation time in seconds. \textbf{Diff} is the time increment relative to Baseline.
+    \textbf{Derived \#} is the count of invariant parameter fields inferred by the compiler.}
+    \label{tab:compilation_detail}
     \resizebox{\textwidth}{!}{%
-    \begin{tabular}{@{}ccccccccccccccc@{}}
+    \begin{tabular}{@{}llcccccccccccccc@{}}
     \toprule
-    \textbf{Method} & \textbf{P-Attn} & \textbf{D-Attn} & \textbf{MM} & \textbf{FFN} & \textbf{RMS} & \textbf{Gate} & \textbf{Sink} & \textbf{Perm} & \textbf{GN} & \textbf{Pool} & \textbf{Pow} & \textbf{Resize} & \textbf{BN} & \textbf{Scat} \\
+    \multicolumn{2}{c}{\textbf{Operator}} & \textbf{P-Attn} & \textbf{D-Attn} & \textbf{MM} & \textbf{FFN} & \textbf{RMS} & \textbf{Gate} & \textbf{Sink} & \textbf{Perm} & \textbf{GN} & \textbf{Pool} & \textbf{Pow} & \textbf{Resize} & \textbf{BN} & \textbf{Scat} \\
     \midrule
-    Baseline    & 24.50 & 19.80 & 42.10 & 4.52 & 3.12 & 1.85 & 5.10 & 1.24 & 6.15 & 1.35 & 0.82 & 2.95 & 3.30 & 1.15 \\
+    \multicolumn{2}{c}{\textbf{Total Params}} & \textbf{264} & \textbf{389} & \textbf{72} & \textbf{123} & \textbf{15} & \textbf{60} & \textbf{20} & \textbf{42} & \textbf{23} & \textbf{17} & \textbf{10} & \textbf{143} & \textbf{22} & \textbf{20} \\
     \midrule
-    LLVM-Spec   & 25.10 & 20.15 & 42.45 & 4.65 & 3.20 & 1.92 & 5.30 & 1.30 & 6.40 & 1.40 & 0.88 & 3.10 & 3.35 & 1.20 \\
-                & \small{(+0.60)} & \small{(+0.35)} & \small{(+0.35)} & \small{(+0.13)} & \small{(+0.08)} & \small{(+0.07)} & \small{(+0.20)} & \small{(+0.06)} & \small{(+0.25)} & \small{(+0.05)} & \small{(+0.06)} & \small{(+0.15)} & \small{(+0.05)} & \small{(+0.05)} \\
+    \textbf{Baseline} & Time (s) & 24.50 & 19.80 & 42.10 & 4.52 & 3.12 & 1.85 & 5.10 & 1.24 & 6.15 & 1.35 & 0.82 & 2.95 & 3.30 & 1.15 \\
     \midrule
-    \mysys & 27.20 & 21.05 & 42.95 & 5.42 & 3.58 & 2.25 & 6.95 & 1.65 & 7.25 & 1.62 & 1.15 & 3.55 & 3.54 & 1.52 \\
-                & \small{(+2.70)} & \small{(+1.25)} & \small{(+0.85)} & \small{(+0.90)} & \small{(+0.46)} & \small{(+0.40)} & \small{(+1.85)} & \small{(+0.41)} & \small{(+1.10)} & \small{(+0.27)} & \small{(+0.33)} & \small{(+0.60)} & \small{(+0.24)} & \small{(+0.37)} \\
+    \multirow{3}{*}{\textbf{LLVM-Spec}} 
+     & Time (s) & 25.10 & 20.15 & 42.45 & 4.65 & 3.20 & 1.92 & 5.30 & 1.30 & 6.40 & 1.40 & 0.88 & 3.10 & 3.35 & 1.20 \\
+     & \textit{Diff} & \scriptsize{(+0.60)} & \scriptsize{(+0.35)} & \scriptsize{(+0.35)} & \scriptsize{(+0.13)} & \scriptsize{(+0.08)} & \scriptsize{(+0.07)} & \scriptsize{(+0.20)} & \scriptsize{(+0.06)} & \scriptsize{(+0.25)} & \scriptsize{(+0.05)} & \scriptsize{(+0.06)} & \scriptsize{(+0.15)} & \scriptsize{(+0.05)} & \scriptsize{(+0.05)} \\
+     & Derived \# & 4 & 3 & 3 & 2 & 1 & 2 & 0 & 0 & 1 & 0 & 0 & 3 & 2 & 1 \\
+    \midrule
+    \multirow{3}{*}{\textbf{\mysys}} 
+     & Time (s) & 27.20 & 21.05 & 42.95 & 5.42 & 3.58 & 2.25 & 6.95 & 1.65 & 7.25 & 1.62 & 1.15 & 3.55 & 3.54 & 1.52 \\
+     & \textit{Diff} & \scriptsize{(+2.70)} & \scriptsize{(+1.25)} & \scriptsize{(+0.85)} & \scriptsize{(+0.90)} & \scriptsize{(+0.46)} & \scriptsize{(+0.40)} & \scriptsize{(+1.85)} & \scriptsize{(+0.41)} & \scriptsize{(+1.10)} & \scriptsize{(+0.27)} & \scriptsize{(+0.33)} & \scriptsize{(+0.60)} & \scriptsize{(+0.24)} & \scriptsize{(+0.37)} \\
+     & Derived \# & 242 & 352 & 60 & 110 & 11 & 30 & 13 & 28 & 17 & 15 & 5 & 82 & 15 & 14 \\
     \bottomrule
     \end{tabular}%
     }
