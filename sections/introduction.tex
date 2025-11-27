@@ -1,5 +1,30 @@
 \section{Introduction}\label{sec:intro}
 
+% 深度学习(DL)发展至今，许多DL模型已经应用到各种场景中。
+% 模型的执行依赖实际部署的 DL 系统(深度学习框架或推理系统)中集成的算子库来执行。
+% 具体来说，模型被表示为有向无环的计算图(DAG)，其中的节点代表算子，节点之间的有向边代表张量和数据依赖关系。
+% 在运行时，DL 系统根据 DAG 的拓扑序依次处理每个节点，调用对应的算子库中的算子程序执行张量计算。
+
+% 但是，库中的算子通常需要适配多样的模型架构和硬件：支持各种模型变体，支持一个模型家族中的各种配置，适配同一架构的不同硬件。
+% 此外，算子还需要支持动态形状的张量：LLMs 的 query 长度和 kv cache 在 batch 内以及随时间变化(ragged tensor)，CV 类模型的 batch size 和图像分辨率也可能变化。
+% 为了高效支持多样的模型和硬件，以及张量的动态性，算子程序的内部通常需要根据模型和硬件的配置参数、张量形状信息，计算出设备上的核函数的最优的执行参数，包括但不限于：inter-core parallelism, intra-core pipeline settings such as tiling sizes.
+% 例如，\autoref{lst:add_kernel_with_formal_param} shows a simple operator \kw{add}, where \kw{s} denotes the size of the first dimension which is dynamic, and \kw{t} represents the tiling size on the dimension \kw{s}. 
+% Both \kw{s} and \kw{t} are formal parameters of the \kw{kernel} function.
+
+% 例如本文主要针对的目标硬件 Ascend，这是一种 SIMD 架构的深度学习加速器，提供了丰富的可编程硬件部件和访存通路：
+% 1）计算部件，包括处理控制流、指令分发和标量计算的 scalar unit，以及分别处理向量化和矩阵操作的 Vector 和 Cube Unit。
+% 2）多种存储缓冲区和数据搬运部件：包括面向 Cube Unit 的 L1, L0 buffer，面向 Vector Unit 的 Unified Buffer(UB), 以及 L2 缓存和 Global Memory(GM)。这些存储部件之间的数据搬运方式高度灵活，缓冲区的数据布局可配置，且允许随路的数据布局转换。
+% 这种丰富的可编程性可以有效促进访存效率和硬件利用率，但在算法开发时，需要根据具体的模型和硬件配置以及具体的形状，
+% 确定各计算部件和数据搬运之间的最优的执行流水线，这主要通过一组复杂的调度参数来控制，例如 tiling size，缓冲区数目等。
+% 为支持不同模型、硬件和动态形状，需要将这些调度参数在 Host 侧计算出来，以函数参数的形式传递给核函数。
+% 复杂的调度策略导致核函数数目过多，对这些参数的处理增加了标量部件的负载压力，且为了适应各种情况实现的复杂逻辑导致核函数臃肿，增加了指令cache的压力。
+
+% 我们在 \autoref{lst:invariable_params_scalar_ratio} 列举了当前面向 Ascend 的 state of the arts 算子库中部分典型算子的性能现状，以及这些算子的参数数目, 评测揭示了当前 Ascend 算子库中存在如下特点：
+% （1）标量运算部件容易成为性能瓶颈，scalar unit 在 78\% 以上的算子执行 cycles 中状态都是活跃的，在执行控制流、标量运算或标量数据的访存。
+% （2）Instruction cache miss 较多，尤其是执行逻辑复杂、参数较多的融合大算子。
+% 此外，我们统计了在特定硬件上部署给定模型时，同一个核函数在处理各种可能形状时的参数中的不变量，我们发现绝大部分参数
+% 基于这些观察，this work 识别核函数参数中的不变量
+
 % 随着深度学习的快速发展，诸如 Llama 3、DeepSeek 和 Qwen 等大型模型不断涌现并在众多任务中表现出色。
 % 为了加速大模型的训练和推理并提供庞大的算力支撑，许多公司开发了各自的领域专用架构（DSA），包括英伟达 GPU、华为 Ascend NPU 和谷歌 TPU。
 % 作为这些芯片的代表之一，Ascend NPU 已被广泛应用于支持各类有影响力的模型，例如 Qwen 和 DeepSeek 系列，并取得了高性能和低功耗的优势。
@@ -23,7 +48,6 @@ Modern deep learning models involve dynamic shapes where input tensor dimensions
 To handle these dynamics and mitigate load imbalance, kernel developers must define a substantial number of parameters, e.g., inter-core parallelism, loop tiling strategies, and buffer counts, to schedule the kernel adaptively.
 These schedule parameters, along with shape parameters (e.g., actual sequence length) and operator attributes (e.g., is causal masked), are defined as formal parameters of the kernel functions.
 \autoref{lst:add_kernel_with_formal_param} shows an implementation of the \kw{add} operator, where \kw{s} and \kw{t} are formal parameters of the \kw{kernel} function.
-
 
 \begin{figure}[htbp]
     \centering
@@ -71,9 +95,9 @@ Since other hardware components units rely on the scalar unit for instruction di
 \begin{figure}[htbp]
     \centering
 \includegraphics[width=\linewidth]{figures/motivation/combined_analysis.pdf}
-    \caption{Some representative operators involves a number of parameters, meanwhile the operators shows scalar bound (scalar units are busy for over 78\% cycles) and significant instruction cache miss.
+    \caption{\scnote{The operator name \kw{resize} is a little confusing; \kw{upsample} may be better.} Some representative operators involves a number of parameters, meanwhile the operators shows scalar bound (scalar units are busy for over 78\% cycles) and significant instruction cache miss.
     % D-Attn and P-Attn represent Flash Attention operator at  the decoding and prefill phase.  
-    The details of the operators are shown in \autoref{tab:dynamic_operators}.}
+    The details of the operators are shown in \autoref{tab:dynamic_operators}.\scnote{Figure 2 and the related discussion merely show the scalar unit is busy, without directly proving it blocks the overall operator execution pipeline. Additional figure may be needed, either here or in the following Background section.}}
     \label{lst:invariable_params_scalar_ratio}
 \end{figure}
 
@@ -121,3 +145,7 @@ However, implementing such a framework faces two inevitable challenges, which we
 Extensive experiments demonstrate that \mysys significantly reduces inference latency, particularly scalar computation overhead, effectively mitigating the scalar bottleneck.
 
 %sxy% 可以在intro的结尾更详细的介绍实验和成效，给出具体的数值。
+
+
+% Scalar, Vector, Cube units 专注于执行标量（含控制流）、向量和矩阵的运算指令，
+% 存在 GM/L2, L1, L0, Unified Buffer 等多级可编程存储层次和
