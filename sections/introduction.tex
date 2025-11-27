@@ -19,10 +19,10 @@
 % 为支持不同模型、硬件和动态形状，需要将这些调度参数在 Host 侧计算出来，以函数参数的形式传递给核函数。
 % 复杂的调度策略导致核函数数目过多，对这些参数的处理增加了标量部件的负载压力，且为了适应各种情况实现的复杂逻辑导致核函数臃肿，增加了指令cache的压力。
 
-% 我们在 \autoref{lst:invariable_params_scalar_ratio} 列举了当前面向 Ascend 的 state of the arts 算子库中部分典型算子的性能现状，以及这些算子的参数数目, 评测揭示了当前 Ascend 算子库中存在如下特点：
+% 我们在 \autoref{lst:invariable_params_scalar_ratio} 列举了当前面向 Ascend 的 state of the arts 算子库中 LLMs 涉及的主要算子的性能现状, 评测揭示了当前 Ascend 算子库中存在如下特点：
 % （1）标量运算部件容易成为性能瓶颈，scalar unit 在 78\% 以上的算子执行 cycles 中状态都是活跃的，在执行控制流、标量运算或标量数据的访存。
 % （2）Instruction cache miss 较多，尤其是执行逻辑复杂、参数较多的融合大算子。
-% 此外，我们统计了在特定硬件上部署给定模型时，同一个核函数在处理各种可能形状时的参数中的不变量，我们发现绝大部分参数
+% 此外，我们以 Qwen2-1.5B 为例，统计了该模型处理各种随机形状的 ragged tensor 输入时，部分核函数的参数中的不变量。
 % 基于这些观察，this work 识别核函数参数中的不变量
 
 % 随着深度学习的快速发展，诸如 Llama 3、DeepSeek 和 Qwen 等大型模型不断涌现并在众多任务中表现出色。
@@ -94,7 +94,7 @@ Since other hardware components units rely on the scalar unit for instruction di
 
 \begin{figure}[htbp]
     \centering
-\includegraphics[width=\linewidth]{figures/motivation/combined_analysis.pdf}
+    \includegraphics[width=0.85\linewidth]{figures/motivation/combined_analysis.pdf}
     \caption{\scnote{The operator name \kw{resize} is a little confusing; \kw{upsample} may be better.} Some representative operators involves a number of parameters, meanwhile the operators shows scalar bound (scalar units are busy for over 78\% cycles) and significant instruction cache miss.
     % D-Attn and P-Attn represent Flash Attention operator at  the decoding and prefill phase.  
     The details of the operators are shown in \autoref{tab:dynamic_operators}.\scnote{Figure 2 and the related discussion merely show the scalar unit is busy, without directly proving it blocks the overall operator execution pipeline. Additional figure may be needed, either here or in the following Background section.}}
