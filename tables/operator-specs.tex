@@ -2,7 +2,7 @@
     \centering
     \caption{Expanded overview of dynamic shape operator benchmarks. 
     \textbf{Symbols:} $T$: Total tokens, $B$: Batch size, $P$: Page size, $N$: Number of Heads ($N_Q$ query, $N_{KV}$ key/value), $D$: Hidden dim (Model dim), $D_{head}$: Head dim ($D/N_Q$), $C$: Channels, $E$: Experts, $H, W$: Image Height/Width. \textbf{Aux. Input}: Geometric metadata.
-    \textbf{Configurations:} Unless otherwise stated, we fix static dimensions based on representative models: $D=4096, D_{head}=128, N_Q=32, N_{KV}=8, E=8$ for LLM (e.g., Llama-3-8B); $C=512$ for CV (e.g., ResNet-50); and $D=128$ for RecSys.
+    \textbf{Configurations:} Unless otherwise stated, we fix static dimensions based on representative models: $D=4096, D_{head}=128, N_Q=32, N_{KV}=8, E=8$ for LLM (e.g., Llama-3-8B\scnote{Since the evaluation is about Llama2, using Llama2 as example might be better.}); $C=512$ for CV (e.g., ResNet-50); and $D=128$ for RecSys.
     \textbf{Note:} Operators labeled \textbf{MM}, \textbf{FFN}, and \textbf{RMS} share identical kernel implementations across Prefill and Decoding phases, differing only in the leading dynamic dimension ($T$ vs. $B$).
     Besides, \textbf{Conv2d} is executed via \texttt{img2col} + MatMul, hence universially denoted as \textbf{MM}.
     In the follwing experiments, unless otherwise stated, the average speedup is calculated by randomly sampling 5 shapes from the dynamic range.}
