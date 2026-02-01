@@ -1,0 +1,76 @@
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=0.4cm and 0.6cm, % Compressed distance
+    font=\scriptsize, % Smaller font for compression
+    % Styles
+    process/.style={
+        rectangle, 
+        draw=blue!60!black, 
+        fill=blue!5, 
+        rounded corners, 
+        minimum height=0.8cm, 
+        text width=1.5cm, 
+        align=center, 
+        thick,
+        drop shadow
+    },
+    data/.style={
+        trapezium, 
+        trapezium left angle=75, 
+        trapezium right angle=105, 
+        draw=orange!60!black, 
+        fill=orange!10, 
+        minimum height=0.6cm, 
+        text width=1.8cm, 
+        align=center,
+        inner sep=2pt
+    },
+    rulebox/.style={
+        rectangle, 
+        draw=red!60!black, 
+        fill=red!5, 
+        dashed, 
+        align=center, 
+        minimum width=1.5cm, 
+        inner sep=2pt
+    },
+    arrow/.style={-{Stealth}, thick, draw=gray!80},
+    labeltext/.style={font=\tiny\itshape, color=gray!80}
+]
+
+    % 1. Input Data
+    \node (input) [data] {{\small\ding{172}} Graph IR of $Op$ \\ in$\rightarrow$out};
+
+    % 2. Process: Extract Metadata
+    \node (extract) [process, right=of input] {{\small\ding{173}} Metadata Extraction};
+
+    % 3. Intermediate Data: Metadata Phi
+    \node (metadata) [data, right=of extract] {{\small\ding{174}} Metadata $\Phi_{Op}$\\$=[\mathcal{M}_0, \dots, \mathcal{M}_n]$};
+
+    % 4. Process: Update Context
+    \node (update) [process, right=of metadata, text width=2.4cm] {{\small\ding{175}} Update Context\\$\mathbb{C}_{i+1}=\mathcal{R}_{\mathcal{M}_i}(\mathbb{C}_{i})$};
+
+    % Side Inputs for Update Process (Vertical placement to save width)
+    \node (empty_ctx) [data, above=of update, yshift=-0.2cm] {{\small\ding{176}} Empty Context $\mathbb{C}_0$};
+    
+    \node (rules) [rulebox, below=of update, yshift=0.2cm] {{\small\ding{177}} Rules $\mathcal{R}$\\(\textsc{Tensor}, etc.)};
+
+    % 5. Final Output
+    \node (output) [data, right=of update, fill=gray!10, draw=gray!60] {{\small\ding{178}} Output:\\ Call Context $\mathbb{C}_{init}$};
+
+    % Edges
+    \draw[arrow] (input) -- (extract);
+    \draw[arrow] (extract) -- (metadata);
+    \draw[arrow] (metadata) -- (update);
+    \draw[arrow] (update) -- (output);
+    
+    % Side connections
+    \draw[arrow] (empty_ctx) -- (update);
+    \draw[arrow] (rules) -- (update);
+
+\end{tikzpicture}
+\caption{Workflow of Context Generation. \ding{172}-\ding{174} Extraction phase; \ding{175}-\ding{178} Context construction phase.}
+\label{fig:context_workflow}
+\vspace{-15pt}
+\end{figure}

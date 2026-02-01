@@ -1,12 +1,14 @@
 \begin{table}[htbp]
 \centering
-\caption{Performance Comparison: Speedup and Metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{\mysys} (T) methods for benchmarked operators. 
-Best values are bolded ($\uparrow$ means higher is better, and $\downarrow$ means lower is better).}
+\caption{Performance Comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{\mysys} (T). 
+Best values are bolded. 
+Reflecting our goal to maximize time spent on tensor computation units (Cube and Vector), $\downarrow$ denotes lower is better for metrics irrelative to tensor computations.$\uparrow$ denotes higher is better for speedup ratio.}
 \label{tab:performance_metrics}
+\vspace{-5pt}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lcccccccccccccccccc}
 \toprule
-\multirow{2}{*}{\textbf{Op}} & \multicolumn{3}{c}{\textbf{Speedup} ($\uparrow$)} & \multicolumn{3}{c}{\textbf{I Cache Miss (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Scalar Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Mem Read Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Mem Write Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Binary Size(KB)} ($\downarrow$)} \\
+\multirow{2}{*}{\textbf{Op}} & \multicolumn{3}{c}{\textbf{Speedup} ($\uparrow$)} & \multicolumn{3}{c}{\textbf{I-Cache Miss (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Scalar Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Mem Read Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Mem Write Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Binary Size(KB)} ($\downarrow$)} \\
 \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13} \cmidrule(lr){14-16} \cmidrule(lr){17-19}
  & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} \\
 \midrule
@@ -21,10 +23,11 @@ Perm & 1.00 & 1.00 & \textbf{1.08} & 0.00 & 0.00 & 0.00 & \textbf{92.34} & 92.58
 GN & 1.00 & 1.07 & \textbf{1.11} & 0.80 & 1.20 & \textbf{0.00} & 99.10 & 98.94 & \textbf{98.90} & 24.98 & \textbf{18.46} & 18.83 & 14.20 & \textbf{9.29} & 9.31 & 220.76 & 220.56 & \textbf{193.80} \\
 Pool & 1.00 & 0.99 & 0.99 & 0.00 & 0.00 & 0.00 & 97.27 & 97.21 & \textbf{97.14} & 45.01 & 45.01 & 45.01 & 0.00 & 0.00 & 0.00 & 13.35 & 13.35 & \textbf{13.24} \\
 Pow & 1.00 & 1.01 & \textbf{1.07} & 0.00 & 0.00 & 0.00 & 59.45 & 57.60 & \textbf{53.11} & 44.64 & 45.48 & 40.16 & 2.72 & 2.80 & 3.00 & 24.58 & 24.58 & 24.31  \\ 
-Resize & 1.00 & 1.00 & \textbf{1.10} & 9.83 & 9.98 & \textbf{0.00} & 99.50 & 99.51 & \textbf{98.42} & 16.45 & 17.38 & \textbf{13.87} & \textbf{1.76} & 2.08 & 2.15 & 56.84 & 56.84 & \textbf{37.54} \\
+Upsample & 1.00 & 1.00 & \textbf{1.10} & 9.83 & 9.98 & \textbf{0.00} & 99.50 & 99.51 & \textbf{98.42} & 16.45 & 17.38 & \textbf{13.87} & \textbf{1.76} & 2.08 & 2.15 & 56.84 & 56.84 & \textbf{37.54} \\
 BN & 1.00 & 1.01 & \textbf{1.03} & 0.00 & 0.00 & 0.00 & \textbf{96.60} & 96.69 & 96.82 & 64.86 & 66.16 & \textbf{60.02} & 22.94 & \textbf{22.13} & 22.44 & 15.73 & 15.69 & \textbf{15.61} \\
 Scat & 1.00 & 1.00 & \textbf{1.01} & 24.38 & 23.42 & \textbf{22.61} & \textbf{97.39} & 98.06 & 97.93 & 5.44 & 4.36 & \textbf{1.41} & \textbf{0.90} & 1.29 & 1.12 & 24.11& 23.99 & \textbf{23.40} \\
 \bottomrule
 \end{tabular}%
 }
+\vspace{-15pt}
 \end{table}

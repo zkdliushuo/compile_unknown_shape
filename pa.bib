@@ -939,6 +939,42 @@
 }
 
 %C
+@article{10.1145/13310.13327,
+author = {Callahan, David and Cooper, Keith D. and Kennedy, Ken and Torczon, Linda},
+title = {Interprocedural constant propagation},
+year = {1986},
+issue_date = {July 1986},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+volume = {21},
+number = {7},
+issn = {0362-1340},
+url = {https://doi.org/10.1145/13310.13327},
+doi = {10.1145/13310.13327},
+abstract = {In a compiling system that attempts to improve code for a whole program by optimizing across procedures, the compiler can generate better code for a specific procedure if it knows which variables will have constant values, and what those values will be, when the procedure is invoked. This paper presents a general algorithm for determining for each procedure in a given program the set of inputs that will have known constant values at run time. The precision of the answers provided by this method are dependent on the precision of the local analysis of individual procedures in the program. Since the algorithm is intended for use in a sophisticated software development environment in which local analysis would be provided by the source editor, the quality of the answers will depend on the amount of work the editor performs. Several reasonable strategies for local analysis with different levels of complexity and precision are suggested and the results of a prototype implementation in a vectorizing Fortran compiler are presented.},
+journal = {SIGPLAN Not.},
+month = jul,
+pages = {152–161},
+numpages = {10}
+}
+
+@inproceedings{callahan1986icp,
+author = {Callahan, David and Cooper, Keith D. and Kennedy, Ken and Torczon, Linda},
+title = {Interprocedural constant propagation},
+year = {1986},
+isbn = {0897911970},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/12276.13327},
+doi = {10.1145/12276.13327},
+abstract = {In a compiling system that attempts to improve code for a whole program by optimizing across procedures, the compiler can generate better code for a specific procedure if it knows which variables will have constant values, and what those values will be, when the procedure is invoked. This paper presents a general algorithm for determining for each procedure in a given program the set of inputs that will have known constant values at run time. The precision of the answers provided by this method are dependent on the precision of the local analysis of individual procedures in the program. Since the algorithm is intended for use in a sophisticated software development environment in which local analysis would be provided by the source editor, the quality of the answers will depend on the amount of work the editor performs. Several reasonable strategies for local analysis with different levels of complexity and precision are suggested and the results of a prototype implementation in a vectorizing Fortran compiler are presented.},
+booktitle = {Proceedings of the 1986 SIGPLAN Symposium on Compiler Construction},
+pages = {152–161},
+numpages = {10},
+location = {Palo Alto, California, USA},
+series = {SIGPLAN '86}
+}
+
 @inproceedings{ cai2015filesys,
 	author = {Cai, Xiang and Lale, Rucha and Zhang, Xincheng 
 			and Johnson, Robert},
@@ -3191,6 +3227,21 @@
 } 
 
 %K
+@inproceedings{Kildall1973lattice,
+    author = {Kildall, Gary A.},
+    title = {A unified approach to global program optimization},
+    year = {1973},
+    isbn = {9781450373494},
+    publisher = {Association for Computing Machinery},
+    address = {New York, NY, USA},
+    url = {https://doi.org/10.1145/512927.512945},
+    doi = {10.1145/512927.512945},
+    pages = {194–206},
+    numpages = {13},
+    location = {Boston, Massachusetts},
+    series = {POPL '73}
+}
+
 @inproceedings{ kahlon2009staticrace,
 	author = {Kahlon, Vineet and Sinha, Nishant and Kruus, Erik 
 		and Zhang, Yun},
@@ -5107,6 +5158,22 @@
 }   
 
 %P
+@inproceedings{patterson1995valuerange,
+    author = {Patterson, Jason R. C.},
+    title = {Accurate static branch prediction by value range propagation},
+    year = {1995},
+    isbn = {0897916972},
+    publisher = {Association for Computing Machinery},
+    address = {New York, NY, USA},
+    url = {https://doi.org/10.1145/207110.207117},
+    doi = {10.1145/207110.207117},
+    booktitle = {Proceedings of the ACM SIGPLAN 1995 Conference on Programming Language Design and Implementation},
+    pages = {67–78},
+    numpages = {12},
+    location = {La Jolla, California, USA},
+    series = {PLDI '95}
+}
+
 Calv\`{e}s, Christophe and Lawall, Julia and Muller, Gilles},
 @misc{ paszke2017pytorch,
 	title = {PyTorch: Tensors and dynamic neural networks in Python with strong GPU acceleration},
@@ -6656,6 +6723,25 @@ Calv\`{e}s, Christophe and Lawall, Julia and Muller, Gilles},
 } 
 
 %W
+@article{wegman1991sccp,
+    author = {Wegman, Mark N. and Zadeck, F. Kenneth},
+    title = {Constant propagation with conditional branches},
+    year = {1991},
+    issue_date = {April 1991},
+    publisher = {Association for Computing Machinery},
+    address = {New York, NY, USA},
+    volume = {13},
+    number = {2},
+    issn = {0164-0925},
+    url = {https://doi.org/10.1145/103135.103136},
+    doi = {10.1145/103135.103136},
+    journal = {ACM Trans. Program. Lang. Syst.},
+    month = apr,
+    pages = {181–210},
+    numpages = {30},
+    keywords = {abstract interpretation, code optimization, constant propagation, control flow graph, interprocedural analysis, procedure integration, static single assignment form, type determination}
+}
+
 @inproceedings{ wagner1993futures,
 	author = {Wagner, David B. and Calder, Bradley G.},
 	title = {{Leapfrogging}: A Portable Technique for 

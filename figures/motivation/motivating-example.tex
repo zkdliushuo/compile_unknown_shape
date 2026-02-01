@@ -1,0 +1,280 @@
+% \definecolor{bordergray}{RGB}{180, 180, 180}
+% \definecolor{headerblue}{RGB}{220, 230, 240}
+% \definecolor{paleblue}{RGB}{240, 248, 255}
+% \definecolor{codekey}{RGB}{0, 0, 255}
+% \definecolor{codestr}{RGB}{163, 21, 21}
+% \definecolor{flowred}{RGB}{220, 50, 47}
+% \definecolor{flowblue}{RGB}{38, 139, 210}
+% \definecolor{llvmgreen}{RGB}{0, 100, 0}
+
+% \tikzset{
+%     % 基础面板
+%     panel_base/.style={
+%         draw=bordergray,
+%         thick,
+%         fill=white,
+%         inner sep=3pt,
+%         align=left,
+%         anchor=north west,
+%         outer sep=0pt
+%     },
+%     panel_slim/.style={ panel_base, text width=2.8cm, inner sep=2pt, outer sep=0pt},
+%     panel_narrow/.style={ panel_base, text width=4.0cm, inner sep=2pt, outer sep=0pt},
+%     panel_wide/.style={ panel_base, text width=5.2cm, inner sep=2pt, outer sep=0pt},
+%     % 虚线背景面板 (去掉了 fill=paleblue，实现无底纹)
+%     panel_dashed/.style={
+%         draw=bordergray,
+%         thick,
+%         dashed,
+%         % fill=paleblue, % 已注释掉背景色
+%         inner sep=2pt,
+%         align=left,
+%         anchor=north west,
+%         outer sep=0pt
+%     },
+%     % 标题栏样式
+%     header/.style={
+%         fill=headerblue,
+%         draw=bordergray,
+%         thick,
+%         align=center,
+%         font=\bfseries\scriptsize,
+%         yshift=-0.5pt,
+%         outer sep=0pt,
+%         inner sep=2pt,
+%         anchor=south west
+%     },
+%     % 连线样式
+%     flowline/.style={->, >=stealth, thick, rounded corners=2pt},
+%     typearrow/.style={->, >=stealth, dashed, thick, color=gray},
+%     % 变量高亮框
+%     boxstyle/.style={draw, thick, rounded corners=1pt}
+% }
+
+% \newcommand{\tightnode}[3][]{%
+%     \tikzmarknode[%
+%         inner xsep=1.5pt,
+%         inner ysep=0.5pt,
+%         text height=6.0pt,
+%         text depth=1.5pt,
+%         #1  % <-- 允许插入额外的样式覆盖默认设置
+%     ]{#2}{%
+%         \smash{#3}
+%     }%
+% }
+
+% \lstset{
+%     language=C++,
+%     basicstyle=\ttfamily\fontsize{5pt}{6pt}\selectfont,
+%     breaklines=true,
+%     escapechar=@, 
+%     numbers=left,
+%     numberstyle=\tiny\color{gray!50},
+%     numbersep=2pt,
+%     keywordstyle=\color{codekey}\bfseries,
+%     commentstyle=\color{gray},
+%     stringstyle=\color{codestr},
+%     showstringspaces=false,
+%     frame=none,
+%     xleftmargin=0.8em,
+%     lineskip=-0.5pt,      
+%     aboveskip=2pt,        
+%     belowskip=0pt
+% }
+
+% \begin{figure}[htbp]
+%     \centering
+%     \begin{tikzpicture}[remember picture]
+        
+%         % ==========================
+%         % 1. PyTorch Frontend (Python)
+%         % ==========================
+%         \node[panel_slim, text width=2.8cm] (p1) {
+%         % --- Part A: ATen IR (Compiler View) ---
+%         \textbf{\scriptsize\sffamily\color{black} [Compile Time / ATen IR]} \\
+%         \begin{lstlisting}[language=llvm]
+% %B: SymInt
+% %S: SymInt
+% %lens: Array(SymInt)
+% %q: Tensor[%B,@\tightnode{initial_const}{40}@,%S,64]
+% %out = aten::fa(%q, 
+%   %k, %v, %lens, ...)
+%         \end{lstlisting}
+        
+%         \vspace{2pt}
+%         \color{gray}\hrule height 0.5pt \normalcolor
+%         \vspace{2pt}
+        
+%         % --- Part B: Python API (User View) ---
+%         \textbf{\scriptsize\sffamily\color{black} [Runtime / Op Invocation]} \\
+%         \begin{lstlisting}[language=Python]
+% while greedy_search:
+%   ...
+%   # lens grows
+%   torch.fa(q_cur, k_cache, v_cache, @\tightnode{py_seq}{lens}@, ...)
+%         \end{lstlisting}
+%     };
+%         \node[header, text width=2.8cm] at (p1.north west) {1. PyTorch (Python)};
+        
+%         % ==========================
+%         % 2. PyBind Schema (C++)
+%         % ==========================
+%         \node[panel_slim, text width=2.8cm, right=0.3cm of p1.north east, anchor=north west] (p2) {
+%      \begin{lstlisting}[language=C++]
+% struct Tensor { 
+%   void* data_;
+%   int* sizes; 
+%   int ndim; 
+% };
+% m.def("fa", [](
+%   Tensor @\tightnode{pb_q}{q}@, ..., 
+%   int[] @\tightnode{pb_seq}{s}@, ...) {
+%   return host_fa(q, k, v, s, ...);
+% });
+%     \end{lstlisting}
+%         };
+%         \node[header, text width=2.8cm] at (p2.north west) {2. PyBind (C++)};
+
+%         % ==========================
+%         % 3. Host Runtime (C++)
+%         % ==========================
+%         \node[panel_narrow, text width=4.0cm, right=0.3cm of p2.north east, anchor=north west] (p3) {
+%         \begin{lstlisting}
+% Tensor host_fa(Tensor q, ...){
+%  int h = @\tightnode{host_h}{q}@.size(1); // 40
+%  int stages = (@\tightnode{host_stages}{h}@>32)? @\tightnode{llvm_s_val}{2}@ : 1;
+%  EXEC(kernel, ..., stages, @\tightnode{host_lens}{sum(s)}@);
+% }
+%         \end{lstlisting}
+%         };
+%         \node[header, text width=4.0cm] at (p3.north west) {3. Host (C++)};
+
+%         % ==========================
+%         % 4. Device Kernel
+%         % ==========================
+%         \node[panel_wide, text width=4.0cm, right=0.3cm of p3.north east, anchor=north west] (p4) {
+%             \begin{lstlisting}
+% void kernel(..., int stages, int len_sum) {
+%   if (tid >= @\tightnode{kern_lens}{len\_sum}@) return;
+%   for(int i=0; i < @\tightnode{kern_stages}{stages}@; i++)
+%     ...
+% }
+%             \end{lstlisting}
+%         };
+%         \node[header, text width=4.0cm] at (p4.north west) {4a. Generic Kernel (C++)};
+
+%         \node[panel_wide, text width=3.6cm, below=0.8cm of p4.south east, anchor=north east] (p_spec) {
+%         \begin{lstlisting}
+% void kernel(..., int len_sum) {
+%   if (tid >= @\tightnode{kern_lens_use}{len\_sum}@) return; 
+%   @\tightnode[inner sep=3pt]{kern_stage_spec}{%
+%     \begin{tabular}{@{}l@{}}
+%       ... // Stage 1\\
+%       ... // Stage 2
+%     \end{tabular}%
+%   }@
+% }
+%         \end{lstlisting}
+%         };
+%         \node[header, text width=3.6cm] (p_spec_header) at (p_spec.north west) {4b. Specialized Kernel (C++)};
+
+%         % ==========================
+%         % 3.5 LLVM IR (JIT Analysis)
+%         % ==========================
+%         \node[panel_dashed, text width=4.4cm, below=0.8cm of p3.south west, anchor=north west] (p_llvm) {
+%         \begin{lstlisting}[language=llvm]
+% ...
+% sizes = getelementptr %q ...
+% h_ptr = getelementptr %sizes, i32 4
+% h_val = load i32, %h_ptr  ; Load 40
+% cmp = icmp sgt i32 %h_val, 32
+% stages = select i1 %cmp, i32 2, i32 1
+%         \end{lstlisting}
+%         };
+%         \node[header, text width=4.4cm] (p_llvm_header) at (p_llvm.north west) {3. Propagation on LLVM IR of Host};
+
+% %         % ==========================
+% %         % Type Mapping Layer - MODIFIED
+% %         % ==========================
+% %         \node[panel_dashed, text width=6cm, anchor=north west] (p_typemap) at (p1.south west |- p_llvm.north west) {
+% %             \vspace{2pt} % Leave space for header
+% %             \begin{minipage}{0.35\textwidth}
+% %             \begin{lstlisting}[basicstyle=\ttfamily\tiny, numbers=none]
+% % // C++ Layout            
+% % struct Tensor {
+% %  void* data_;
+% %  int* sizes;
+% %  int ndim;
+% % };
+% %             \end{lstlisting}
+% %             \end{minipage}%
+% %             \hfill
+% %             \begin{minipage}{0.63\textwidth}
+% %             \begin{lstlisting}[basicstyle=\ttfamily\tiny, numbers=none]
+% % // PyBind Registration
+% % py::class_<Tensor>(m, "Tensor")
+% %   .def("size", [](Tensor& t, int id){ 
+% %     return t.sizes[id]; 
+% %  });
+% %             \end{lstlisting}
+% %             \end{minipage}
+% %         };
+% %         % Added Header for Type Mapping Layer
+% %         \node[header, text width=6cm] (p_typemap_header) at (p_typemap.north west) {Type Mapping Layer (Python $\leftrightarrow$ C++)};
+
+%     \end{tikzpicture}
+
+%     % --- 绘制连线 (Overlay) ---
+%     \begin{tikzpicture}[remember picture, overlay]
+        
+%         % --- RED FLOW: Metadata/Constant Flow ---
+%         % 1. Python (40) SE -> PyBind (q) NW
+%         \draw[flowred, boxstyle] (initial_const.north west) rectangle (initial_const.south east);
+%         \draw[flowred, boxstyle] (pb_q.north west) rectangle (pb_q.south east);
+%         \draw[flowline, flowred] (initial_const.north east) -- ++(1,0) |- (pb_q.north west);
+        
+%         % 2. PyBind (q) SE -> Host (q) NW
+%         \draw[flowred, boxstyle] (host_h.north west) rectangle (host_h.south east);
+%         \draw[flowline, flowred] (pb_q.north east) -- ++(1,0) |- (host_h.north west);
+        
+%         % 3. Host (q) SW -> Host (S) NE
+%         \draw[flowred, boxstyle] (host_stages.north west) rectangle (host_stages.south east);
+%         \draw[flowline, flowred] (host_h.south west) -- (host_stages.north west);
+
+%         % 4. Host (S) -> LLVM / Device (IR Generation)
+%         % \draw[flowline, flowred, dashed, opacity=0.5] (host_stages.south) -- (p_llvm_header.north);
+
+%         % 5. LLVM -> Device Specialization
+%         \draw[flowred, boxstyle] (llvm_s_val.north west) rectangle (llvm_s_val.south east);
+%         \draw[flowred, boxstyle] (kern_stages.north west) rectangle (kern_stages.south east);
+%         \draw[flowline, flowred] (llvm_s_val.south east) -- ++(1,0) |- (kern_stages.south west);
+
+%         % --- BLUE FLOW: Variable Flow (Lens) ---
+%         % 1. PyTorch -> PyBind
+%         \draw[flowblue, boxstyle] (py_seq.north west) rectangle (py_seq.south east);
+%         \draw[flowblue, boxstyle] (pb_seq.north west) rectangle (pb_seq.south east);
+%         \draw[flowline, flowblue] (py_seq.north east) -- ++(1.5,0) |- (pb_seq.south west);
+
+%         % 2. PyBind -> Host
+%         \draw[flowblue, boxstyle] (host_lens.north west) rectangle (host_lens.south east);
+%         \draw[flowline, flowblue] (pb_seq.south east) -- ++(1.8,0) |- (host_lens.north west);
+
+%         % 3. Host -> Kernel (Argument)
+%         \draw[flowblue, boxstyle] (kern_lens.north west) rectangle (kern_lens.south east);
+%         \draw[flowline, flowblue] (host_lens.north east) -- ++(2,0) |- (kern_lens.south west);
+        
+%         % 4. Kernel Argument -> Usage
+%         \draw[flowblue, boxstyle] (kern_lens_use.north west) rectangle (kern_lens_use.south east);
+%         \draw[flowred, boxstyle] (kern_stage_spec.north west) rectangle (kern_stage_spec.south east);
+%         % \draw[->, flowblue, dotted, thick] (kern_lens.south) -- ++(0,-0.3) -| (kern_lens_use.north);
+
+%         % --- GREY ARROW: Type Mapping Relationship ---
+%         % \draw[typearrow] (p1.south) -- node[left, font=\tiny, text=gray] {PyObject} (p_typemap_header.north -| p1.south);
+%         % \draw[typearrow] (p_typemap_header.north -| p2.south) -- node[right, font=\tiny, text=gray] {C++ Struct} (p2.south);
+%         \draw[typearrow] (p3.south -| p_llvm_header.south) -- node[right, font=\tiny, text=gray] {IR Generation} (p_llvm_header.north);
+%         \draw[flowline, flowred] (p4.south -| p_spec_header.south) -- node[right, font=\tiny, text=flowred] {Specialization} (p_spec_header.north);
+
+%     \end{tikzpicture}
+%     \caption{Flash Attention Optimization Flow: Constant Propagation \& Field Reconstruction.}
+% \end{figure}
+

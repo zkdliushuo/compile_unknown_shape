@@ -1,17 +1,19 @@
-\begin{table}[t]
+\begin{table}[htbp]
+    \vspace{-5pt}
     \centering
-    \caption{Binary size and reduction ratio of the FlashInfer operator library under different LLM models configurations. The configurations are denoted as (LLM Family Type, $N_Q, N_{KV}, D_{head}$). Values in parentheses denote the reduction in binary size (MB).}
+    \caption{Binary size and reduction ratio of the FlashInfer operator library under different LLM models configurations. The configurations are denoted as (LLM model, $N_Q, N_{KV}, D_{head}$). Values in parentheses denote the reduction in binary size (MB).}
     \label{tab:gpu_binary_reduction}
     \resizebox{0.7\linewidth}{!}{
         % 稍微减小列间距，让内容更紧凑
         \setlength{\tabcolsep}{4pt}
         \begin{tabular}{lccccc}
         \toprule
-        \textbf{Config} & \makecell{Llama \\ (32, 32, 128)} & \makecell{Llama \\ (16, 16, 256)} & \makecell{Qwen \\ (32, 8, 128)} & \makecell{Qwen \\ (32, 4, 128)} & \textbf{Average} \\
+        \textbf{Config} & \makecell{Llama2-7B \\ (32, 32, 128)} & \makecell{Llama2-13B \\ (40, 40, 256)} & \makecell{Qwen2-1.5B \\ (12, 2, 128)} & \makecell{Qwen2-7B \\ (28, 4, 128)} & \textbf{Average} \\
         \midrule
         \textbf{Binary Size (MB)} & 19.2($\downarrow$501.3) & 20.2($\downarrow$500.3) & 18.9($\downarrow$501.6) & 19.1($\downarrow$501.4) & 19.9($\downarrow$500.60) \\
         \textbf{Reduction Ratio} & 96.3\% & 96.2\% & 96.4\% & 96.3\% & 96.20\% \\
         \bottomrule
         \end{tabular}
     }
+    \vspace{-15pt}
 \end{table}

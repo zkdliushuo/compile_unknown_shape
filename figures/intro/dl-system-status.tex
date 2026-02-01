@@ -1,0 +1,63 @@
+\begin{wrapfigure}{l}{0.48\textwidth}
+    \centering
+    \vspace{-10pt}
+    \resizebox{\linewidth}{!}{
+    \begin{tikzpicture}[node distance=1.2cm and 1.2cm]
+        % Main Nodes
+        \node[layeredbox] (dlsys) {DL Systems\nodepart{second}PyTorch, TF...};
+        \node[layeredbox, right=1.5cm of dlsys] (ffi) {FFI\nodepart{second}pybind11...};
+
+        % --- Upper Path: CANN ---
+        \node[simplebox, right=1.0cm of ffi, yshift=0.8cm] (cannhost) {Host};
+        \node[simplebox, right=0.9cm of cannhost] (generic) {Generic\\[-4pt ]Kernels};
+        
+        % --- Lower Path: cuBLAS ---
+        \node[simplebox, right=1.0cm of ffi, yshift=-0.8cm] (cublashost) {Host};
+        \node[simplebox, right=0.8cm of cublashost, yshift=0.3cm, minimum width=1.2cm] (k1) {Kernel 1};
+        \node[simplebox, below=0.05cm of k1, minimum width=1.2cm] (k2) {Kernel 2};
+        \node[simplebox, below=0.05cm of k2, minimum width=1.2cm] (kn) {...};
+
+        % Grouping and Boxes
+        \begin{scope}[on background layer]
+            % Generic Library Enclosing Box
+            \node[enclosing_box, fit=(cannhost)(generic), minimum width=3.4cm] (cann_path_box) {};
+            \node[box_header, anchor=center, yshift=0.18cm, minimum width=3.4cm] (h1) at (cann_path_box.north) {Generic Library};
+            % 独立数字 Node
+            \node[number_icon, left=-0.6cm of h1.west] {\ding{182}};
+
+            % Manual Specialized Library Enclosing Box
+            \node[enclosing_box, fit=(cublashost)(k1)(k2)(kn), minimum width=3.4cm] (cublas_path_box) {};
+            \node[box_header, anchor=center, yshift=0.18cm, minimum width=3.4cm] (h2) at (cublas_path_box.north) {Specialized Library};
+            % 独立数字 Node
+            \node[number_icon, left=-0.6cm of h2.west] {\ding{183}};
+        \end{scope}
+
+        % Connections
+        \draw[stdarrow] (dlsys.east) -- 
+            node[above, font=\sffamily\small, align=center, yshift=-0.5cm] {Runtime\\[0.1cm]Input} 
+            (ffi.west);
+        
+        % Arrows for CANN
+        \draw[stdarrow] (ffi.east) -- ++(0.3,0) |- (cannhost.west);
+        \draw[stdarrow] (cannhost) -- (generic);
+        
+        % Arrows for cuBLAS
+        \draw[stdarrow] (ffi.east) -- ++(0.3,0) |- (cublashost.west);
+        \draw[stdarrow] (cublashost.east) -- ++(0.2,0) |- (k1.west);
+        \draw[stdarrow] (cublashost.east) -- ++(0.2,0) |- (k2.west);
+        \draw[stdarrow] (cublashost.east) -- ++(0.2,0) |- (kn.west);
+
+        % Bubbles
+        \node[bubble={($(cann_path_box.north west)+(0,-0.15)$)}, left=0.3cm of cann_path_box.north west, yshift=-0.1cm] (perf_loss) {
+            Performance Loss~\raisebox{-0.3\height}{\includegraphics[height=0.35cm]{figures/icons/down-arrow.png}}
+        };
+        
+        \node[bubble={($(cublas_path_box.south west)+(0,0.3)$)}, above left=0.03cm and 0.3cm of cublas_path_box.south west] (explosion) {
+            Combinatorial Explosion~\raisebox{-0.3\height}{\includegraphics[height=0.35cm]{figures/icons/boom.png}}
+        };
+    \end{tikzpicture}
+    }
+    \caption{Comparison of different operator libraries. \ding{182} represents libraries that invoke general kernels without specialization and \ding{183} represents libraries involving manually specialized kernels.}
+    \label{fig:comparison-libraries}
+    \vspace{-10pt} 
+\end{wrapfigure}

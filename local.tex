@@ -1,6 +1,6 @@
 % \usepackage{cite}
-% \usepackage[numbers,sort]{natbib}
 \usepackage{amsmath,amsfonts}
+% \usepackage[numbers,sort]{natbib}
 \usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
@@ -78,6 +78,82 @@
 % \setlength{\belowcaptionskip}{1pt}  % 调整标题与正文之间的距离
 \usepackage{cleveref}
 \usepackage{tikz}
+\usetikzlibrary{
+    shapes.multipart,
+    shapes.geometric,
+    shapes.symbols, 
+    shapes.arrows,
+    shapes.callouts,
+    arrows.meta,
+    positioning,
+    fit,
+    backgrounds,
+    calc,
+    shadows
+}
+% \usetikzlibrary{tikzmark}
+\newcommand{\tikzmark}[1]{\tikz[overlay,remember picture] \node (#1) {};}
+\definecolor{headerblue}{HTML}{DAE8FC}
+\definecolor{bodywhite}{HTML}{FFFFFF}
+\definecolor{borderblack}{HTML}{000000}
+\definecolor{customred}{HTML}{FF0000}
+\definecolor{propcolor}{RGB}{220,240,220}
+\definecolor{propborder}{RGB}{50,120,50}
+
+% --- 样式定义 ---
+\tikzset{
+    layeredbox/.style={
+        rectangle split, rectangle split parts=2, draw=borderblack, very thick,
+        inner sep=3pt, align=center, rectangle split part fill={headerblue, bodywhite},
+        font=\sffamily\small, minimum height=1.1cm
+    },
+    simplebox/.style={
+        rectangle, draw=borderblack, thick, fill=bodywhite, inner sep=2pt,
+        minimum width=1cm, align=center, font=\sffamily\small
+    },
+    black_simplebox/.style={
+        simplebox, font=\sffamily\small\color{black}, draw=borderblack
+    },
+    stdarrow/.style={->, >=latex, thick, line width=0.8pt, rounded corners=2pt, color=black},
+    arrowlabel/.style={
+        midway,
+        above=3pt,
+        font=\footnotesize,
+        align=center,
+        color=black!80,
+        inner sep=0pt
+    },
+    bubble/.style={
+        rectangle callout, draw=borderblack, fill=bodywhite, align=center,
+        font=\sffamily\small\color{customred}, inner sep=2pt,
+        rounded corners=0pt, callout absolute pointer={#1}
+    },
+    enclosing_box/.style={
+        draw=borderblack, thick, inner sep=2pt, rounded corners=0pt
+    },
+    % 标题框样式
+    box_header/.style={
+        rectangle, draw=borderblack, fill=headerblue, thick,
+        font=\sffamily\small, inner sep=2pt, minimum width=3cm
+    },
+    % 新增：独立数字图标样式
+    number_icon/.style={
+        anchor=east, xshift=-2pt, font=\Large
+    }
+}
+% \usepackage[active,tightpage]{preview}
+% \PreviewEnvironment{tikzpicture}
+% \setlength\PreviewBorder{5pt}
+
+\definecolor{bordergray}{RGB}{180, 180, 180}
+\definecolor{headerblue}{RGB}{220, 230, 240} % 标题栏颜色
+\definecolor{paleblue}{RGB}{240, 248, 255}   % 虚线框背景色 (AliceBlue)
+\definecolor{codekey}{RGB}{0, 0, 255}
+\definecolor{codestr}{RGB}{163, 21, 21}
+\definecolor{flowred}{RGB}{220, 50, 47}      % Metadata/Constant Flow
+\definecolor{flowblue}{RGB}{38, 139, 210}    % Variable Flow
+\definecolor{llvmgreen}{RGB}{0, 100, 0}      % LLVM IR specific
+
 \usepackage{alltt}
 
 \usepackage{algorithm2e}
@@ -93,6 +169,9 @@
 \definecolor{stringcolor}{RGB}{163,21,21}
 \definecolor{codefont}{RGB}{0,0,0} % 亮黑色字体
 \definecolor{typecolor}{RGB}{0,150,0}
+\definecolor{propcolor}{RGB}{230,245,230} % 浅绿色背景
+\definecolor{propborder}{RGB}{60,140,60}  % 深绿色边框
+\definecolor{arrowcolor}{RGB}{200,50,50}  % 指向代码的箭头颜色(红)
 
 \newcommand{\hlcode}[1]{\colorbox{red!80}{\textcolor{white}{#1}}}
 % \newcommand{\corecode}[1]{%
@@ -118,44 +197,19 @@
   breaklines=true,
   prebreak=\mbox{\textcolor{gray}{\tiny$\hookleftarrow$}\space}, % 将换行符显示在上一行末尾
   frame=none,
-  escapeinside={+@}{@+},
   captionpos=b,
   language=C++,
+  xrightmargin=0pt,
+  framexrightmargin=0pt,
   morekeywords={align,define,declare,call,ret,br,phi,load,store,add,sub,mul,icmp,fcmp,bitcast,ptrtoint,inttoptr,alloca,getelementptr,select,unreachable},
   alsoletter={\%,@},
   morekeywords={[2]\%[a-zA-Z_][a-zA-Z0-9_]*,@[a-zA-Z_][a-zA-Z0-9_]*},
   keywordstyle={[2]\color{blue!70}},
-  emph={TilingData,Status,T,BaseParams,SingleCoreParams,TData,OpTiling,TilingAlgo,AlgoBase,Algo1,Algo2,PartData,assert}, % 添加自定义类型名
+  emph={assert}, % 添加自定义类型名
   emphstyle=\color{typecolor}, % 设置类型名高亮样式
   moredelim=**[is][\colorbox{blue!20}]{@HL@}{@HL@},
-  mathescape=true,
   aboveskip=0.5em, % 控制代码块上方的距离
   belowskip=0em  % 控制代码块下方的距离
-}
-\lstdefinestyle{cppsimple}{
-  language=C++, 
-  numbers=none, 
-  frame=none, 
-  basicstyle=\small\ttfamily\color{codefont}, 
-  keywordstyle=\color{keywordcolor}, 
-  commentstyle=\color{commentcolor}\itshape, 
-  stringstyle=\color{stringcolor}, 
-  numberstyle=\tiny\color{gray}, 
-  showstringspaces=false, 
-  breaklines=true, 
-  tabsize=2, 
-  aboveskip=0.5em, 
-  belowskip=0em, 
-  morekeywords={align,define,declare,call,ret,br,phi,load,store,add,sub,mul,icmp,fcmp,bitcast,ptrtoint,inttoptr,alloca,getelementptr,select,unreachable}, 
-  alsoletter={\%,@}, 
-  morekeywords={[2]\%[a-zA-Z_][a-zA-Z0-9_]*,@[a-zA-Z_][a-zA-Z0-9_]*}, 
-  keywordstyle={[2]\color{blue!70}}, 
-  emph={TilingData,Status,T,BaseParams,SingleCoreParams,TData,OpTiling,TilingAlgo,AlgoBase,Algo1,Algo2,PartData,assert}, 
-  emphstyle=\color{typecolor}, 
-  moredelim=**[is][\colorbox{blue!20}]{@HL@}{@HL@}, 
-  mathescape=true, 
-  escapeinside={+@}{@+}, 
-  captionpos=b
 }
 
 \newcommand{\myparagraph}[1]{\noindent\textbf{#1}}

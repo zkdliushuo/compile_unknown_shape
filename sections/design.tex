@@ -1,405 +1,386 @@
 \section{System Design of \mysys}
 \label{sec:design}
 
-We propose \mysys, a highly accurate constant propagation framework that infers constant parameter values of kernels from deep learning frameworks, specifically PyTorch.
-\mysys takes the ATen IR of the computation graph and the LLVM program of the operator as input.
-We first generate the calling context for each operator invocation.
-Starting from the entry function of the operator, \mysys performs context-sensitive interprocedural constant propagation, propagating constants through each basic block.
-At the end of the analysis, the derived constant values for the concrete parameters of the kernel function are used to perform kernel specialization and optimization.
+\input{figures/sys-design/mysys-workflow}
+
+We propose \mysys, a highly accurate constant propagation framework that infers constant parameter values of kernels from DL frameworks.
+The workflow of \mysys is shown as \autoref{fig:overall_workflow}.
+\mysys takes the DL model's specific constant information as input.
+It first generates the calling context for each operator invocation (\S\ref{sec:design:context_construction}).
+Next, \mysys identifies all the early-exit paths (\S\ref{sec:design:early-return}) and performs context-sensitive inter-procedural constant propagation along normal paths (\S\ref{sec:design:propagation}).
+At the end of the analysis, the derived constant schedule parameters of the kernel function are used to perform kernel specialization, generating specialized kernel binaries or eliminating redundant kernel instantiations (\S\ref{sec:design:specialization}).
 
 \begin{table}[htbp]
   \centering
   \small
-  \renewcommand{\arraystretch}{1.1}
-  \setlength{\tabcolsep}{6pt} % 标准表格稍微宽一点也没关系
+  \renewcommand{\arraystretch}{1.2}
+  \setlength{\tabcolsep}{5pt} 
   \caption{Abstract domains and definitions in \mysys.}
   \label{fig:abstract-domain}
-  \begin{tabular}{ll}
-    \hline
-    \textbf{Domain} & \textbf{Notation} \\
-    \hline
-    Top-level Variable & $v \in \mathcal{V}$ \\
-    Address-taken Var & $o \in \mathcal{O}$ \\
-    Constant & $c := \text{Int} \mid \text{Float} \mid \text{FuncPtr}$ \\
-    Pointer & $p := \langle \mathcal{B}, \delta \rangle$ \\
-    Spec Value & $sv := c \mid p \mid \top \mid \bot$ \\
+  \begin{tabular}{rl @{\hskip 0.8cm} rl}
+    \toprule
+    \textbf{Domain} & \textbf{Notation} & \textbf{Domain} & \textbf{Notation} \\
+    \midrule
+    % Row 1
+    Top-level Variable & $v \in \mathcal{V}$ & 
+    Constant Value & $c \in \mathbb{Z} \cup \mathbb{R} \cup \mathcal{F}$ \\
+    
+    % Row 2
+    Base Object & $b \in \mathcal{B}$ & 
+    Abstract Pointer & $p := \langle b, \hat{\delta} \rangle$ \\
+    
+    % Row 3 (左侧新增 Function Object)
+    Function Object & $f \in \mathcal{F}$ & 
+    Specialized Value & $sv := c~|~p~|~\top~|~\bot \in \mathcal{SV}$ \\
+    
+    % Row 4
+    Concrete Offset & $\delta \in \mathbb{Z}$ & 
     Environment & $\mathbb{E} := \mathcal{V} \mapsto \mathcal{SV}$ \\
+    
+    % Row 5
+    Abstract Offset & $\hat{\delta} \in \mathbb{Z} \cup \{ \bot \}$ & 
     Store & $\mathbb{S} := \mathcal{O} \mapsto \mathcal{SV}$ \\
+    
+    % Row 6 (现在两边都满了)
+    Memory Location & $o := \langle b, \delta \rangle \in \mathcal{O}$ & 
     Calling Context & $\mathbb{C} := (\mathbb{E}, \mathbb{S})$ \\
-    \hline
+    \bottomrule
   \end{tabular}
+  \vspace{-15pt}
 \end{table}
 
 \subsection{Definitions}\label{sec:design:definitions}
 
-To formally describe our analysis, we define the abstract domains and symbols used in \mysys, as summarized in \autoref{fig:abstract-domain}.
+To formally describe the analysis of \mysys, we first define the abstract domains and notations used in our framework, as summarized in \autoref{fig:abstract-domain}.
 
-\paragraph{Variables and Values.}
-We classify variables into two categories: \kw{top-level variables} ($v \in \mathcal{V}$) and \kw{address-taken variables} ($o \in \mathcal{O}$).
-A \kw{top-level variable} $v$ corresponds to an SSA (Static Single Assignment) value in LLVM IR, representing a virtual register defined by an instruction or a function argument.
-An \kw{address-taken variable} $o$ represents an abstract memory object, such as a stack allocation (\texttt{alloca}) or a global variable, whose address can be manipulated.
-
-The analysis state of these variables is represented by a \kw{specialization value} ($sv \in \mathcal{SV}$).
-An $sv$ represents the abstract lattice value of a particular instruction or memory location.
-The domain $\mathcal{SV}$ forms a lattice containing the following elements:
+\textit{Memory Model and Variables.}
+We distinguish between SSA values and memory locations:
 \begin{itemize}
-    \item \textbf{Top ($\top$):} Represents an undefined or uninitialized state (identity element for the merge operation).
-    \item \textbf{Bottom ($\bot$):} Represents an unknown or overdefined state (result of conflicting values).
-    \item \textbf{Constant ($c$):} A concrete value, which can be an integer scalar, a floating-point number, or a function pointer.
-    \item \textbf{Abstract Pointer ($p$):} Represented as a pair $\langle \mathcal{B}, \delta \rangle$.
-    Here, $\mathcal{B} \subseteq \mathcal{O}$ is a set of potential base memory objects pointed to.
-    $\delta$ represents the offset from the base, which can be a concrete integer or $\bot$ (if the offset is unknown).
+    \item \kw{Top-level variables} ($v \in \mathcal{V}$) correspond to virtual registers in the LLVM IR.
+    \item \kw{Base objects} ($b \in \mathcal{B}$) represent the abstract base addresses of memory blocks created at allocation sites (e.g., \texttt{alloca} instructions, global variables, or heap allocations).
+    \item \kw{Memory locations} ($o \in \mathcal{O}$) represent specific fields within allocated objects. A location is defined as a pair $\langle b, \delta \rangle$, where $\delta \in \mathbb{Z}$ denotes a concrete byte offset relative to the base address $b$.
 \end{itemize}
 
-\paragraph{Context and State.}
-We define the program state using an \kw{Environment} $\mathbb{E}$ and a \kw{Memory Store} $\mathbb{S}$.
-The Environment $\mathbb{E}: \mathcal{V} \mapsto \mathcal{SV}$ maps top-level variables to their specialization values, tracking the states of virtual registers.
-The Memory Store $\mathbb{S}: \mathcal{O} \mapsto \mathcal{SV}$ maps address-taken variables (memory objects) to their stored values, modeling the heap and stack contents.
-Consequently, a \kw{Calling Context} $\mathbb{C}$ is defined as a tuple $(\mathbb{E}_{entry}, \mathbb{S}_{entry})$, representing the initial state upon entering a function.
-Specifically, $\mathbb{C}$ captures the specialized arguments: scalar parameters are mapped within $\mathbb{E}_{entry}$, while memory contents accessible via pointer parameters are initialized in $\mathbb{S}_{entry}$.
-
-\subsection{Calling Context Generation for C++ Operators}\label{sec:design:context_construction}
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\linewidth]{figures/sys-design/context-generation-through-pybind.png}
-  \caption{Overview of context generation through PyBind in \mysys. This figure illustrates the workflow for reconstructing the bit-level initial state of C++ operators. In the showed memory layout, dashed arrows denote pointer/reference relationships between objects, while solid arrows denote structural field-containment (i.e., one aggregate type embedding another as a member field). Elements with the same background shading denote the same underlying function or class across different stages. The suffix "\_1" of \texttt{add\_1} denotes the first \texttt{add} operator in the model and distinguishes different occurrences of the same operator kind.}
-  \Description{A diagram showing the workflow for reconstructing the bit-level initial state of C++ operators, including static analysis, trace analysis, and context synthesis. In the Memory layout subfigure, dashed arrows denote pointer/reference relationships between objects, while solid arrows denote structural field-containment (one aggregate embedding another as a member). Elements with the same background shading denote the same underlying function or class across different stages.}
-  \label{fig:context_construction}
-\end{figure}
-
-\autoref{fig:context_construction} illustrates the overall workflow for reconstructing the bit-level initial state ($\mathbb{C}_{init}$) of C++ operators. 
-The workflow bridges the gap between high-level Python execution and low-level C++ memory states through a hybrid approach.
-As shown in \autoref{fig:context_construction}, the context generation module of \mysys consists of three core components highlighted with a \textbf{green background}, namely \textbf{Static Analysis}, \textbf{Trace Analysis}, and \textbf{Context Synthesis}. 
-In the figure, elements with identical background shading refer to the same underlying function or class, consistently tracked across the different stages of the pipeline.
-The process is divided into an offline preparation phase and an online synthesis phase.
-
-\paragraph{Offline phase: static analysis of binding APIs and memory layout}
-
-The offline phase (top of \autoref{fig:context_construction}) builds a comprehensive knowledge base of the codes of C++ operator library.
-We employ a \textbf{static analysis} component (implemented based on Clang) to scan the library source code.
-This module produces two key outputs:
+\textit{Abstract Values and Lattice.}
+The analysis tracks the state of variables using \kw{Specialized Values} ($sv \in \mathcal{SV}$). The domain $\mathcal{SV}$ forms a lattice comprising the following elements:
 \begin{itemize}
-  \item \textbf{C++ Operator Metadata}: It locates Python–C/C++ bindings (e.g., mapping Python’s \texttt{add} to its C++ implementation) and records the corresponding function signatures.
-  \item \textbf{Memory Layout of C++ Types}: It recursively parses the AST to recover concrete memory layouts. 
-  For example, for the \texttt{Tensor} type, it infers a pointer to \texttt{TensorImpl}, which in turn contains nested structures such as \texttt{sizes} (within \texttt{std::vector<int>}).
+    \item \kw{Top ($\top$) and Bottom ($\bot$):} $\top$ represents an \textit{undefined} or \textit{uninitialized} state, while $\bot$ represents a generic \textit{variable} state where the value cannot be statically determined.
+    \item \kw{Concrete Constants ($c$):} These represent precise, known values. This category includes integers ($\in \mathbb{Z}$), floating-point numbers ($\in \mathbb{R}$), and \kw{Function Objects} ($f \in \mathcal{F}$), which represent references to functions targeted by direct or indirect calls.
+    \item \kw{Abstract Pointers ($p$):} Defined structurally as $\langle b, \hat{\delta} \rangle$. A pointer $p$ represents an address computed by adding an \kw{Abstract Offset} $\hat{\delta}$ to a base object $b$. Here, $\hat{\delta} \in \mathbb{Z} \cup \{\bot\}$ allows the analysis to track precise offsets when possible, or degrade to $\bot$ if the offset is variable (e.g., a runtime index).
 \end{itemize}
 
-\paragraph{Online phase: trace analysis and context synthesis}
+\textit{Context and State.}
+The program state and inter-procedural context are captured by the following mappings:
+\begin{itemize}
+    \item The \kw{Environment} $\mathbb{E}: \mathcal{V} \mapsto \mathcal{SV}$ maps top-level virtual registers to their abstract values.
+    \item The \kw{Store} $\mathbb{S}: \mathcal{O} \mapsto \mathcal{SV}$ maps memory locations to the values stored therein. By mapping from pairs of $\langle b, \delta \rangle$, the store naturally supports field-sensitive tracking of structure fields and array elements.
+    \item The \kw{Calling Context}~$\mathbb{C} := (\mathbb{E}, \mathbb{S})$ encapsulates the analysis state (environment and store) at the entry basic block of the current function. This context is determined by the caller and propagates constraints across function boundaries during inter-procedural analysis.
+\end{itemize}
 
-The online phase (bottom of \autoref{fig:context_construction}) captures runtime information from the DL model to instantiate the context.
+\input{figures/sys-design/context-generation-workflow}
+\subsection{Calling Context Generation for C++}\label{sec:design:context_construction}
 
-\textbf{Trace analysis.}
-During model execution (e.g., \texttt{torch.add(a, b, ...)}), we invoke the \textbf{trace analysis} component (built on top of the tracing mechanism of compilers such as Inductor) to inspect the execution graph.
-Unlike standard execution, this stage performs symbolic execution to preserve information about symbolic shapes.
-For example, as illustrated in \autoref{fig:context_construction}, the input script marks tensor \texttt{b} as dynamic via \texttt{mark\_dynamic}.
-Consequently, the framework’s runtime knows that the first dimension of \texttt{a} is a concrete constant \texttt{4} (from the Python layer), whereas the corresponding dimension of \texttt{b} is symbolic (unknown at compile time, denoted as ?) as indicated by the framework’s symbolic engine.
+\autoref{fig:context_workflow} illustrates the overall workflow of context generation in \mysys{}.
+The design bridges the gap between the high-level Graph IR and the low-level C++ execution state through two phases:
+(1) \textbf{Extraction} (\ding{172}--\ding{174}), which parses the IR node to generate structured metadata; and
+(2) \textbf{Construction} (\ding{175}--\ding{178}), which applies semantic rules to this metadata to reconstruct the C++ memory state.
 
-\textbf{Context synthesis.}
-Finally, the \textbf{context synthesis} module combines the offline memory-layout information with the online argument values and produces the initial calling context $\mathbb{C}_{init} = (\mathbb{E}, \mathbb{S})$ for each C++ operator (e.g., \texttt{add\_1} in \autoref{fig:context_construction}).
-Given the traced Python-level arguments, it applies a set of predefined \textbf{instantiation rules} that describe how to allocate abstract objects and initialize their fields in the environment $\mathbb{E}$ and store $\mathbb{S}$.
-During this process, the synthesizer reconstructs pointer chains between abstract objects (e.g., $o_{t} \rightarrow o_{impl} \rightarrow o_{data}$) and fills the corresponding abstract memory locations.
+\subsubsection{Extract Context Metadata from Graph IR}\label{sec:design:extract}
 
-The synthesis explicitly preserves the uncertainty observed in the trace.
-For each field, if the traced value is a concrete constant (such as a static dimension \texttt{4}), the corresponding address in $\mathbb{S}$ is initialized with a constant specialization value.
-If the value is symbolic or otherwise unknown at compile time, the rule writes $\top$ to that address, representing an “unknown but live” specialization value in our abstract domain.
-This guarantees that the constructed $\mathbb{C}_{init}$ is sound for subsequent static analysis.
+\mysys{} integrates context generation directly into the graph compilation phase.
+To explain how \mysys{} bridges the semantic gap between High-Level IR and Low-Level C++, we consider a concrete example using the \texttt{flash\_attention} operator.
+The C++ implementation of this operator is defined with a specific function signature, which determines the data types and order of arguments expected at the binary level. A simplified signature is shown below:
 
-As a concrete example, consider the instantiation rule \textsc{[Tensor]} for a tensor argument.
-Given a top-level variable $v$, a pointer to the tensor, and its corresponding traced shape list $L = [d_0, \dots, d_{n-1}]$ (where each $d_k$ may be a constant or a symbolic dimension), the rule allocates fresh abstract objects $o_t$, $o_{impl}$, and $o_{data}$, and updates the environment and store as specified in the inference rule.
-Here, $o_t$ models the \texttt{Tensor} object, $o_{impl}$ models the internal \texttt{TensorImpl}, and $o_{data}$ models the contiguous buffer storing the tensor sizes (e.g., the internal array of \texttt{std::vector<int>}).
-The offset $\delta_{sz}$ denotes the position of the \texttt{sizes} field within \texttt{TensorImpl}, and $w$ is the stride (in bytes) of one size element.
-The helper function $\alpha$ maps a concrete dimension $d_k$ to a constant specialization value in $\mathcal{SV}$, and maps a symbolic $d_k$ to $\top$, capturing that the value must be treated as unknown by the analysis.
-This rule-based instantiation mechanism can generalize to other framework-specific types and provide the foundation for constructing precise and sound C++ calling contexts in \mysys.
+\begin{center}
+\texttt{flash\_attention(Tensor query, ..., SymInt[]? seq\_lengths=None, int num\_heads=1)}
+\end{center}
 
+Here, the signature includes complex types: \texttt{Tensor} represents a multi-dimensional array, \texttt{SymInt[]} denotes an array of symbolic integers (used for dynamic dimensions), and \texttt{?} indicates an \texttt{Optional} type.
+Arguments like \texttt{num\_heads} have default values.
+Suppose a node in the Graph IR invokes this operator \ding{172}.
+During the graph compilation phase, the shape inference pass determines that the \texttt{query} argument has a shape of $[s_1, 40, s_2, 64]$, and the \texttt{seq\_lengths} argument is provided as $[s_3, s_4]$ (where $s_i$ denotes symbolic expressions).
+
+\mysys{} first extracts \ding{173} the \textit{context metadata} \ding{174} by aligning the IR node's arguments with the formal parameters of the C++ signature.
+This alignment ensures two things: (1) explicit arguments from the IR are captured with their inferred shapes and values; and (2) implicit arguments (like \texttt{num\_heads}) are filled using the default values from the signature.
+
+The context metadata $\Phi$ is a sequence $[\mathcal{M}_0, \mathcal{M}_1, \dots, \mathcal{M}_n]$, where each $\mathcal{M}_i$ is a tagged union capturing the type and value information.
+To support the nested structures seen in the example (e.g., Optional, Array), we parameterize container types with an element type $\tau$:
 \begin{equation}
-  \textsc{[Tensor]} \quad
-  \frac{
-    \begin{aligned}
-      o_{t}&, o_{impl}, o_{data}~ \text{ are fresh} \\
-      L &= [d_0, \dots, d_{n-1}] \\
-      \mathbb{E}'& = \mathbb{E}[v \mapsto \addr{o_{t}}{\mathbf{0}}]
-    \end{aligned}
-    \qquad
-    % Part 3: Store Update (Right)
-    \mathbb{S}' = \mathbb{S} \left[ 
-      \begin{aligned}
-        \addr{o_{t}}{\mathbf{0}} & \mapsto \addr{o_{impl}}{\mathbf{0}}, \\
-        \addr{o_{impl}}{\delta_{sz}} & \mapsto \addr{o_{data}}{\mathbf{0}}, \\
-        \addr{o_{impl}}{\delta_{sz} + \delta_{cap}} & \mapsto n, \\
-        \forall k \in [0, n).\; \addr{o_{data}}{k \cdot w} & \mapsto \alpha(d_k)
-      \end{aligned}
-    \right]
-  }{
-    % Conclusion
-    \langle \textsc{Tensor}(v, L), \compstate{\mathbb{E}}{\mathbb{S}} \rangle \longrightarrow \compstate{\mathbb{E}'}{\mathbb{S}'}
-  }
+  \mathcal{M} ::= \textsc{Scalar}(c) \mid \textsc{String}(s) \mid \textsc{Tensor}(\vec{d}) \mid \textsc{Array}\langle\tau\rangle(\vec{e}) \mid \textsc{Optional}\langle\tau\rangle(v)
+\end{equation}
+Here, $c$ is a scalar value, $s$ is a string, $\vec{d}$ is the tensor dimension list, $\vec{e}$ is a sequence of elements, and $v$ is an optional value.
+This intermediate representation $\Phi$ captures the complete runtime state required for context reconstruction, independent of the complexities of FFI glue code.
+For the above example of the \texttt{flash\_attention} operator, \mysys{} extracts these metadata: \texttt{query} maps to $\textsc{Tensor}([s_1, 40, s_2, 64])$, \texttt{seq\_lengths} maps to $\textsc{Optional}\langle\textsc{Array}\langle\textsc{Scalar}\rangle\rangle([s_3, s_4])$, \texttt{num\_heads} maps to $\textsc{Scalar}(1)$, retrieved from the default value.
+Hence the context metadata $\Phi_{\texttt{flash\_attention}} = [\textsc{Tensor}([s_1, 40, s_2, 64]), \dots, \textsc{Optional}\langle\textsc{Array}\langle\textsc{Scalar}\rangle\rangle([s_3, s_4]), \textsc{Scalar}(1)]$.
+
+\subsubsection{Update Call Context of C++ Entry Function using Context Metadata}\label{sec:design:update}
+
+The goal of the second phase is to synthesize the initial C++ calling context \ding{178}, denoted as $\mathbb{C}_{init} = (\mathbb{E}, \mathbb{S})$.
+The Environment $\mathbb{E}$ maps function arguments to their specialized values, while the Store $\mathbb{S}$ stores the data in memory.
+Starting with an empty context $\mathbb{C}_{0}$ \ding{176}, \mysys{} iterates through the context metadata $\Phi$, sequentially updating \ding{175} the abstract state:
+\begin{equation}
+\mathbb{C}_{init} = \mathcal{R}_{\mathcal{M}_n} \circ \dots \circ \mathcal{R}_{\mathcal{M}_1} \circ \mathcal{R}_{\mathcal{M}_0} (\mathbb{C}_0)
+\end{equation}
+For each metadata item $\mathcal{M}_i$, we apply a semantic modeling rule $\mathcal{R}_{\mathcal{M}_i}$ listed in \autoref{tab:semantic-rules} to transform the high-level metadata into the low-level memory representation by update abstract state $\mathbb{C}_i$.
+
+\subsubsection{Update Rules for Metadata}\label{sec:design:rules}
+
+We define a set of field-sensitive update rules in \autoref{tab:semantic-rules} to handle the mapping from $\mathcal{M}$ to the C++ memory model.
+We first define a helper function $\alpha(x)$ to unify concrete and symbolic values:
+\begin{equation}
+  \alpha(x) =
+  \begin{cases}
+    x & \text{if } x \text{ is a concrete constant} \\
+    \bot & \text{if } x \text{ is a symbolic expression}
+  \end{cases}
 \end{equation}
 
-\textbf{Why predefine rules for C++ calling-context synthesis?}
-Although trace analysis preserves rich symbolic information for Python-level arguments (e.g., symbolic tensor dimensions), this information is disconnected from the concrete memory layout used by C++ operator implementations.
-In particular, there is no automatically available mapping from a framework-level symbolic variable to its exact byte offset and container object in the C++ layout (e.g., an element of \texttt{TensorImpl::sizes\_} inside a nested \texttt{std::vector<int>}).
-Reconstructing such a mapping would require precisely tracking how values flow from the Python runtime into C++ auxiliary buffers.
-These behaviors are dispersed across the Python–C/C++ boundary and lose high-level semantics, making a fully automatic and sound "Python runtime values $\leftrightarrow$ C++ field offset" mapping impractical.
+\input{tables/semantic-model-rules-for-core-types}
 
-Therefore, \mysys adopts a pragmatic design: for a small set of core C++ types (such as \texttt{Tensor}), we manually define instantiation rules that specify how Python-level argument values (including symbolic dimensions) are embedded into the C++ memory state.
-In practice, the parameter types of C++ operators are very limited—primarily \texttt{Tensor}, several container types (e.g., \texttt{vector<T>}), and scalar types—so a small number of hand-written rules suffice to support a wide range of operators across libraries.
-These core abstractions are also highly stable and rarely change, making the rule set robust and low-maintenance.
-Operator developers provide these rules, and the context synthesis module interprets them to construct $\mathbb{C}_{init}$ in a sound and repeatable way.
+\noindent\textbf{Field-Sensitive Reconstruction.}
+The core challenge in this translation is the \textit{deep reconstruction} of composite types.
+As shown in \autoref{tab:semantic-rules}, types like \texttt{Tensor} are not single values but structures containing internal pointers (e.g., \texttt{sizes}).
+Our rules explicitly allocate memory for these internal fields and link them via internal pointers in $\mathbb{S}$.
+For example, when processing the \texttt{query} tensor metadata, \mysys{} first allocates the base object $\ell$ representing the tensor \texttt{query}.
+Next, \mysys allocates a logical array $\ell_{sz}$ to store the dimensions $[s_1, 40, s_2, 64]$ and updates the specialized values of the memory location $\langle\ell, \delta_{\text{sizes}}\rangle$ in $\mathbb{S}$ to point to the starting address of array $\langle\ell_{sz}, 0\rangle$.
+This ensures that when the downstream analyzer accesses \texttt{query.sizes[1]}, it correctly retrieves the value $40$.
 
-\subsection{Identify Early Return Pattern}\label{sec:design:early-return}
+\noindent\textbf{Completeness.}
+The rules in \autoref{tab:semantic-rules} cover all five core parameter types (Scalar, String, Tensor, Array, and Optional) used in the PyTorch operator interface.
+Recursive rules allow for complex compositions, such as the $\texttt{Optional}\langle\texttt{Array}\rangle$ used in the \texttt{seq\_lengths} example, ensuring the approach is generic across the standard deep learning operator schema.
 
-% \input{algorithm/early-return}
+% 首先快速讨论一下算子库中的状态码都是常量，因而可以手工设置成功和失败的状态码集合。然后基于我现在提供的四种patterns(fig:early-return-patterns), 说明有sanity checks的函数的返回值一定是状态码，且这个return的值最终只能来源于编译期常量或含有sanity checks的子调用的返回值。对于给定的函数，识别early-exit边只需要从return value反向遍历data flow图（由于返回值只涉及top-level variable， 反向遍历 llvm 的 def-use链即可），直到确定最终来源值即可。对于来源值是常量的情况，与状态码做比较，若代表失败则来源基本块到exit block的路径的每条边都被标记为 early-exit 边；否则为normal 边。若来源是变量（子调用的返回值），则可以进一步利用对这个变量做检查的 condition branch 指令来判断哪个分支通向 early-exit 的路径，从而可以标记 early-exit 边。
 
-The early-return path bypasses the normal execution path, and these two paths often join at the function's ending block. 
-At join points, merging values from both paths results in losing specialized constant information. 
-Identifying these early-return paths allows avoiding merging value information on these paths, thereby preserving only the constant values produced on the normal execution path.
-To this end, we introduce \autoref{algo:runtime-shape-check-detection} to identify and label early-return edges in the control-flow graph.
-Once identified, the subsequent constant propagation pass excludes these edges, effectively pruning the error handling paths from the data-flow analysis.
+% 至于跨过程做early-exit识别。以 C++ operator program 的 entry function 作为开始递归地上述过程内的分析。如果当前函数含有sanity check，且子调用的返回值被return了，或者子调用的返回值作为条件导致了early-exit路径，则这个子调用也要做early-exit识别。对于间接函数调用，我们将这个early-exit 识别延迟到该信息传播阶段再进行，因为那时候函数调用语句的函数对象可能会通过信息传播被确定下来。
 
-At a high level, our approach relies on a reverse data-flow analysis rooted at the function's exit block. 
-The fundamental principle is to trace the provenance of all values reaching the return instructions. 
-In LLVM IR, a return value originates from either a compile-time constant or the result of a function call (potentially merged via \texttt{phi} nodes). 
-By semantically evaluating these value sources against known error status codes, we can deduce whether a specific execution path terminates in a failure state. 
-If a value source represents an error condition, the control flow edge leading to this source is identified as an early-return path.
+\subsection{Identify Early Exit Edge}\label{sec:design:early-return}
 
-We first define two sets of status codes, $\mathcal{E}$ and $\mathcal{S}$, representing the error and success states, respectively. 
-These sets consist of compile-time constants manually configured based on the target operator library specifications (e.g., $\mathcal{S}=\{0\}$ and $\mathcal{E}=\{-1\}$).
-\autoref{algo:runtime-shape-check-detection} starts by initializing a worklist with the return values from the function's exit block.
-It employs the helper function \texttt{GetPhiOperand} to recursively trace the data flow: if a value corresponds to a \texttt{phi} node, its incoming operands are added to the worklist to resolve the merge logic; otherwise, the value is identified as a concrete \texttt{value source} originating from a specific basic block.
-
-To identify local early-return edges, the algorithm analyzes the control dependencies of the identified value source by traversing the dominator tree.
-It primarily looks for conditional branches that guard the execution of the return block.
-If a branch compares a status variable against a constant in $\mathcal{S}$ or $\mathcal{E}$, the algorithm identifies the failure path based on the comparison logic (Patterns 1 \& 2).
-However, even if no such status check is found (e.g., a local arithmetic check), if the return value source itself is a constant belonging to $\mathcal{E}$, the algorithm directly marks the path as an early return (Pattern 4).
-We detail the detection process using four common patterns found in operator libraries, as illustrated in \autoref{fig:early-return-patterns}.
+In production operator libraries, execution status is predominantly managed via compile-time constant integer status codes.
+We first define two sets of constants, $\mathcal{S}$ and $\mathcal{E}$, representing success and error states respectively (e.g., $\mathcal{S}=\{0\}$ and $\mathcal{E}=\{-1\}$).
+The identification of early-exit paths relies on the structural characteristics of the LLVM IR in functions containing sanity checks.
+As illustrated in \autoref{fig:early-return-patterns}, which depicts different situations of functions containing sanity checks, the return value comes from either a compile-time constant or the result of a sub-routine call.
+For \autoref{fig:early-return-patterns}(b) and \autoref{fig:early-return-patterns}(c), compile-time constant error code (i.e., -1) is directly returned.
+For \autoref{fig:early-return-patterns}(a) and \autoref{fig:early-return-patterns}(d), the result \texttt{\%ret} of a sub-routine call is directly returned.
 
 \begin{figure}[ht]
   \centering
-  % ==========================
-  % 左侧：算法 (占据约 45% 宽度)
-  % ==========================
-  \begin{minipage}{0.65\textwidth}
+  \begin{minipage}{0.46\textwidth}
     \centering
-    % 直接引入你的算法文件
-    % 务必确保该文件里的 \begin{algorithm} 带上了 [H] 参数！
-    \input{algorithm/early-return}
-  \end{minipage}%
-  \hfill % 左右之间的弹性间距
-  % ==========================
-  % 右侧：代码示例 (占据约 52% 宽度)
-  % ==========================
-  \begin{minipage}{0.31\textwidth}
-    \centering
-    % 字体和间距设置
-    \setlength{\tabcolsep}{1pt}
-    
-    % --- 第一行代码 (Pattern 1 & 2) ---
     \begin{minipage}{\linewidth}
-        \begin{lstlisting}[language=llvm, basicstyle=\tiny\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=1pt, xrightmargin=1pt]
-%ret = call @check
-%c = icmp ne %ret, 0
-br %c, %exit, %nxt
+        % --- C++ Column ---
+        \begin{minipage}[t]{0.4\linewidth}
+            \begin{lstlisting}[language=C++, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
+status SUCCESS = 0;
+status ERROR = -1;
+int ret = check(...);
+if (ret != SUCCESS)
+  // Check Fails
+  return ret;
+            \end{lstlisting}
+        \end{minipage}
+        \hfill
+        % --- LLVM IR Column ---
+        \begin{minipage}[t]{0.54\linewidth}
+            \begin{lstlisting}[language=llvm, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
+pred:
+ %ret = call @check(...)
+ %c = icmp ne %ret, 0
+ br %c, %exit, %nxt
 exit: 
-%v = phi i32 [%ret, %pred]
-ret i32 %v
-        \end{lstlisting}
-        \centerline{\textbf{(a) Pass-through}}
+ %v=phi [%ret, %pred], ...
+ ret %v
+            \end{lstlisting}
+        \end{minipage}
+        % Label (a) centered
+        \centerline{\textbf{(a)}}
     \end{minipage}
-    \vspace{4pt} % 上下行间距
+    \vspace{2pt} % Row spacing
+
+    % ================= Pattern 2 (b) =================
     \begin{minipage}{\linewidth}
-        \begin{lstlisting}[language=llvm, basicstyle=\tiny\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=1pt, xrightmargin=1pt]
-%ret = call @check
-%c = icmp ne %ret, 0
-br %c, %exit, %nxt
+        % --- C++ Column ---
+        \begin{minipage}[t]{0.4\linewidth}
+            \begin{lstlisting}[language=C++, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
+status SUCCESS = 0;
+status ERROR = -1;
+int ret = check(...);
+if (ret != SUCCESS)
+  // Check Fails
+  return ERROR;
+            \end{lstlisting}
+        \end{minipage}
+        \hfill
+        % --- LLVM IR Column ---
+        \begin{minipage}[t]{0.54\linewidth}
+            \begin{lstlisting}[language=llvm, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
+pred:
+ %ret = call @check(...)
+ %c = icmp ne %ret, 0
+ br %c, %exit, %nxt
 exit: 
-%v = phi i32 [-1, %pred]
-ret i32 %v
-        \end{lstlisting}
-        \centerline{\textbf{(b) Explicit Error}}
+ %v = phi [-1, %pred], ...
+ ret %v
+            \end{lstlisting}
+        \end{minipage}
+        \centerline{\textbf{(b)}}
     \end{minipage}
-    \vspace{4pt} % 上下行间距
-    % --- 第二行代码 (Pattern 3 & 4) ---
+    \vspace{2pt}
+
+    % ================= Pattern 3 (c) =================
     \begin{minipage}{\linewidth}
-        \begin{lstlisting}[language=llvm, basicstyle=\tiny\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=1pt, xrightmargin=1pt]
-%rem = srem i32 %s, 32
-%c = icmp ne i32 %rem, 0
-br %c, %exit, %nxt
+        % --- C++ Column ---
+        \begin{minipage}[t]{0.4\linewidth}
+            \begin{lstlisting}[language=C++, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
+status SUCCESS = 0;
+status ERROR = -1;
+if (s % 32 != 0)
+ // Check Fails
+ return ERROR;
+            \end{lstlisting}
+        \end{minipage}
+        \hfill
+        % --- LLVM IR Column ---
+        \begin{minipage}[t]{0.54\linewidth}
+            \begin{lstlisting}[language=llvm, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
+pred:
+ %c = icmp ne %s_MOD_32, 0
+ br %c, %exit, %nxt
 exit: 
-%v = phi i32 [-1, %pred]
-ret i32 %v
-        \end{lstlisting}
-        \centerline{\textbf{(c) Local Const Err}}
+ %v = phi [-1, %pred], ...
+ ret %v
+            \end{lstlisting}
+        \end{minipage}
+        \centerline{\textbf{(c)}}
     \end{minipage}
-    \vspace{4pt} % 上下行间距
+    \vspace{2pt}
+
+    % ================= Pattern 4 (d) =================
     \begin{minipage}{\linewidth}
-        \begin{lstlisting}[language=llvm, basicstyle=\tiny\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=1pt, xrightmargin=1pt]
-%ret = call @check
-; Direct return
-; No local check
-ret i32 %ret
-        \end{lstlisting}
-        \centerline{\textbf{(d) Tail Call}}
+        % --- C++ Column ---
+        \begin{minipage}[t]{0.4\linewidth}
+            \begin{lstlisting}[language=C++, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
+return check(...);
+            \end{lstlisting}
+        \end{minipage}
+        \hfill
+        % --- LLVM IR Column ---
+        \begin{minipage}[t]{0.54\linewidth}
+            \begin{lstlisting}[language=llvm, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
+ %ret = call @check(...)
+ ret %ret
+            \end{lstlisting}
+        \end{minipage}
+        \centerline{\textbf{(d)}}
     \end{minipage}
 
-    % 右侧整体的 Caption
-    \captionof{figure}{Simplified LLVM IR examples of common early return patterns alongside the detection algorithm.}
+    \vspace{-5pt}
+    \caption{Examples of early exit patterns. Left is C++ semantics and right is the corresponding LLVM IR snippets.}
     \label{fig:early-return-patterns}
+    \vspace{-10pt}
   \end{minipage}
+  \hfill
+  % --- 右侧大容器：算法部分 (宽度调整为 0.45\textwidth) ---
+  \begin{minipage}{0.51\textwidth}
+    \centering
+    \input{algorithm/early-return}
+    \vspace{-10pt}
+  \end{minipage}%
 \end{figure}
 
+Based on these patterns, we propose \autoref{algo:runtime-shape-check-detection} to identify early-exit edges via a reverse data-flow analysis.
+To start with, we define specific auxiliary functions: \texttt{GetPhiOperands(v)} extracts the (value, incoming block, parent block of v) 3-items tuple from a \texttt{phi} node \texttt{v}; \texttt{FindBranchUser(v)} locates the conditional branch instruction that depends on value $v$; and \texttt{GetFailSuccessor(br, v, E, S)} evaluates the branch condition to identify which successor block corresponds to the error state.
+The analysis begins at the return instruction $Inst_{ret}$ within the function's exit block $B_{exit}$.
+We utilize a worklist $W$ to store pairs of $(v, B_{in}, B_{to})$, representing a value $v$ flowing into the analysis site from a predecessor block $B_{in}$.
+The analysis iteratively processes items from $W$ by tracing the Def-Use chain backwards.
+If the popped value $v$ is a \texttt{phi} node (checked via \texttt{IsPhi}), its operands are retrieved using \texttt{GetPhiOperands} and pushed back into $W$, effectively resolving control flow merges (at line 13 of \autoref{algo:runtime-shape-check-detection}).
+Based on the source type of the return value, there are two process methods:
 
-% \begin{figure}[ht]
-%   \centering
-%   % Row 1: Pattern 1 & 2
-%   \begin{minipage}{0.25\textwidth}
-%       \centering
-%       % 顶格写
-%       \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
-%   %ret = call @check
-%   %c = icmp ne %ret, 0
-%   br %c, %exit, %nxt
-% exit: ; Joined block
-%   %v = phi i32 [%ret, %pred], ...
-%   ret i32 %v
-%       \end{lstlisting}
-%       \textbf{(a) Pass-through}
-%   \end{minipage}
-%   \hfill
-%   \begin{minipage}{0.25\textwidth}
-%       \centering
-%       % 顶格写
-%       \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
-%   %ret = call @check
-%   %c = icmp ne %ret, 0
-%   br %c, %exit, %nxt
-% exit: ; Joined block
-%   %v = phi i32 [-1, %pred], ...
-%   ret i32 %v
-%       \end{lstlisting}
-%       \textbf{(b) Explicit Error}
-%   \end{minipage}
-%   \hfill
-%   \begin{minipage}{0.25\textwidth}
-%       \centering
-%       % 顶格写
-%       \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
-%   %rem = srem i32 %s, 32
-%   %c = icmp ne i32 %rem, 0
-%   br %c, %exit, %nxt
-% exit: ; Joined block
-%   %v = phi i32 [-1, %pred], ...
-%   ret i32 %v
-%       \end{lstlisting}
-%       \textbf{(c) Local Constant Error}
-%   \end{minipage}
-%   \hfill
-%   % Row 2: Pattern 3 & 4
-%   \begin{minipage}{0.2\textwidth}
-%       \centering
-%       % 顶格写
-%       \begin{lstlisting}[language=llvm, basicstyle=\scriptsize\ttfamily, frame=single, numbers=none, breaklines=true, xleftmargin=2pt, xrightmargin=2pt]
-% %ret = call @check
-% ; Direct return
-% ; No local check
-% ret i32 %ret
-%       \end{lstlisting}
-%       \textbf{(d) Tail Call}
-%   \end{minipage}
+\begin{enumerate}
+    \item \textbf{Constant Source:} When the source $v$ is a constant (as in \autoref{fig:early-return-patterns}(b) and (c)), we verify if it represents a failure state by checking if $v \in \mathcal{E}$.
+    If true, the path from $B_{in}$ to the basic block  $B_{to}$ that contains the \texttt{phi} instruction is confirmed as an early-exit path.
+    We invoke \texttt{MarkEarlyExitEdge} on the control flow edge $B_{in} \rightarrow B_{to}$, marking it as an early-exit edge.
+    
+    \item \textbf{Variable Source:} When $v$ is the result of a function call (checked via \texttt{IsCall}), we call \texttt{FindBranchUser(v)} to locate the sanity check statements whose condition is associated with $v$.
+    Using \texttt{GetFailSuccessor}, we determine which successor block $B_{fail}$ leads to the error return. 
+    If a valid $B_{fail}$ exists, the edge leading to it is marked via \texttt{MarkEarlyExitEdge}.
+    For tail calls without any checks, no local edge is marked.
+\end{enumerate}
 
-%   \Description{Simplified LLVM IR examples showing four common early return patterns: Pass-through, Explicit Error, Local Constant Error, and Tail Call.}
-%   \caption{Simplified LLVM IR examples of common early return patterns handled by Algorithm~\ref{algo:runtime-shape-check-detection}}
-%   \label{fig:early-return-patterns}
-% \end{figure}
+\autoref{algo:runtime-shape-check-detection} is an inter-procedural analysis to handle cases (a)(b)(d) of \autoref{fig:early-return-patterns}.
+When the returned value is from a callee, that callee is identified as containing sanity checks (Line 19 of \autoref{algo:runtime-shape-check-detection}).
+However, a challenge arises when an explicit error constant is returned (e.g., \autoref{fig:early-return-patterns}(b)).
+In such cases, there is no direct data-flow dependency between the returned constant and the return value of the callee.
+Furthermore, the basic block $B_{in}$ returning the error constant is not necessarily the block $B_{check}$ containing the actual sanity check statements due to intermediate error reporting logic.
 
-\textbf{Pass-through.} 
-As shown in \autoref{fig:early-return-patterns}(a), the code checks a status variable returned by a subroutine and returns it directly upon failure.
-The algorithm traces the return value \texttt{\%v} back to its source, \texttt{\%ret}.
-By analyzing the dominator tree, it finds the predecessor's branch condition \texttt{\%ret != 0}.
-Since this implies the edge to \texttt{exit} is an error path, and the return value matches the checked variable, the incoming edge is marked as an \texttt{Early-Return}.
-Subsequently, it recursively invokes \texttt{RunOnFunction} on the callee \texttt{@check}.
+To address this, we leverage the control dependency inherent in the Control Flow Graph (CFG).
+We calculate a modified CFG $G'$ where edges along the path from $B_{in}$ to $B_{exit}$ are removed, treating $B_{in}$ as an independent sink.
+Then we locate $B_{check}$ by calculating the Immediate Common Dominator (ICD) of the error return block $B_{in}$ and the function's normal exit block $B_{exit}$ on $G'$.
+This approach is justified by the structural property of early exits: $B_{check}$ serves as the unique divergence point that splits execution into either the failure path (ending at $B_{in}$) or the normal path (reaching $B_{exit}$).
+In the modified graph $G'$, $B_{check}$ is the nearest node that strictly dominates both outcomes.
 
-\textbf{Explicit Error.} 
-In \autoref{fig:early-return-patterns}(b), the code checks a status variable but explicitly returns a constant error code.
-Here, the value source is the constant \texttt{-1}.
-The algorithm verifies that \texttt{-1} belongs to $\mathcal{E}$ and detects that the guarding branch targets the \texttt{exit} block upon failure.
-Although the returned value differs from the checked variable, the semantic link via control dependency allows the algorithm to mark the edge as \texttt{Early-Return} and recursively analyze the callee.
+The \texttt{TraceGuardingBranch} function of \autoref{algo:runtime-shape-check-detection} calculates  $B_{check}$ and inspects the conditional branch instruction of $B_{check}$.
+If the condition depends on a function call's return value compared against the error set $\mathcal{E}$, \texttt{TraceGuardingBranch} identifies that callee function also contains sanity check.
+\texttt{TraceGuardingBranch} then recursively analyzes on this callee function to propagate the early-exit detection.
 
-\textbf{Local Constant Error.}
-\autoref{fig:early-return-patterns}(c) illustrates a case where a local shape check (e.g., alignment check \texttt{s \% 32 != 0}) leads to an immediate error return.
-The value source is the constant \texttt{-1}.
-In this case, even if the algorithm does not find a status-code-based check in the dominator tree (since the check is arithmetic), it identifies that the return value \texttt{-1} belongs to the error set $\mathcal{E}$.
-Consequently, the algorithm treats the path originating from this value source as a confirmed failure path and marks the edge leading to the exit block as \texttt{Early-Return}.
+Some implementations may utilize runtime exceptions for error handling.
+In such cases, identification is trivial: control flow edges leading to exception handling blocks are directly marked as early-exit edges.
+Finally, \mysys guarantees that all identified early-exit edges correspond strictly to exception handling or error reporting paths.
+In a runtime scenario, if any such path is taken, the operator program terminates immediately, ensuring that the computationally intensive kernel function is never launched.
+Consequently, we can safely ignore any value states propagated along these marked early-exit edges.
+This allows the analyzer to focus exclusively on valid execution paths that influence the actual kernel configuration.
 
-\textbf{Tail Call.}
-\autoref{fig:early-return-patterns}(d) shows a tail call pattern with no local checks.
-The return value source is \texttt{\%ret}.
-Since no guarding conditional branch is found, no local edge is marked.
-However, identifying that the return value comes from a call instruction allows the algorithm to recursively apply the analysis to \texttt{@check}, ensuring interprocedural soundness.
+\subsection{Inter-Procedural Information Propagation for Host-Side Programs}\label{sec:design:propagation}
 
-
-Complementing the local identification, the inter-procedural analysis is essential as status codes typically originate from nested subroutine calls.
-Therefore, whenever the algorithm identifies a value source associated with a function call—whether it matches the failure branch in Patterns 1 and 2, or is a direct tail call in Pattern 3—it identifies the callee function and recursively invokes \texttt{RunOnFunction}.
-This ensures that the "early return" property is correctly propagated from the innermost shape check functions up to the entry points of the operator.
-
-
-\subsection{Information Propagation on Host-Side Programs and Device Kernel Specialization}\label{sec:design:propagation}
-
-Our primary objective is to optimize the performance of device kernel functions. 
-To this end, \mysys serves two distinct roles:
-(1) For host-side functions, it propagates precise semantic information (pointer targets, function objects) to kernel launch points.
-(2) For device-side functions, it performs kernel specialization via parameter substitution and constant folding based on the propagated context.
-
-\subsubsection{Inter-Procedural Information Propagation for Host-Side Programs}
+Our primary objective is to optimize the performance of device kernel functions and eliminate those kernels not called at runtime. 
+To this end, \mysys \mysys employs a unified inter-procedural analysis framework integrating pointer analysis, function object propagation, and scalar constant propagation for the host-side programs.
+\mysys propagates precise semantic information up to the kernel launch sites.
 
 \mysys employs a unified inter-procedural analysis framework integrating pointer analysis, function object propagation, and scalar constant propagation.
 Operating on the CFG, the analysis maintains a symbolic environment $\mathbb{E}$ and a flow-sensitive memory store $\mathbb{S}$.
 We detail the handling of key program constructs below.
 
-\paragraph{Pointer Arithmetic and Alias Analysis}
+\textit{Pointer Arithmetic and Alias Analysis}
 We represent a pointer value as a pair $\langle \mathcal{B}, \delta \rangle$. 
 For pointer arithmetic (e.g., \texttt{getelementptr}), we update the offset $\delta$ while preserving the base set $\mathcal{B}$.
 To balance precision and overhead, we bound $|\mathcal{B}| \le 5$, demoting the base to \texttt{Unknown} if this limit is exceeded.
 Function pointers are similarly propagated to support indirect calls.
 To refine alias analysis when bases are unknown, we leverage LLVM's Type-Based Alias Analysis (TBAA) metadata to restrict the scope of potential memory conflicts to type-compatible objects.
 
-\paragraph{Memory Operations}
+\textit{Memory Operations}
 The memory store $\mathbb{S}$ is updated and accessed by three primary instructions.
 Allocation instructions introduce new abstract locations into $\mathbb{S}$, managed with context-sensitive modeling.
 Store instructions update the flow-sensitive store $\mathbb{S}$ local to the current basic block: writing to a pointer with a deterministic base performs a \kw{strong update} (replacement), whereas writing to an unknown base or offset triggers a \kw{weak update} (conservative invalidation/merge).
 Load instructions simply retrieve the current specialization value from $\mathbb{S}$ corresponding to the accessed address.
 
-\paragraph{Context-Sensitive Function Calls}
+\textit{Context-Sensitive Function Calls}
 We employ a context-sensitive approach akin to abstract interpretation.
 Each call site generates a specialized calling context based on the actual arguments and the current store $\mathbb{S}$.
 The algorithm recursively analyzes the callee, using memoization to cache results for identical contexts.
-Recursion is handled by tracking the call stack and returning a conservative "top" value ($\top$) upon detecting cycles, ensuring termination.
+Recursion is handled by tracking the call stack and returning $\bot$ upon detecting cycles, ensuring termination.
 
-\paragraph{Control Flow Processing}
+\textit{Control Flow Processing}
 We adopt a hybrid strategy for loops, prioritizing a \kw{Per-Iteration Analysis} that simulates execution iteration by iteration.
 If loop conditions become non-constant, the analysis falls back to a \kw{Maximal Fixed-Point (MFP)} iteration.
 Within these modes, conditional branches determine edge liveness: if a condition evaluates to a constant, the non-taken edge is marked \texttt{Inactive}; otherwise, both branches are marked \texttt{Active}.
 This liveness information is critical for pruning unreachable paths during propagation.
 
-\paragraph{Context Merging and Early-Return Integration}
+\textit{Context Merging and Early-Exit Integration}
 At control flow convergence points, we merge the incoming stores $\mathbb{S}$ from all \texttt{Active} predecessors and merge incoming specialization values for \texttt{PHI} instructions.
 The merging applies standard lattice operations.
 Crucially, this step integrates with the optimization described in \cref{sec:design:early-return}.
-Any predecessor edge marked as an \texttt{early-return} path, or determined to be unreachable by the branch analysis, is treated as \texttt{Inactive}.
+Any predecessor edge marked as an \texttt{early-exit} path, or determined to be unreachable by the branch analysis, is treated as \texttt{Inactive}.
 Consequently, the memory states and values from these inactive blocks are excluded entirely from the merge operation.
 This prevents the pollution of the analysis state by imprecise or error-handling logic, significantly improving the precision of the propagated information at join points. stores $\mathbb{S}$ from all predecessors.
 
-\subsubsection{Device Kernel Specialization}
+\subsection{Kernel Specialization and Library Pruning} \label{sec:design:specialization}
 
-Once the inter-procedural analysis reaches a kernel launch point, \mysys leverages the propagated context to perform kernel specialization. 
-We extract concrete values from the host-side environment $\mathbb{E}$ and memory store $\mathbb{S}$ to replace the corresponding kernel parameters. 
-By substituting variable accesses with constants, we resolve data dependencies and control flow decisions at compile time, transforming the generic kernel into a highly optimized, context-specific version.
+Based on the context derived from the inter-procedural analysis, \mysys performs two key optimizations: generic kernel specialization and pruning redundant template instantiations for manual specialized library.
 
-For kernels invoked via driver launch APIs, the mapping from host arguments to device parameters is indirect. 
-We construct the specialization context by extracting the target kernel function object from the API call. 
-Using predefined ABI (Application Binary Interface) rules, we map the launch API's argument array to the kernel's formal parameters, ensuring that the constant values identified on the host side are correctly bound to the device function's context.
+For generic kernels, \mysys substitutes the variable inside the kernel with the concrete schedule parameters identified from the analysis on the host-side program.
+Then \mysys employs a sequence of optimization passes, specifically \texttt{IPSCCP}, \texttt{Loop Unrolling}, and \texttt{CFG Simplification}. 
+These passes exploit the newly introduced constants to fold computations and simplify control structures, generating a highly optimized kernel binary.
 
-Following parameter substitution, we employ a tailored pipeline of standard LLVM optimization passes to exploit the newly exposed optimization opportunities. 
-As implemented in our pass manager, this pipeline iteratively applies \texttt{Interprocedural Sparse Conditional Constant Propagation (IPSCCP)} and \texttt{Instruction Combining} to fold computations involving the new constants. 
-Furthermore, we execute aggressive loop transformations—including \texttt{Loop Unrolling} and \texttt{Loop Invariant Code Motion (LICM)}, alongside \texttt{Global Value Numbering (GVN)} and \texttt{CFG Simplification}. 
-These passes work in concert to eliminate dead code, simplify control flow, and remove redundancies, significantly reducing the runtime overhead of the specialized kernel. 
+For manual specialized libraries, \mysys reduces code size by leveraging path liveness information from the host analysis. 
+During constant propagation, we identify \texttt{Dead Paths}, i.e., execution branches where guard conditions are evaluated to be false based on deterministic constants.
+If a specific template function instance is invoked only on these dead paths, \mysys determines it is unreachable at runtime and removes the instance entirely.
+This selective pruning ensures that only potentially active operator instances are retained in the final binary.

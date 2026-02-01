@@ -1,0 +1,58 @@
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        node distance=1.6cm,
+        % 定义样式以匹配你之前的需求
+        simplebox/.style={draw, rectangle, thick, rounded corners=2pt, align=center, inner sep=2pt, fill=white},
+        stdarrow/.style={->, >=latex, thick},
+        arrowlabel/.style={font=\footnotesize, align=center, midways, above}
+    ] 
+
+        % --- Nodes ---
+        
+        % Node 1: DL Systems
+        \node[simplebox, minimum height=1cm] (dlsys) {
+            DL Systems
+        };
+
+        % Node 2: Context Generation
+        \node[simplebox, right=of dlsys, minimum height=1cm] (ctxgen) {
+            Context\\[-2pt]Generation\\(\S\ref{sec:design:context_construction})
+        };
+
+        % Node 3: Information Propagation
+        \node[simplebox, right=of ctxgen, minimum height=1cm] (host) {
+            Information\\[-2pt]Propagation\\(\S\ref{sec:design:early-return} \& \S\ref{sec:design:propagation})
+        };
+
+        % Node 4: Kernel Specializer
+        \node[simplebox, right=of host, minimum height=1cm] (spec) {
+            Kernel\\[-2pt]Specializer\\(\S\ref{sec:design:specialization})
+        };
+
+        % Node 5: Final Output - 改为纯文本，去掉方框 [Requirement 1]
+        \node[right=0.8cm of spec, align=left, font=\small\bfseries] (final) {
+            Specialized Kernels\\or Debloated Library
+        };
+
+
+        % --- Connections ---
+
+        % Arrow 1
+        \draw[stdarrow] (dlsys) -- node[above, font=\footnotesize, align=center] {Model-specific\\Constants} (ctxgen);
+
+        % Arrow 2
+        \draw[stdarrow] (ctxgen) -- node[above, font=\footnotesize, align=center] {Calling\\Context} (host);
+
+        % Arrow 3
+        \draw[stdarrow] (host) -- node[above, font=\footnotesize, align=center] {Constant\\Schedule\\Parameters} (spec);
+
+        % Final arrow to output
+        \draw[stdarrow] (spec) -- (final);
+
+    \end{tikzpicture}
+    % [Requirement 2] 增加 Caption 和 Label
+    \caption{The overall workflow of \mysys.}
+    \label{fig:overall_workflow}
+    \vspace{-10pt}
+\end{figure}

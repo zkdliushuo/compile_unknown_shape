@@ -1,124 +1,294 @@
-\section{Background}
-\label{sec:overview}
-\subsection{Ascend Architecture and Challenges}
+\section{Motivation and Challenges}
+\label{sec:motivation}
 
-\begin{figure}
-  \includegraphics[width=0.7\textwidth]{figures/motivation/ascend-data-path.png}
-  \caption{Overview of Ascend Architecture. The figure illustrates the key components of the Ascend architecture.\scnote{Figure 3 too blurry}}
-  \label{fig:ascend_architecture}
+In this section, we first illustrate the opportunity for constant propagation across the deep learning (DL) software stack (\S\ref{sec:motivation:auto-spec}). 
+Next, we analyze the challenges and present our design insights (\S\ref{sec:motivation:challenges}).
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth]{figures/motivation/motivating-example.png}
+    \caption{A simplified example illustrating how constant information propagation of the Flash-Attention operator across Python and C++. The final constants (e.g., \texttt{stages}) derived from \initialconsts (e.g., \texttt{q->size(1) = 40}) can be used to specialize the device kernel \texttt{kernel\_fa}.}
+    \label{fig:motivating-example}
+    \vspace{-10pt} 
 \end{figure}
 
+\subsection{Motivation of Automatic Kernel Specialization}
+\label{sec:motivation:auto-spec}
 
-The Ascend architecture, as illustrated in \autoref{fig:ascend_architecture}, is designed to efficiently handle diverse deep learning workloads by incorporating specialized hardware components. Key components include:
-\begin{itemize}
-    \item \textbf{Computation Units:} The architecture features heterogeneous computation units: \textbf{Scalar Units} for control flow processing, instruction dispatching, and scalar arithmetic; \textbf{Vector Units} for SIMD (Single Instruction, Multiple Data) operations; and \textbf{Cube Units} for high-throughput matrix multiplications. These units collaborate to execute complex neural network operators efficiently.
-    
-    \item \textbf{Memory Hierarchy:} Ascend employs a multi-tiered memory hierarchy with specialized buffers. The L0 A/B/C buffers are dedicated to Cube Units, while the Unified Buffer serves Vector Units. This design facilitates high-bandwidth data movement between different storage tiers, optimizing memory access patterns.
-    
-    \item \textbf{Data Movement Mechanisms:} The architecture includes flexible Direct Memory Access (DMA) mechanisms that enable efficient data transfer between computation units and memory buffers. This is crucial for maintaining high pipeline utilization and minimizing latency.
-\end{itemize}
+This section elucidates the opportunity for kernel specialization by tracing the flow of constant values across the software stack and demonstrates the necessity of this approach by analyzing the bottlenecks inherent in generic kernels on a specific hardware platform, the Ascend~\cite{liao2019davinci}, a kind of widely employed AI accelerators.
 
-While these components provide a highly programmable and high-performance platform, they introduce significant challenges in kernel optimization compared to general-purpose GPUs. 
-Ascend developers must meticulously manage parallelism and load balancing through a vast set of parameters controlling tile sizes, iteration orders, buffer counts, and data movement patterns across the memory hierarchy. 
-For dynamic-shape models (e.g., Transformers with runtime-variable sequence lengths), these scheduling parameters, along with tensor shapes and offsets, are passed as formal arguments to kernel functions. 
+\subsubsection{Cross-Layer Constant Value Flow}
+\label{sec:motivation:flow}
 
-At the start of kernel execution, these parameters must be loaded from global memory into registers or the Unified Buffer. The Scalar Unit then executes control flow instructions and scalar computations dependent on these variables. 
-Since the Scalar Unit typically has a limited number of general-purpose registers, processing a large number of dynamic parameters triggers frequent load/store operations and register spilling. 
-This results in a \textbf{Scalar Bottleneck}, where the latency of the Scalar Unit limits the overall throughput. 
-In workloads with low computational intensity but high scheduling complexity, such as Flash Decoding, this scalar overhead consumes a significant portion of the execution time.
+The \textbf{\textit{partial dynamics}} characteristic of DL models implies that while input tensors vary, there are many \initialconsts.
+\autoref{fig:motivating-example} illustrates how these constants propagate through the software stack.
+When a Python-level operator (e.g., \texttt{torch.fa}) is invoked, arguments flow through the FFI layer to the Host C++ library.
+While some parameters are runtime-dependent (e.g., batch size), others are derived from the fixed model configuration (e.g., number of attention heads $h=40$).
+Subsequently, within the Host C++ runtime, the software pipeline depth (i.e., \texttt{stages}) are computed based on $h$ to configure the memory access latency hiding inside the kernel \texttt{kernel\_fa}.
 
-We observe that while input shapes vary dynamically, many kernel parameters effectively become \textit{compile-time constants} once model configurations (e.g., attention heads, embedding sizes) and hardware specifications are fixed. 
-This reveals an opportunity to accelerate Ascend kernels by identifying these constants and generating specialized kernels via the native compiler. 
-However, identifying these constants automatically from C++ based operator libraries presents unique challenges, discussed next.
+This observation suggests an opportunity: by statically tracking \initialconsts from the Python front-end down to the kernel launch, we can identify runtime invariants that are currently treated as variables.
+For generic kernels, this enables aggressive specialization of the device code.
+Furthermore, for manually specialized libraries, this allows to identify the specific kernel instantiations not matching the derived compile-time constants.
+This facilitates the pruning of unreachable code paths for a specific model, mitigating binary bloat.
 
-\subsection{Current Kernel Specialization Methods}
+\subsubsection{Disadvantages of Generic Kernels and Manually Specialized Libraries}
+\label{sec:motivation:disadvantages}
 
-There are two primary methods are currently employed for specializing kernel parameters in other DSA operator libraries(e.g., GPU): Ahead-of-Time (AoT) compilation and Just-in-Time (JIT) compilation.
-\autoref{lst:compare_aot_jit_without_graph} demonstrates specializing the tile size parameter \kw{T} in a simple addition kernel using both methods.
+\textit{Bottleneck Analysis for Generic Kernels.}
+Operator libraries for Ascend still have to adopt generic kernels, mainly due to their complex schedule strategies and the great number of schedule parameters.
+In this design, almost all schedule parameters are passed as runtime arguments from the Host.
+Since the compiler treats these parameters as variables, it cannot perform aggressive optimizations like constant folding.
+To understand the impact of this design, we examine the execution flow on Ascend, a DL accelerator based on SIMD execution model, as shown in \autoref{fig:fa_on_ascend}.
+
+On Ascend, the Cube and Vector units execute the primary tensor operations (e.g., MatMul on Cube and Softmax on Vector), while the architecture provides sophisticated programmable memory hierarchies.
+The kernel must explicitly manage the chunk size and data layout at every level, as well as the data movement and layout transformations between these levels.
+Besides, the Scalar unit acts as the central control unit, responsible for scalar data process, instructions dispatch, and handling control flows (such data paths are indicated by red dashed lines, for simplicity we only display some of them).
+For example, the kernel moves a tile of the tensor $Q_{GM}$ from the global memory (GM) to the L1 memory unit per time, denoted as $Q_{L1}$.
+The Scalar unit is responsible to calculate the starting address of the data movement based on the input shapes, layout strides, tile factors on all dimensions, pipeline depths.
 
 \begin{figure}[htbp]
-\begin{minipage}{0.39\textwidth}
-\begin{lstlisting}[basicstyle=\ttfamily\footnotesize, caption={Templated kernel for kernel \kw{add}}, captionpos=b, frame=single]
-template <int T>
-void kernel(float* A, float* B, float* C, int s) {
-  for (int i = 0; i < s; i += T) {
-    for (int j = 0; j < T; ++j) {
-      int idx = i + j;
-      if (idx < s)
-        C[idx] = A[idx] + B[idx];
-    }
-  }
-}
-\end{lstlisting}
-\end{minipage}
-\hfill
-\begin{minipage}{0.56\textwidth}
-\begin{lstlisting}[firstnumber=11, basicstyle=\ttfamily\footnotesize, caption={AoT and JIT implementations of operator \kw{add}}, captionpos=b, frame=single]
-status aot_add(Tensor& A, Tensor& B, Tensor& C) {
-  int t = 0; tiling(A.size(0), t);
-  switch (t) {
-    case 16: kernel<16>(..., A.size(0)); break;
-    case 32: kernel<32>(..., A.size(0)); break;
-}}
-status jit_add(Tensor& A, Tensor& B, Tensor& C) {
-  int t = 0; tiling(A.size(0), t);
-  auto kernel_ = run_compile(kernel, t);
-  kernel_(A.ptr, B.ptr, C.ptr, A.size(0));
-}
-\end{lstlisting}
-\end{minipage}
-\caption{Comparison of AoT compilation and JIT compilation for kernel specialization of add operator.}
-\label{lst:compare_aot_jit_without_graph}
+  \centering
+  \includegraphics[width=0.8\textwidth]{figures/motivation/ascend-data-path.png}
+  \caption{Execution flow of Flash Attention kernel \texttt{kernel\_fa} on the Ascend architecture.
+  The \textbf{Scalar} unit acts as the central scheduler. 
+  It continuously perform scalar calculations and dispatches instructions based on runtime parameters. 
+  The heavy scalar workload required by generic kernels may lead to a scalar bottleneck.}
+  \Description{Diagram showing the interaction between Scalar, Cube, Vector, L1, and GM units on Ascend.}
+  \label{fig:fa_on_ascend}
+  \vspace{-10pt} 
 \end{figure}
 
-\textbf{AoT Compilation:} As shown in \kw{aot\_add}, developers manually precompile kernels for a predefined set of parameter values, enumerated using a \kw{switch-case} statement. 
-This approach enjoys little runtime overhead but is severely limited by the \textit{code bloat} problem. 
-With operator libraries often containing dozens of parameters, exhaustively enumerating all possible combinations becomes infeasible.
-As a result, AoT methods can only specialize a small subset of parameters.
-Moreover, for a specific model deployment, most parameters are fixed, meaning only a tiny fraction of these precompiled kernels are ever utilized, while the rest remain redundant.
 
-\textbf{JIT Compilation:} As shown in \kw{jit\_add}, the parameter value \kw{t} is determined at runtime, and a specialized kernel \kw{kernel\_} is compiled for the specific \kw{t}. 
-This approach provides maximum flexibility but incurs significant overhead due to runtime compilation and storage requirements. 
-For latency-sensitive inference scenarios, this overhead is often prohibitive, even when caching mechanisms are employed to reuse compilation results.
+In generic kernels, the Scalar unit may be over-occupied.
+Since the Scalar unit typically possesses much lower computing power than a general-purpose host CPU, excessive scalar calculations related to schedule parameters can overload the unit.
+Worst, too many scalar intermediates may causes registers spill since there are only 32 general-purpose registers. 
+As a result, the powerful Cube and Vector units will stall to await instruction dispatch or scalar operands.
+Furthermore, generic kernels often involve complex control flows (e.g., branching to handle different operator variants), which exerts heavy pressure on the instruction cache (I-Cache).
+Frequent instruction jumps in such complex logic inevitably lead to I-Cache misses and pipeline flushes.
+Finally, when loop bounds remain unknown at compile time, the compiler struggles to perform loop unrolling. 
+Consequently, instruction scheduling is confined to the scope of a single iteration, preventing the effective overlapping of memory access and computation.
 
-The key observation is that once model hyperparameters and hardware configurations are fixed, most kernel parameters can be treated as compile-time constants. 
-Existing AoT and JIT methods attempt to specialize a small subset of these parameters but fail to fully exploit this insight due to their inherent limitations. 
-To overcome these challenges, it is essential to design a constant specialization framework capable of automatically identifying compile-time constants based on the specific model context and generating specialized kernels offline, thereby avoiding both code bloat and runtime overhead.
+We further study this impact by profiling key operators from the \textbf{Qwen2-1.5B} model on the Ascend NPU.
+\autoref{fig:perf_stats} presents the ratio of scalar instructions and I-Cache miss rates.
+The data reveals that LLMs' operators exhibit high proportion of scalar instructions and suffer from considerably high I-Cache miss rate.
 
-\subsection{Existing Constant Propagation Techniques}
+\textit{Code Bloat in Manually Specialized Libraries.}
+High-performance GPU libraries like FlashInfer~\cite{ye2025flashinfer} rely on C++ template metaprogramming to enable aggressive compiler optimizations. 
+To avoid runtime JIT overhead in serving scenarios, these libraries must pre-instantiate kernels for the Cartesian product of all template parameters.
+Taking FlashInfer as an example, where template parameters are denoted as $\mathcal{T} = \langle D, M, G, P, T_{tile} \rangle$, covering standard head dimensions ($D \in \{64, 128, 256\}$), mask modes ($M \in \{None, Causal\}$), diverse GQA sizes ($G \in \{1, 2, 4, 5, 6, 7, 8\}$), Position Embedding ($P \in \{None, RoPE, ALiBa\}$) and $\sim 10$ different tile size configurations $T_{tile}$ results in over 1000 binary instantiations.
 
-To achieve automatic specialization, one must rely on static program analysis to deduce constant values. Existing constant propagation techniques can be broadly categorized into two methodologies:
+This design causes significant binary bloat.
+For a specific deployment like \textbf{Qwen2-1.5B} ($D=128, G=6, M=Causal, P=RoPE$), the runtime utilizes only about 10 kernel instantiations.
+Consequently, relative to the $\sim 1000$ available kernels, most kernels are dead for a given model.
+Crucially, while this pre-instantiation strategy is manageable on GPUs due to relatively simple schedule, it is ill-suited for Ascend.
+As discussed in \S\ref{sec:motivation:disadvantages}, achieving peak performance on Ascend requires a massive set of fine-grained schedule parameters.
+The resulting combinatorial explosion makes static specialization infeasible, forcing Ascend libraries to rely on suboptimal generic kernels.
 
-\begin{itemize}
-    \item \textbf{Data Flow Analysis (DFA):} 
-    DFA is a classic algorithm grounded in the theory of Abstract Interpretation. It models the program as a Control Flow Graph (CFG) and propagates abstract values (e.g., lattice elements like \textit{Top}, \textit{Constant}, \textit{Bottom}) iteratively until a fixed point is reached. 
-    DFA offers a good balance between precision and efficiency. 
-    However, standard DFA is typically \textbf{path-insensitive}. When control flows merge (e.g., after an \kw{if-else} block), DFA merges the abstract states from all incoming paths using a \kw{join} operator. This often results in a loss of precision, degrading a constant value to \textit{Unknown} (Top) if branches disagree.
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}{0.47\textwidth}
+      \includegraphics[width=\linewidth]{figures/motivation/metrics_analysis.pdf} 
+      \caption{Performance profiling of generic kernels. Lower is better for both metrics. Decoding Attention (\textbf{D-Attn}), Prefill Attention (\textbf{P-Attn}), Feed Forward Networks (\textbf{FFN}), and MatMul (\textbf{MM}).}
+      \label{fig:perf_stats}
+      \vspace{-10pt} 
+  \end{minipage}
+  \hfill
+  \begin{minipage}{0.47\textwidth}
+      \includegraphics[width=\linewidth]{figures/motivation/parameter_breakdown.pdf} 
+      \caption{Number of schedule parameters of representative kernels. The vast majority are runtime invariants (Invariable Params), validating the potential for specialization.}
+      \label{fig:param_stats}
+      \vspace{-10pt} 
+  \end{minipage}
+\end{figure}
 
-    \item \textbf{Symbolic Execution (SE):} 
-    SE explores individual program paths, maintaining the program state as symbolic expressions and tracking path constraints. 
-    It is \textbf{path-sensitive}, distinguishing values across different execution paths, which offers higher precision than DFA. 
-    However, SE suffers from the \textbf{path explosion} problem. As the number of branches increases, the number of paths grows exponentially, making SE computationally prohibitive for analyzing large-scale C++ operator libraries.
-\end{itemize}
+\subsubsection{Why Automatic Kernel Specialization is Beneficial?}
 
-These techniques are mature for single-language analysis (e.g., analyzing pure C++ or LLVM IR). However, applying them to Deep Learning (DL) frameworks introduces a novel \textbf{Cross-Language Analysis} challenge. 
-DL frameworks typically use Python for the frontend and C++ for the backend operator library. 
-There exists a significant "semantic gap" between the Python runtime (where constant shape values are known) and the C++ static analysis environment (where the kernel code resides).
+Our analysis of kernel parameters in \autoref{fig:param_stats}, which breaks down the schedule parameters of representative kernels into variable and invariable categories, reveals a critical insight: the overwhelming majority of kernel parameters are runtime invariants.
+By globally propagating \initialconsts to resolve most schedule parameters at compile time, there are twofold benefits.
+First, for operator libraries adopting generic kernels, this enables the generation of model-specific specialized kernels. 
+The compiler can perform aggressive constant folding on these parameters, drastically reducing scalar instruction overhead and simplifying control flow to minimize I-Cache misses.
+Second, this approach effectively addresses code bloat in manually specialized libraries.
+In such libraries, the host runtime calculates schedule parameters to dispatch specific pre-compiled kernel instantiations.
+Once these parameters are statically derived via constant propagation, the unreachable kernel dispatch path becomes deterministic.
+This allows us to identify kernel instantiations called at the unreachable paths, enabling the precise pruning of unused binaries to retain only the minimal code set required for the specific model deployment.
 
-To the best of our knowledge, existing cross-language analysis tools primarily focus on type checking, security, or interface binding generation. 
-There is a lack of work on \textbf{propagating concrete runtime values from a high-level dynamic language (Python) to the low-level binary layout of a static language (C++)} to enable bit-level constant propagation for compiler optimizations.
-Specifically, two main obstacles hinder the direct application of existing DFA or SE:
+\subsection{Challenges and Design Insights}
+\label{sec:motivation:challenges}
 
+To achieve automatic kernel specialization, it requires analyzing the value flow from Python down to C++, which presents two major challenges that cannot be properly addressed by the existing static analysis.
+
+\subsubsection{Challenge 1: The cross-language semantic gap.}
+
+Achieving high-precision, context-sensitive cross-language analysis fundamentally relies on the accurate reconstruction of the calling context for C++ operators. 
+Modern DL systems extensively leverage FFI mechanisms (e.g., Pybind11~\cite{pybind11}, CPython C API~\cite{pythoncapi}) to invoke underlying C++ operators, whose input parameters (e.g., Tensors) are typically instantiated and initialized on the Python side. 
+However, the FFI layer is replete with complex \textit{glue code}, involving implicit type conversions, dynamic dispatch mechanisms, and reference counting, which creates a significant semantic gap between Python and C++. 
+This poses a severe challenge for traditional source-based cross-language analysis methods.
+
+Existing cross-language analysis works~\cite{kan2024taint4javac,Monat2021PythonC} primarily rely on abstract interpretation techniques to address general multi-language interoperability issues (e.g., Python-C, Java-C). 
+Nevertheless, these methods face significant challenges when applied to DL systems due to two main limitations:
 \begin{enumerate}
-    \item \textbf{Semantic opaque across language boundaries:} 
-    The constant information (e.g., tensor shapes) is available in the Python runtime context. However, when analyzing the C++ operator binary (or IR), this information is lost. The analyzer sees only opaque pointers to C++ objects (like \kw{torch::Tensor}) without knowing the memory layout or the specific values stored within. This makes it impossible to initialize the analysis context correctly using only C++ static analysis tools.
-    
-    \item \textbf{Precision loss from dynamic shape checks:} 
-    Operator libraries contain extensive defensive checks for dynamic shapes (e.g., \kw{if (shape \% 32 != 0) return error;}). 
-    Since some dimensions remain symbolic during partial evaluation, a path-insensitive DFA cannot determine which branch is taken. It conservatively merges the "error path" (where values are undefined) with the "valid path," causing constant values to degrade to \textit{Unknown}. While SE could theoretically handle this, the path explosion from numerous checks makes it impractical.
+    \item \textbf{Lack of Domain Awareness:} 
+    Existing tools typically model generic FFI APIs (such as JNI~\cite{jni} or the Python C API~\cite{pythoncapi}) as black boxes or simple data conduits. 
+    They fail to comprehend the complex \textit{domain-specific objects} within DL systems, particularly the deep heap memory layouts and internal indirect reference relationships. 
+    For instance, consider a Tensor \texttt{q} constructed on the Python side with a shape of \texttt{(\%B, 40, \%S, 64)} as shown in \autoref{fig:motivating-example}. Generic analyzers struggle to trace the heap memory state associated with the C++ \texttt{sizes} pointer (i.e., establishing the structural constraints between the Python shape attribute and the underlying C++ array).
+    \item \textbf{Efficiency and Precision Bottlenecks:} 
+    When dealing with massive DL libraries, performing full interpretation of dynamic language source code is inefficient. Furthermore, it struggles to accurately deduce the side effects of complex C++ internal heap allocations from the Python side, leading to over-approximated analysis results.
 \end{enumerate}
 
-The above challenges motivate us to develop \mysys, as described in \autoref{sec:design}, which addresses the cross-language gap via context reconstruction and enhances precision through pattern-based pruning.
+\textit{Insight: semantic modeling core data types in DL systems.}
+Instead of the traditional paradigm of analyzing FFI control flows, we propose a cross-language semantic modeling approach. 
+Our methodology is grounded in two key observations:
+\begin{enumerate}
+    \item \textbf{Finite and Stable Core Types:} Data types used for cross-language interaction in DL systems are highly convergent and stable (\texttt{Tensor}, \texttt{Array}, etc.). 
+    This stability enables us to perform comprehensive and precise semantic modeling of these core types.
+    \item \textbf{Extract Constant Information from Graph IR:} The DL system compiles DL models and represents models using Graph IR (e.g. ATen IR).
+    The instructions in the Graph IR contain precise information regarding operator input parameters. 
+    By leveraging this information, we can directly extract the semantic values of parameters, bypassing the need for expensive or imprecise analysis of Python source code.
+\end{enumerate}
 
-%sxy% 第二章Background和第三章challenge章节，看起来内容非常充实并且有很多例子。但是结构组织上让我有点困惑：例如第二章Background中似乎也在分析challenge；而第三章challenge中还介绍了本文克服challenge的Approach。
-%sxy% 我建议更清晰的组织章节：在第二章Background中只介绍背景知识，在第三章challenge中集中分析挑战，在后续介绍Approach的章节中再介绍本文是如何克服challenge的。另一种改法是将Background和challenge两个章节合并为一个章节，不过这个章节可能会过长。
+Building on these insights, we directly map computation graph node information to the abstract states of C++ entry functions. 
+By bridging the language boundary through type system modeling, we achieve high-precision reconstruction of C++ contexts while avoiding the overhead of analyzing complex FFI glue code.
+
+\subsubsection{Challenge 2: Sanity Checks Leading to Early-Exit Paths}
+
+The second challenge stems from dynamic shape checks in production libraries. 
+High-performance operators are often developed under strict constraints—such as mandatory memory alignment (e.g., dimensions must be multiples of 32) or hardware-specific tile volume limits.
+Consequently, these operators must verify input validity at runtime for robustness.
+
+\autoref{lst:early_return_code} illustrates an example where sanity checks create branches that handle errors and exit the function immediately, referred to as an early-exit path.
+In the function \texttt{set\_t}, a check on the input parameter \texttt{s} is performed via \texttt{check(s)} at line 8. 
+If the check fails, i.e., \texttt{s \% 32 != 0} (line 4), the function returns an error status code.
+As a result, the function \texttt{set\_t} returns at line 10, bypassing the assignment \texttt{t = 32} (line 11).
+
+
+\begin{figure}[h]
+    \noindent
+    % --- 左侧 C++ 代码 ---
+    
+    \begin{minipage}{0.38\textwidth}
+    \begin{lstlisting}[language=C++, frame=single, caption={Early return path example.}, label={lst:early_return_code}]
+const status SUCCESS = 0;
+const status ERROR = -1;
+status check(int s) {
+  if(s % 32 != 0)
+    return ERROR;
+  return SUCCESS;
+}
+status set_t(int s, int& t) {
+  int ret = check(s);
+  if (ret != SUCCESS)
+    return ret;
+  t = 32;
+  return SUCCESS;
+}
+    \end{lstlisting}
+    \vspace{-15pt}
+    \end{minipage}
+    \hfill
+    % --- 右侧 LLVM 代码 ---
+    \begin{minipage}{0.45\textwidth}
+        % 添加 numbers=left 显示行号，xleftmargin 留出空间
+        \begin{lstlisting}[
+            language=llvm, 
+            escapechar=!, 
+            frame=none, 
+            basicstyle=\ttfamily\small,
+            numbers=left,        % 开启行号
+            numberstyle=\tiny\color{gray},
+            xleftmargin=2.5em,   % 给行号留出左边距
+            numbersep=5pt,
+            caption={LLVM IR of the function \texttt{set\_t}. },
+            label={fig:dynamic_shape_check_demo}
+        ] 
+; call context: %s = ?, *(%t) = 0
+!\tikzmark{loc_entry}!define @set_t(i32 %s, i32* %t) {
+BB1:
+  %0 = call @check(%s)
+  %1 = icmp eq %0, 0
+  br %1, %BB2, %BB3
+BB2:
+!\tikzmark{loc_bb2}!  store 32, %t
+  br %BB3
+!\tikzmark{loc_bb3}!BB3:
+  %2 = phi [0, %BB2], [%0, %BB1]
+  ret %2
+}
+        \end{lstlisting}
+        \vspace{-15pt}
+    \end{minipage}
+
+    % --- 绘制叠加层 (Overlay) ---
+    \begin{tikzpicture}[overlay, remember picture]
+        
+        \tikzset{
+            bubble/.style={
+                rectangle callout,
+                callout absolute pointer={#1}, 
+                callout pointer width=0.3cm,
+                fill=propcolor, 
+                draw=propborder, 
+                thick,
+                rounded corners=3pt, 
+                font=\ttfamily\small, 
+                align=center,
+                inner sep=4pt
+            }
+        }
+
+        % -------------------------------------------------------
+        % 1. Entry Bubble -> 指向 line 2
+        % -------------------------------------------------------
+        % 指针目标：loc_entry 向左 0.8cm (行号区)，向上 0.08cm (行高中心)
+        \node[bubble={($(loc_entry) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_entry) 
+            at ($(loc_entry) + (-0.5cm, 0.08cm)$) { % 气泡主体更靠左
+            \textbf{Entry}\\
+            *(\%t) = 0
+        };
+
+        % -------------------------------------------------------
+        % 2. BB2 Bubble -> 指向 line 8
+        % -------------------------------------------------------
+        % 注意：loc_bb2 在缩进后，所以需要向左偏移更多 (-0.3cm) 才能指到行号
+        \node[bubble={($(loc_bb2) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb2) 
+            at ($(loc_bb2) + (-0.5cm, 0.28cm)$) { 
+            \textbf{BB2}\\
+            *(\%t) = 32
+        };
+
+        % -------------------------------------------------------
+        % 3. BB3 Bubble -> 指向 line 10
+        % -------------------------------------------------------
+        \node[bubble={($(loc_bb3) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb3) 
+            at ($(loc_bb3) + (-0.5cm, -0.28cm)$) {
+            \textbf{BB3}\\
+            *(\%t) = ?
+        };
+
+        % -------------------------------------------------------
+        % 绘制连接箭头
+        % -------------------------------------------------------
+        \draw[->, >=stealth, thick] 
+            (node_entry.south west) to[bend right=45] (node_bb3.west);
+
+        \draw[->, >=stealth, thick] 
+            (node_bb2.south east) to[bend left=45] (node_bb3.north east);
+
+    \end{tikzpicture}
+\end{figure}
+
+Standard path-insensitive data-flow analysis leads to specialization failure because it merges values from both the valid and early-exit paths. In \autoref{fig:dynamic_shape_check_demo}, the value stored at the memory location pointed to by \texttt{\%t} at BB3 is treated as non-constant because the early-exit path (BB1 to BB3) fails to assign a value. 
+This prevents the compiler from propagating the constant 32 at line 8. 
+While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish these paths, it is computationally expensive and suffers from path explosion.
+
+\textit{Insight: Pattern-Based Early-Exit Path Identification.} 
+We observe that dynamic shape operators use canonical patterns to signal failure, primarily through compile-time known status codes (e.g., \texttt{SUCCESS=0}, \texttt{ERROR=-1}) or by throwing exceptions at runtime. 
+Following the API contract, output parameters and kernel launches are only valid upon successful check. 
+Therefore, values originating from early-exit paths are irrelevant for Kernel Specialization.
+
+For a given function, \mysys identifies control-flow edges that first lead to early exits by back-tracing the root-cause of error status code from the exit block.
+the conditional branch statement that cause the program to return an error status code or throw an exception. 
+\mysys performs inter-procedural analysis to recognize these failure patterns across function boundaries.
+Crucially, this approach involves no risk of incorrect path pruning. 
+We only mark a control flow edge as an early-exit edge if it strictly matches the predefined failure patterns.
+
+By marking these edges, \mysys can shield the subsequent forward data-flow analysis from polluted values. This allows the constant propagation pass to focus exclusively on the success paths, which are the only paths where the kernel will actually execute. Consequently, we achieve higher precision than path-insensitive methods without facing the path explosion challenges of symbolic execution.

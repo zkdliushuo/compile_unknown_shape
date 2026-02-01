@@ -1,0 +1,133 @@
+\definecolor{headerblue}{HTML}{DAE8FC}
+\definecolor{bodywhite}{HTML}{FFFFFF}
+\definecolor{borderblack}{HTML}{000000}
+\definecolor{customred}{HTML}{FF0000}
+
+\begin{wrapfigure}{l}{0.52\textwidth}
+    \centering
+    \vspace{-10pt}
+    \resizebox{\linewidth}{!}{
+    \begin{tikzpicture}[
+            node distance=1.2cm and 0.8cm,
+            layeredbox/.style={
+                rectangle split, rectangle split parts=2, draw=borderblack, very thick,
+                inner sep=3pt, align=center, rectangle split part fill={headerblue, bodywhite},
+                font=\sffamily\small, minimum height=1.1cm
+            },
+            simplebox/.style={
+                rectangle, draw=borderblack, thick, fill=bodywhite, inner sep=3pt,
+                minimum width=2.5cm, align=center, font=\sffamily\small
+            },
+            red_simplebox/.style={
+                simplebox, font=\sffamily\small\color{customred}
+            },
+            cannarrow/.style={->, >=latex, thick, line width=0.8pt, rounded corners=2pt},
+            redarrow/.style={->, >=latex, thick, line width=0.8pt, rounded corners=2pt, color=customred},
+            reddashedarrow/.style={->, >=latex, thick, dashed, line width=0.8pt, rounded corners=2pt, color=customred},
+            bubble/.style={
+                rectangle callout, draw=borderblack, fill=bodywhite, align=center,
+                font=\sffamily\footnotesize\color{customred}, inner sep=2pt, % 稍微增加了一点inner sep让排版更舒服
+                rounded corners=2pt, callout absolute pointer={#1}
+            }
+        ]
+
+        %% --- 1. DL Systems Column ---
+        \node[layeredbox] (dlsys) {DL Systems\nodepart{second}PyTorch, TF...};
+
+        % Legends
+        \node[layeredbox, below=0.3cm of dlsys, minimum width=0.8cm, xshift=2pt] (legend_sample) {Spec.\nodepart{second}Impl.};
+        \node[below=0.05cm of legend_sample, font=\sffamily\small, align=center] (legend_static_text) {Static Data};
+        \draw[cannarrow] ($(legend_static_text.south) - (0.5,0.05)$) -- ($(legend_static_text.south) - (-0.5,0.05)$);
+
+        \node[below=0.1cm of legend_static_text, font=\sffamily\small\color{customred}, align=center] (legend_runtime_text) {Runtime Data};
+        \draw[redarrow] ($(legend_runtime_text.south) - (0.5,0.05)$) -- ($(legend_runtime_text.south) - (-0.5,0.05)$);
+
+        \node[below=0.15cm of legend_runtime_text, font=\sffamily\small\color{customred}, align=center] (legend_hybrid_text) {Static \& Runtime};
+        \draw[reddashedarrow] ($(legend_hybrid_text.south) - (0.5,0.05)$) -- ($(legend_hybrid_text.south) - (-0.5,0.05)$);
+
+        \begin{scope}[on background layer]
+            \node[fit=(legend_sample)(legend_static_text)(legend_runtime_text)(legend_hybrid_text),
+                  draw=borderblack, thick, dashed, rounded corners=0pt, minimum height=3.1cm, inner sep=0pt] (legend_box) {};
+        \end{scope}
+
+        %% --- 2. AI Compiler Column ---
+        \node[layeredbox, right=1.9cm of dlsys] (aicomp) {AI Compiler\nodepart{second}\textcolor{borderblack}{Triton, TVM...}};
+
+        % Vendor Library Block
+        \node[layeredbox, right=1.0cm of dlsys, yshift=-2.8cm] (ffi) {FFI\nodepart{second}pybind11...};
+        \node[simplebox, right=0.5cm of ffi, yshift=0.4cm, minimum width=1.4cm] (cublas) {cuBLAS...};
+        \node[simplebox, right=0.6cm of cublas, yshift=0.6cm, minimum width=1.2cm] (cublas-host) {Host};
+        \node[simplebox, right=0.5cm of ffi, yshift=-0.4cm, minimum width=1.4cm] (cann) {CANN...};
+        \node[simplebox, right=0.6cm of cann, yshift=-0.3cm, minimum width=1.2cm] (cann-host) {Host};
+
+        \begin{scope}[on background layer]
+            \node[fit=(ffi)(cublas)(cann), draw=borderblack, very thick, fill=bodywhite, inner sep=6pt] (vendor_body) {};
+        \end{scope}
+
+        \path let \p1 = ($(vendor_body.east) - (vendor_body.west)$) in
+            node[draw=borderblack, very thick, fill=headerblue, font=\sffamily\small,
+                 minimum width=\x1 - \pgflinewidth, anchor=south, yshift=-\pgflinewidth] (vendor_header) at (vendor_body.north) {Interfaces of Vendor Library};
+
+        \node[red_simplebox, below=0.3cm of aicomp] (runtime_info) {Runtime Shape};
+
+        %% --- 4. Kernels Column ---
+        \node[red_simplebox, right=3.5cm of aicomp] (spec) {Auto-Specialized\\Kernels};
+
+        % Manual Kernels Group
+        \node[simplebox, right=1.4cm of cublas-host, minimum height=0.3cm, minimum width=1.2cm] (k1) {Kernel 1};
+        \node[simplebox, below=0.08cm of k1.south, anchor=north, minimum height=0.3cm, minimum width=1.2cm] (k2) {Kernel 2};
+        \node[simplebox, below=0.08cm of k2.south, anchor=north, minimum height=0.3cm, minimum width=1.2cm] (kn) {...};
+        \begin{scope}[on background layer]
+            \node[fit=(k1)(k2)(kn), draw=borderblack, very thick, dashed, inner sep=4pt, fill=headerblue!30,
+                right=1cm of cublas-host, minimum width=2cm, minimum height=2.4cm,
+                label={[font=\sffamily\small\bfseries, align=center, yshift=-30pt]above:Manually\\[-3pt]Specialized\\[-3pt]Kernels}] (manual_group) {};
+        \end{scope}
+
+        %% --- Callouts & Icons (已修改对齐) ---
+
+        % 1. Combinatorial Explosion Callout
+        \node[bubble={($(manual_group.north west) + (0.2,-0.4)$)}, above left=-0.1cm and 0.2cm of manual_group.north west, anchor=north east] (explosion_label) {
+            Combinatorial\\Explosion~\raisebox{-0.25\height}{\includegraphics[height=0.35cm]{figures/icons/boom.png}}
+        };
+
+        \node[simplebox, right=0.8cm of cann-host] (generic) {Generic Kernels};
+
+        %% --- Connections ---
+        \draw[cannarrow] (dlsys.east) -- (aicomp.west);
+        \draw[cannarrow] (dlsys.east) -- ++(0.5,0) |- (ffi.west);
+        \node[font=\sffamily\small, anchor=west, align=center, fill=white, inner sep=1pt] at ($(dlsys.east) + (0,0.4)$) {Model-Specific\\[-1pt]Constants}; 
+
+        \draw[redarrow] (runtime_info.west) -- ++(-1,0) |- ($(aicomp.west) + (0,-0.3)$);
+        \draw[redarrow] (runtime_info.west) -- ++(-1,0) |- ($(ffi.west) + (0,0.3)$);
+
+        % JIT Compile Path & Callout
+        \draw[redarrow] (aicomp.east) -- node[above, font=\sffamily\small\color{customred}, inner sep=2pt, midway, align=center] (jit_text) {JIT Compile \\[-3pt](based on High-level IR)} (spec.west);
+        
+        % 2. Compilation Overhead Callout (已修改对齐)
+        \node[bubble={($(jit_text.south) + (0.01,0)$)}, below=0.1cm of jit_text] (jit_label) {
+            Compilation Overhead~\raisebox{-0.25\height}{\includegraphics[height=0.35cm]{figures/icons/clock.jpg}}
+        };
+        
+        % Vendor Internal Paths
+        \draw[reddashedarrow] (ffi.east) -- ++(0.15, 0) |- (cublas.west);
+        \draw[reddashedarrow] (ffi.east) -- ++(0.15, 0) |- (cann.west);
+        \draw[reddashedarrow] (cublas.east) -- ++(0.3, 0) |- (cublas-host.west);
+        \draw[reddashedarrow] (cublas-host.east) -- (k1.west);
+        \draw[reddashedarrow] (cublas-host.east) -- ++(0.6, 0) |- (k2.west);
+        \draw[reddashedarrow] (cublas-host.east) -- ++(0.6, 0) |- (kn.west);
+        \draw[reddashedarrow] (cann.east) -- ++(0.1, 0) |- (cann-host.west);
+
+        % CANN to Generic Path & Callout
+        \draw[reddashedarrow] (cann-host.east) -- node[midway, fill=white, inner sep=1pt] (arrow_node) {} (generic.west);
+            
+        % 3. No Aggressive Optimization Callout (已修改对齐)
+        \node[bubble={($(generic.north west) + (0.01,0.01)$)}, above left=0.1cm and 0.5cm of generic.north west, anchor=south east] (perf_loss_label) {
+            performance\\loss~\raisebox{-0.25\height}{\includegraphics[height=0.35cm]{figures/icons/down-arrow.png}}
+        };
+
+    \end{tikzpicture}
+    }
+    \caption{DL systems invoke DL operator programs.}
+    \label{fig:dl-system-example}
+    \vspace{-10pt} 
+\end{wrapfigure}

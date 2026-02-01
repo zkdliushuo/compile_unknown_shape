@@ -1,0 +1,191 @@
+\section{Introduction}\label{sec:intro}
+
+% 当前，深度学习(DL)模型在实际部署时，DL 系统(深度学习框架或推理系统)中依然普遍依赖 C++ 通用算子库。
+% 具体来说，模型被建模成有向无环计算图(DAG)，其中节点代表算子，有向边代表张量和数据依赖关系，DL 系统根据拓扑序依次调用每个节点对应的 C++ 算子程序执行计算。
+% 与此同时，算子程序通常需要适配多样的模型架构：支持各种模型变体，支持一个模型家族中的各种超参设置。
+% 算子还需要支持动态形状：LLMs 的 query 长度和 kv cache 在 batch 内以及随时间变化(ragged tensor)，CV 模型输入图片的 batch size 和分辨率可能变化。
+% 我们将这种算子称作通用算子。
+% 为了提升性能，通用算子的 CPU 侧程序需要根据运行时输入计算出最优的调度参数，例如 inter-core parallelism, intra-core pipeline settings such as tiling sizes，再将这些参数传递给 Device 侧的核函数（后面成为通用核函数）执行。
+% 例如，\autoref{lst:add_kernel_with_formal_param} shows a simple operator \kw{add}, where \kw{s} denotes the size of the first dimension which is dynamic, and \kw{t} represents the tiling size on the dimension \kw{s}. 
+% Both \kw{s} and \kw{t} are formal parameters of the \kw{kernel} function.
+
+% 然而，随着越来越多的复杂大算子的提出，核函数的参数越来越多，这给一些特定的 DL 加速器性能上的挑战。
+% 我们主要考虑的是 Ascend 硬件平台，这是一种基于 SIMD 架构、广泛应用的 DL 加速器。
+% 相较于 CPU 和常被用于 DL 的 GPU， Ascend 提供了丰富的可编程硬件部件和访存通路来促进访存效率和硬件利用率。
+% 硬件部件包括 scalar, Vector 和 Cube Unit, 存储缓冲区包括 Globale Memory(GM), L2, L1, L0, Unified Buffer(UB).
+% 算子开发者需要将上述可编程硬件部件的调度参数实现为通用核函数的参数，这导致参数数目大大增加。
+% 实验发现通用核函数的性能普遍低于将所有参数完全特化的核函数，在复杂大算子上性能降低了超过 10%。
+% 以 Qwen2(1.5B) 为目标模型，\autoref{lst:scalar_ratio_icache_miss} 列举了该模型在 Ascend NPU 910B1 上主要算子的性能现状, 评测揭示了当前 Ascend 的通用算子性能下降的原因：
+% （1）scalar unit 过载：在平均 85\% 的周期都是活跃的， scalar unit 负责执行控制流、标量数据的算存、向其他部件分派指令，过载会导致其他部件的数据和指令饥饿。
+% （2）Instruction cache miss：为适配各种情况，许多通用算子集成了复杂的控制流逻辑，增加了指令 Cache Miss 的情况。
+
+% 实际上，实际在目标硬件上部署特定模型时，绝大部分核函数参数都是运行时不变量。
+% \autoref{lst:invariable_params} 反映在 Ascend 910B1 上部署模型 Qwen2(1.5B) 时，在各种随机形状的输入上超过 90% 的参数都是不变量，
+% 这揭示了一个潜在的优化机会：识别这些参数不变量，并将其替换为对应的运行时值，可以生成针对特定模型部分特化、支持动态输入的核函数。
+
+% 基于上述观察，我们提出 \mysys, 一个在 DL 模型的图编译阶段利用静态常量信息特化算子库中核函数的编译分析框架。
+% 据我们所知，\mysys 是首个实现了自动对 DL 系统中的算子库做核函数特化的工作。
+% 为了识别出被调用的核函数的参数中的不变量，需要对 c++ 通用算子程序传播已知信息，这是一个充满挑战的问题。
+% 不同于传统的程序分析工作，算子程序的特化场景存在如下的独特挑战： 跨程序语言调用造成的语义丢失，通用算子的动态语义造成的传播误差。
+
+% \textbf{Cross-Language Semantic Loss}。
+% 有效的算子特化依赖于精确的调用上下文（即 C++ 实参的物理内存布局）。
+% 然而，DL 系统的跨语言架构造成了严重的语义断层：
+% 一方面，静态分析难以穿透 FFI 层去模拟复杂的 C++ 对象构造逻辑；
+% 另一方面，Python 侧的符号化变量（如动态 Shape）无法自动映射到 C++ 对象的具体内存偏移（Offset）。
+% 无法建立“符号 $\to$ 地址”的精确映射，分析器便无法区分常量与变量，从而阻碍了后续的常量传播。
+
+% \textbf{Patterns of Validation Checks}
+% 通用算子程序中引入了许多正确性检验的逻辑, 检验是否遇到诸如维度未对齐、超过资源限制等错误情况。
+% 在运行时一旦遇到这些情况，算子程序会跳过后续的正常路径，直接返回错误，称为 early return 模式。
+% 然而，这些用于错误检验和返回错误的程序路径会导致信息传播需要沿着多条程序路径进行，
+% 并在最终的核函数调用点无法确定正常情况下核函数参数的常量值。
+
+% \mysys 引入以下核心设计来解决上述挑战并实现了精确的算子核函数的常量特化：
+% 一个面向 DL system 的基于规则的跨语言调用上下文建模方法。
+% 该方法基于静态分析，提取核心数据结构（如 Tensor, IntArrayRef）的 C++ 内存布局。
+% 基于领域知识，引入显式描述 Python 对象属性与 C++ 对象内存偏移量之间的确定性映射规则。
+% 最终为后续静态分析构造了精确的调用上下文。
+% 此外， \mysys 提出了一个专用于识别算子程序错误处理导致的 early return 模式的语义检查方法。
+% 首先沿着控制流图(CFG)追踪错误码的来源，将只返回错误码的控制流边识别为 early return。
+% 其次再进一步定位错误根源是否来源于其他被调函数，若存在则对被调函数进一步识别 early return 的控制流边。
+
+
+
+% 随着深度学习的快速发展，诸如 Llama 3、DeepSeek 和 Qwen 等大型模型不断涌现并在众多任务中表现出色。
+% 为了加速大模型的训练和推理并提供庞大的算力支撑，许多公司开发了各自的领域专用架构（DSA），包括英伟达 GPU、华为 Ascend NPU 和谷歌 TPU。
+% 作为这些芯片的代表之一，Ascend NPU 已被广泛应用于支持各类有影响力的模型，例如 Qwen 和 DeepSeek 系列，并取得了高性能和低功耗的优势。
+With the rapid evolution of deep learning, numerous large models have emerged and demonstrated exceptional performance across various tasks, such as Llama 3, DeepSeek, and Qwen.
+To accelerate the training and inference of these large models and provide substantial computational support, many companies have developed their own Domain-Specific Architectures (DSAs), including NVIDIA GPUs, Huawei Ascend NPUs, and Google TPUs.
+As a representative of these chips, the Ascend NPU has been extensively deployed to support various influential models, such as the Qwen and DeepSeek series, achieving high performance with low power consumption.
+
+% 相较于通用 GPU，Ascend 的特点是引入了几种额外的可编程硬件部件，以高效支撑不同类型的计算：
+% 1）计算部件，包括处理控制流、指令分发和标量计算的 scalar unit，以及分别处理向量化和矩阵操作的 Vector 和 Cube Unit。
+% 2）多种存储缓冲区和数据搬运部件：包括面向 Cube Unit 的 L0 A/B/C buffer，以及面向 Vector Unit 的 Unified buffer。这些存储部件之间的数据搬运方式高度灵活。
+Compared to general-purpose GPUs, Ascend introduces several additional programmable hardware components to efficiently support distinct types of computations:
+1) Computational components, including the \textbf{scalar unit} for handling control flow, instruction dispatch, and scalar data computations, as well as the \textbf{Vector} and \textbf{Cube Units} for processing vectorized and matrix operations, respectively.
+2) Memory hierarchy and data transfer components, such as L0 A/B/C buffers for the Cube Unit and a Unified Buffer for the Vector Unit, featuring flexible data transfer mechanisms between these storage components.
+
+% 然而，开发高性能 Ascend 算子面临着其他 DSA 中不常见的挑战。
+% 为了处理大语言模型中的动态形状（例如 batch 内变化的 query 长度和 KV cache），Ascend 算子开发者需要定义大量的参数来调度算子以适应运行时形状，我们将这些参数统称为“调度参数”。
+% 为了实现最佳性能，这些调度参数（如核间并行度、循环切分策略、缓冲区数量等）连同算子属性（如注意力头数）通常被定义为核函数的形式参数。
+% 这导致 Ascend 核函数拥有极多的参数。例如，用于 LLM 自回归解码的高效融合算子 Flash Decoding，其 Ascend 实现拥有超过 200 个调度参数。
+However, developing high-performance Ascend kernels introduces unique challenges not typically encountered in other DSAs.
+Modern deep learning models involve dynamic shapes where input tensor dimensions (e.g., query and KV cache lengths for Large Language Models) vary at runtime.
+To handle these dynamics and mitigate load imbalance, kernel developers must define a substantial number of parameters, e.g., inter-core parallelism, loop tiling strategies, and buffer counts, to schedule the kernel adaptively.
+These schedule parameters, along with shape parameters (e.g., actual sequence length) and operator attributes (e.g., is causal masked), are defined as formal parameters of the kernel functions.
+\autoref{lst:add_kernel_with_formal_param} shows an implementation of the \kw{add} operator, where \kw{s} and \kw{t} are formal parameters of the \kw{kernel} function.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}{0.48\textwidth}
+    \begin{lstlisting}[basicstyle=\ttfamily\footnotesize, frame=single]
+void kernel(float* A, float* B, float* C, int s, int t) {
+  for (int i = 0; i < s; i += t)
+    for (int j = 0; j < t; ++j)
+      int idx = i + j;
+      if(idx < s) C[idx] = A[idx] + B[idx];
+}
+    \end{lstlisting}
+    \end{minipage}
+\hfill
+    \begin{minipage}{0.48\textwidth}
+    \begin{lstlisting}[basicstyle=\ttfamily\footnotesize, frame=single, firstnumber=7]
+status add(Tensor& A, Tensor& B, Tensor& C) {
+  int s = A.size(0), t = 0;
+  if (tiling(s, t) != SUCCESS) 
+    return ERROR;
+  kernel(A.ptr, B.ptr, C.ptr, s, t);
+}
+    \end{lstlisting}
+    \end{minipage}
+    \caption{Example of the add operator. The \kw{kernel} function has two parameters \kw{s} and \kw{t}, representing the size of the input tensors and the tiling factor, respectively. 
+    The \kw{tiling} function computes the tiling factor based on the input size. The \kw{add} function serves as the operator interface, extracting input sizes and invoking the kernel with the appropriate parameters. 
+    For simplicity, the definition of the \kw{tiling} function is shown in \autoref{lst:early_return_code}. 
+    \texttt{Tensor} is a data structure representing a multi-dimensional array adopted in deep learning frameworks, with a method \texttt{size} that retrieves the size of a specific dimension.}
+    \label{lst:add_kernel_with_formal_param}
+\end{figure}
+
+
+% 过多的核函数参数会导致 Ascend 遭遇“标量瓶颈”（Scalar Bottleneck）。
+% 这一瓶颈主要源于两方面原因：
+% 1. 有限的通用寄存器导致频繁的寄存器溢出到慢速的局部内存。
+% 2. 变量参数阻碍了冗余指令（如分支跳转和地址计算）的消除，导致代码膨胀并增加指令缓存（I-cache）未命中。
+% 这些标量延迟阻塞了向其他部件（Vector/Cube）的指令分发，严重降低了算子性能。
+When the implementation is complex, kernels often suffer from an excessive number of parameters.
+Excessive kernel parameters may expose the device to a critical performance issue known as the \textbf{Scalar Bottleneck}.
+The root cause is twofold.
+First, the limited register file size (e.g., only 32 general-purpose registers) forces the scalar unit to frequently spill intermediate variables to high-latency local memory.
+Second, variable parameters prevent the compiler from optimizing away redundant instructions (e.g., conditional branches) and constant folding, increasing instruction cache (I-cache) misses and execution cycles of the scalar unit.
+Since other hardware components units rely on the scalar unit for instruction dispatch, these scalar latencies cause severe pipeline stalls, becoming a primary performance degradation for kernels.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{minipage}{0.45\textwidth}
+        \includegraphics[width=0.95\linewidth]{figures/motivation/metrics_analysis.pdf}
+        \caption{We evaluate four representative operators used in Qwen2-1.5B}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.45\textwidth}
+        \includegraphics[width=0.95\linewidth]{figures/motivation/parameter_breakdown.pdf}
+        \caption{Some operators in the operator library }
+    \end{minipage}
+    \caption{\scnote{The operator name \kw{resize} is a little confusing; \kw{upsample} may be better.} Some representative operators involves a number of parameters, meanwhile the operators shows scalar bound (scalar units are busy for over 78\% cycles) and significant instruction cache miss.
+    The details of the operators are shown in \autoref{tab:dynamic_operators}.\scnote{Figure 2 and the related discussion merely show the scalar unit is busy, without directly proving it blocks the overall operator execution pipeline. Additional figure may be needed, either here or in the following Background section.}}
+    \label{lst:invariable_params_scalar_ratio}
+\end{figure}
+
+
+% 为了证明这一点，我们对 CANNDev 和 CANN OPS ADV 算子库中的算子进行了 Profiling。
+% 结果表明，Ascend 核函数性能对参数数量高度敏感。
+% 进一步分析发现，一旦模型超参数（如 hidden size）和硬件配置固定，绝大多数核函数参数实际上是编译期常量。
+% 这揭示了一个潜在的加速机会：识别这些编译期常量参数，并将其替换为常量值，从而生成针对特定模型和硬件特化的核函数。
+To demonstrate this impact, we profiled various operators from widely used Ascend libraries (ops-nn and ops-transformer).
+Our analysis reveals that kernel performance is highly sensitive to the parameter count, with scalar units often becoming overwhelmed.
+Crucially, we observed that once model hyper-parameters (e.g., hidden size) and hardware configurations are fixed, the majority of these kernel parameters become compile-time constants.
+\autoref{lst:invariable_params_scalar_ratio} shows some representative operators whose parameters are mostly invariable under fixed model and hardware settings, while the operators suffer from severe scalar bottleneck and instruction cache miss.
+This reveals a significant optimization opportunity: identifying and replacing these parameters with constant values at compile time to generate specialized kernels tailored for specific models and hardware.
+
+% 据我们所知，现有的算子特化方法主要有两种：
+% 1) Ahead-of-Time (AoT)：预编译少量特定参数的 kernel。但这会导致严重的代码膨胀，且无法覆盖所有动态形状的组合。
+% 2) Just-In-Time (JIT)：在运行时确定参数值并编译。但这引入了不可忽视的运行时编译和 wrapper 执行开销，不适合工业级部署。
+% 因此，我们需要一种既能利用静态形状信息，又不需要运行时编译开销的自动常量特化框架。
+To the best of our knowledge, existing kernel specialization methods fall into two categories:
+1) Ahead-of-Time (AoT) approaches \cite{ye2025flashinfer,nvidia2021cublas} manually precompile kernels for a limited set of parameter values. However, this leads to severe code bloat and cannot exhaustively cover the combinatorial space of dynamic shapes.
+2) Just-In-Time (JIT) approaches \cite{chenTVMAutomatedEndtoend2018,tillet2019triton,zheng2020ansor} determine parameter values and compile kernels at runtime. This introduces significant CPU overhead for compilation and wrapper execution, making it less suitable for latency-critical industrial deployments where precompiled binaries are preferred.
+Therefore, there is a compelling need for an automated framework that can leverage compile-time constant information derived from input shapes without incurring runtime overhead.
+
+% 基于算子库主要用 C++ 开发的事实，我们提出 \mysys，一个自动算子特化框架。
+% \mysys 的工作原理是从深度学习框架导出算子的输入输出上下文，其中记录了常量和变量的精确信息。
+% 在此导出的上下文之上，我们执行全程序的常量传播。
+% 我们采用基于抽象解释的方法，在格（Lattice）上计算并维护程序中每个变量（包括普通变量和被取地址的变量）的值状态。
+Based on the fact that operator libraries are predominantly developed in C++, we propose \mysys, an automatic kernel specialization framework.
+At a high level, \mysys operates by exporting the input and output contexts of operators directly from the deep learning framework such as PyTorch, which record precise information regarding both constants and symbolic variables.
+Upon these exported contexts, we perform whole-program constant propagation.
+Adopting an abstract interpretation-based approach, we calculate and maintain the value state of every variable, including both standard scalar variables and address-taken memory locations, on a lattice throughout the program execution path.
+
+% 然而，实现这样一个框架面临着两个不可避免的核心挑战，我们分别提出了解决方案：
+% 1. 跨语言语义 Gap：Python 层的语义在调用 C++ 二进制时丢失。我们通过上下文重建（Context Reconstruction）解决，即合成与 C++ 兼容的内存布局。
+% 2. 动态形状检查模式：防御性检查导致分析精度下降。我们通过 Early Return 路径识别（Early Return Path Identification）解决，识别并剪除不可行的错误路径。
+However, implementing such a framework faces two inevitable challenges, which we address with targeted solutions:
+\begin{enumerate}
+    \item \textbf{Cross-Language Semantic Gap:} The semantic disconnect between the high-level framework (Python) and the low-level operator library (C++) hinders direct analysis. We address this via \textbf{Context Reconstruction}, which involves synthesizing a bit-level memory context compatible with the C++ binary from the high-level framework information.
+    \item \textbf{Patterns of Dynamic Shape Checks:} Defensive checks for dynamic shapes in operator libraries often lead to precision loss in static analysis. We tackle this through \textbf{Early Return Path Identification}, which detects and prunes infeasible error handling paths through the whole program to maintain analysis precision.
+\end{enumerate}
+
+%sxy% 介绍两项核心挑战的部分可能需要更详细的介绍，现在跨度有点大。我看到你在Background和challenge章节中有详细分析，但是我感觉在intro中需要适当详细帮助理解。
+
+% 大量的实验表明，\mysys 显著降低了推理时延，尤其是标量计算开销。
+Extensive experiments demonstrate that \mysys significantly reduces inference latency, particularly scalar computation overhead, effectively mitigating the scalar bottleneck.
+
+%sxy% 可以在intro的结尾更详细的介绍实验和成效，给出具体的数值。
+
+
+% Scalar, Vector, Cube units 专注于执行标量（含控制流）、向量和矩阵的运算指令，
+% 存在 GM/L2, L1, L0, Unified Buffer 等多级可编程存储层次和
+
+
+% 已有的三类特化核函数的方法难以实现对基于 C++ 开发的通用算子库的特化，具体原因如下：
+% （1）AOT 方式：开发者需要手动枚举核函数参数的取值并实例化。对于存在很多个参数字段的复杂算子，这种方法会带来严重的代码膨胀，导致不可用。
+% （2）JIT 方式：在给定输入的情况下根据计算出来的核函数参数做完全特化，会引入不可承受的编译开销。
+% （3）基于 high-level DSL 的方式：诸如 Triton、TVM 等可以对其 high-level IR (e.g., Triton IR, te) 上的计算表达式根据模型的已知信息做部分特化，再生成特化的核函数。但这种方法回避了特化 C++ 算子库这种更一般化的场景，无法用于解决上述问题。
