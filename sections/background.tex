@@ -148,147 +148,141 @@ Our methodology is grounded in two key observations:
 
 Building on these insights, we directly map computation graph node information to the abstract states of C++ entry functions. 
 By bridging the language boundary through type system modeling, we achieve high-precision reconstruction of C++ contexts while avoiding the overhead of analyzing complex FFI glue code.
-
 \subsubsection{Challenge 2: Sanity Checks Leading to Early-Exit Paths}
 
-The second challenge stems from dynamic shape checks in production libraries. 
-High-performance operators are often developed under strict constraints—such as mandatory memory alignment (e.g., dimensions must be multiples of 32) or hardware-specific tile volume limits.
-Consequently, these operators must verify input validity at runtime for robustness.
-
-\autoref{lst:early_return_code} illustrates an example where sanity checks create branches that handle errors and exit the function immediately, referred to as an early-exit path.
-In the function \texttt{set\_t}, a check on the input parameter \texttt{s} is performed via \texttt{check(s)} at line 8. 
-If the check fails, i.e., \texttt{s \% 32 != 0} (line 4), the function returns an error status code.
-As a result, the function \texttt{set\_t} returns at line 10, bypassing the assignment \texttt{t = 32} (line 11).
+Operator libraries enforce hardware and semantic constraints (e.g., memory alignment, dimension equality) through runtime sanity checks. These checks depend on dynamic dimensions; violating them triggers an early exit.
 
 
-\begin{figure}[h]
-    \noindent
-    % --- 左侧 C++ 代码 ---
-    
-    \begin{minipage}{0.38\textwidth}
-    \begin{lstlisting}[language=C++, frame=single, caption={Early return path example.}, label={lst:early_return_code}]
+\begin{figure}[htbp]
+  \noindent
+  % --- 左侧 C++ 代码 ---
+  
+  \begin{minipage}{0.4\textwidth}
+  \begin{lstlisting}[
+    language=C++, 
+    frame=single, 
+    caption={Early return path example.}, 
+    basicstyle=\ttfamily\small, 
+    label={lst:early_return_code}
+  ]
 const status SUCCESS = 0;
 const status ERROR = -1;
-status check(int s) {
-  if(s % 32 != 0)
-    return ERROR;
-  return SUCCESS;
+status check(int s1, s2) {
+if(s1 != s2)
+  return ERROR;
+return SUCCESS;
 }
-status set_t(int s, int& t) {
-  int ret = check(s);
-  if (ret != SUCCESS)
-    return ret;
-  t = 32;
-  return SUCCESS;
+status set_t(int sq, int sk, int& t) {
+int ret = check(sq, sk);
+if (ret != SUCCESS)
+  return ret;
+t = 32;
+return SUCCESS;
 }
-    \end{lstlisting}
-    \vspace{-15pt}
-    \end{minipage}
-    \hfill
-    % --- 右侧 LLVM 代码 ---
-    \begin{minipage}{0.45\textwidth}
-        % 添加 numbers=left 显示行号，xleftmargin 留出空间
-        \begin{lstlisting}[
-            language=llvm, 
-            escapechar=!, 
-            frame=none, 
-            basicstyle=\ttfamily\small,
-            numbers=left,        % 开启行号
-            numberstyle=\tiny\color{gray},
-            xleftmargin=2.5em,   % 给行号留出左边距
-            numbersep=5pt,
-            caption={LLVM IR of the function \texttt{set\_t}. },
-            label={fig:dynamic_shape_check_demo}
-        ] 
+  \end{lstlisting}
+  \vspace{-15pt}
+  \end{minipage}
+  \hfill
+  % --- 右侧 LLVM 代码 ---
+  \begin{minipage}{0.45\textwidth}
+      % 添加 numbers=left 显示行号，xleftmargin 留出空间
+      \begin{lstlisting}[
+          language=llvm, 
+          escapechar=!, 
+          frame=single, 
+          basicstyle=\ttfamily\small,
+          numbers=left,
+          xleftmargin=2.5em,   % 给行号留出左边距
+          numbersep=5pt,
+          caption={LLVM IR of the function \texttt{set\_t}. },
+          label={fig:dynamic_shape_check_demo}
+      ] 
 ; call context: %s = ?, *(%t) = 0
-!\tikzmark{loc_entry}!define @set_t(i32 %s, i32* %t) {
-BB1:
-  %0 = call @check(%s)
-  %1 = icmp eq %0, 0
-  br %1, %BB2, %BB3
-BB2:
-!\tikzmark{loc_bb2}!  store 32, %t
-  br %BB3
+define @set_t(i32 %sq, i32 %sk, i32* %t) {
+!\tikzmark{loc_entry}!BB1:
+%0 = call @check(%sq, %sk)
+%1 = icmp eq %0, 0
+br %1, %BB2, %BB3
+!\tikzmark{loc_bb2}!BB2:
+store 32, %t
+br %BB3
 !\tikzmark{loc_bb3}!BB3:
-  %2 = phi [0, %BB2], [%0, %BB1]
-  ret %2
+%2 = phi [0, %BB2], [%0, %BB1]
+ret %2
 }
-        \end{lstlisting}
-        \vspace{-15pt}
-    \end{minipage}
+      \end{lstlisting}
+      \vspace{-15pt}
+  \end{minipage}
 
-    % --- 绘制叠加层 (Overlay) ---
-    \begin{tikzpicture}[overlay, remember picture]
-        
-        \tikzset{
-            bubble/.style={
-                rectangle callout,
-                callout absolute pointer={#1}, 
-                callout pointer width=0.3cm,
-                fill=propcolor, 
-                draw=propborder, 
-                thick,
-                rounded corners=3pt, 
-                font=\ttfamily\small, 
-                align=center,
-                inner sep=4pt
-            }
-        }
+  % --- 绘制叠加层 (Overlay) ---
+  \begin{tikzpicture}[overlay, remember picture]
+      
+      \tikzset{
+          bubble/.style={
+              rectangle callout,
+              callout absolute pointer={#1}, 
+              callout pointer width=0.3cm,
+              fill=propcolor, 
+              draw=propborder, 
+              thick,
+              rounded corners=3pt, 
+              font=\ttfamily\small, 
+              align=center,
+              inner sep=4pt
+          }
+      }
 
-        % -------------------------------------------------------
-        % 1. Entry Bubble -> 指向 line 2
-        % -------------------------------------------------------
-        % 指针目标：loc_entry 向左 0.8cm (行号区)，向上 0.08cm (行高中心)
-        \node[bubble={($(loc_entry) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_entry) 
-            at ($(loc_entry) + (-0.5cm, 0.08cm)$) { % 气泡主体更靠左
-            \textbf{Entry}\\
-            *(\%t) = 0
-        };
+      % -------------------------------------------------------
+      % 1. Entry Bubble -> 指向 line 2
+      % -------------------------------------------------------
+      % 指针目标：loc_entry 向左 0.8cm (行号区)，向上 0.08cm (行高中心)
+      \node[bubble={($(loc_entry) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_entry) 
+          at ($(loc_entry) + (-0.5cm, 0.08cm)$) { % 气泡主体更靠左
+          \textbf{BB1}\\
+          *(\%t) = 0
+      };
 
-        % -------------------------------------------------------
-        % 2. BB2 Bubble -> 指向 line 8
-        % -------------------------------------------------------
-        % 注意：loc_bb2 在缩进后，所以需要向左偏移更多 (-0.3cm) 才能指到行号
-        \node[bubble={($(loc_bb2) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb2) 
-            at ($(loc_bb2) + (-0.5cm, 0.28cm)$) { 
-            \textbf{BB2}\\
-            *(\%t) = 32
-        };
+      % -------------------------------------------------------
+      % 2. BB2 Bubble -> 指向 line 8
+      % -------------------------------------------------------
+      % 注意：loc_bb2 在缩进后，所以需要向左偏移更多 (-0.3cm) 才能指到行号
+      \node[bubble={($(loc_bb2) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb2) 
+          at ($(loc_bb2) + (-0.5cm, 0.28cm)$) { 
+          \textbf{BB2}\\
+          *(\%t) = 32
+      };
 
-        % -------------------------------------------------------
-        % 3. BB3 Bubble -> 指向 line 10
-        % -------------------------------------------------------
-        \node[bubble={($(loc_bb3) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb3) 
-            at ($(loc_bb3) + (-0.5cm, -0.28cm)$) {
-            \textbf{BB3}\\
-            *(\%t) = ?
-        };
+      % -------------------------------------------------------
+      % 3. BB3 Bubble -> 指向 line 10
+      % -------------------------------------------------------
+      \node[bubble={($(loc_bb3) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb3) 
+          at ($(loc_bb3) + (-0.5cm, -0.28cm)$) {
+          \textbf{BB3}\\
+          *(\%t) = ?
+      };
 
-        % -------------------------------------------------------
-        % 绘制连接箭头
-        % -------------------------------------------------------
-        \draw[->, >=stealth, thick] 
-            (node_entry.south west) to[bend right=45] (node_bb3.west);
+      % -------------------------------------------------------
+      % 绘制连接箭头
+      % -------------------------------------------------------
+      \draw[->, >=stealth, thick] 
+          (node_entry.south west) to[bend right=45] (node_bb3.west);
 
-        \draw[->, >=stealth, thick] 
-            (node_bb2.south east) to[bend left=45] (node_bb3.north east);
+      \draw[->, >=stealth, thick] 
+          (node_bb2.south east) to[bend left=45] (node_bb3.north east);
 
-    \end{tikzpicture}
+  \end{tikzpicture}
 \end{figure}
 
-Standard path-insensitive data-flow analysis leads to specialization failure because it merges values from both the valid and early-exit paths. In \autoref{fig:dynamic_shape_check_demo}, the value stored at the memory location pointed to by \texttt{\%t} at BB3 is treated as non-constant because the early-exit path (BB1 to BB3) fails to assign a value. 
-This prevents the compiler from propagating the constant 32 at line 8. 
-While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish these paths, it is computationally expensive and suffers from path explosion.
+Consider Flash Attention as an example. Its computation is defined as:
+\begin{equation*}
+    \text{Attention}(Q, K, V, M) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}} + M\right) V
+\end{equation*}
+This operator imposes strict constraints on dynamic dimensions, such as matching batch sizes ($B_q = B_k = B_v$) and sequence lengths ($S_k = S_v$). 
 
-\textit{Insight: Pattern-Based Early-Exit Path Identification.} 
-We observe that dynamic shape operators use canonical patterns to signal failure, primarily through compile-time known status codes (e.g., \texttt{SUCCESS=0}, \texttt{ERROR=-1}) or by throwing exceptions at runtime. 
-Following the API contract, output parameters and kernel launches are only valid upon successful check. 
-Therefore, values originating from early-exit paths are irrelevant for Kernel Specialization.
+\autoref{lst:early_return_code} demonstrates how these checks impede optimization. The function \texttt{set\_t} verifies if sequence lengths \texttt{sq} and \texttt{sk} match. Since these dimensions are dynamic, the compiler cannot statically guarantee the check passes. Consequently, standard path-insensitive analysis conservatively merges data flows from both the success path (where \texttt{t=32}) and the early-exit path (where \texttt{t} remains uninitialized/unknown). 
+As shown in \autoref{fig:dynamic_shape_check_demo}, this merging "pollutes" the value of \texttt{t} at the exit block (BB3), causing the compiler to treat the constant 32 as a variable. This prevents constant propagation. While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish these paths, it is often prohibitively expensive due to path explosion.
 
-For a given function, \mysys identifies control-flow edges that first lead to early exits by back-tracing the root-cause of error status code from the exit block.
-the conditional branch statement that cause the program to return an error status code or throw an exception. 
-\mysys performs inter-procedural analysis to recognize these failure patterns across function boundaries.
-Crucially, this approach involves no risk of incorrect path pruning. 
-We only mark a control flow edge as an early-exit edge if it strictly matches the predefined failure patterns.
+\textit{Insight: Pattern-Based Early-Exit Pruning.} 
+Our approach is grounded in the invariant that kernels are only launched for valid inputs. We observe that dynamic shape checkers follow canonical failure patterns, such as returning specific error codes (e.g., \texttt{ERROR=-1}) or throwing exceptions. 
 
-By marking these edges, \mysys can shield the subsequent forward data-flow analysis from polluted values. This allows the constant propagation pass to focus exclusively on the success paths, which are the only paths where the kernel will actually execute. Consequently, we achieve higher precision than path-insensitive methods without facing the path explosion challenges of symbolic execution.
+\mysys identifies these patterns via inter-procedural analysis to locate control-flow edges responsible for early exits. By marking these edges, we shield the forward data-flow analysis from values on error paths. This allows the constant propagation pass to focus exclusively on the success path—the only path where kernel execution occurs. This method achieves the precision of path-sensitive analysis without the computational overhead of symbolic execution.
