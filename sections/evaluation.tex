@@ -31,7 +31,7 @@ The operator benchmark is derived from mainstream deep learning workloads, encom
 
 Within this set, we particularly emphasize complex fused operators widely adopted in industrial serving scenarios, such as \texttt{FlashAttention}, \texttt{FeedForward} (FusedFFN), and \texttt{MatMul}.
 These operators are characterized by intensive workload and a substantial number of schedule parameters, making them the primary targets for our optimization.
-For the end-to-end model evaluation, we select Qwen2-1.5B and Llama2-7B to represent varying scales of modern LLMs.
+For the end-to-end model evaluation, we select Qwen2.5-1.5B and Llama-3.2-3B to represent varying scales of modern LLMs.
 We assume the batch size of LLMs is fixed, and the sequence length of the input prompt and the KV cache is variable.
 
 \textit{Implementation and Experimental Setup}
@@ -43,7 +43,7 @@ For the operator benchmark, we compare \textbf{\mysys} against the following met
 \begin{itemize}
     \item \textbf{Baseline:} The standard offline compilation approach. It compiles the operator library based on standard LLVM passes without access to any runtime operator invocation context.
     \item \textbf{LLVM-spec:} A specialization method relying on standard LLVM capabilities. Leveraging the host-side entry function context provided by \mysys, we identify LLVM IR instructions that access constant function arguments and replace them with their corresponding constant values. We then enable the standard LLVM pass pipeline related to constant optimization, such as Sparse Conditional Constant Propagation (SCCP).
-    \item \textbf{Optimal:} An oracle approach denoting the performance upper bound. For each specific input shape, we first execute the operator to capture the actual runtime values of the schedule parameters passed to the kernel. We then perform constant substitution on the kernel's LLVM IR using these captured values and apply the kernel specialization module of \mysys.
+    \item \textbf{Optimal (Upper Bound):} The theoretical performance upper bound achieved by perfect kernel specialization for each specific input shape. For each shape, we capture the actual runtime values of schedule parameters, substitute them as constants into the kernel's LLVM IR, and apply the kernel specialization module of \mysys. This represents the maximum possible speedup from constant specialization, serving as an oracle reference (not a practical method).
 \end{itemize}
 
 
@@ -52,7 +52,7 @@ For the operator benchmark, we compare \textbf{\mysys} against the following met
 
 
 \subsubsection{Operator Performance Analysis}
-\autoref{fig:eval:op-overall} presents the normalized speedup of the evaluated operators across three methods: \textbf{LLVM-spec}, \textbf{\mysys}, and the \textbf{Optimal} upper bound. All results are normalized to the \textbf{Baseline} (standard offline compilation).
+\autoref{fig:eval:op-overall} presents the normalized speedup of the evaluated operators across three methods: \textbf{LLVM-spec}, \textbf{\mysys}, and the \textbf{Optimal (Upper Bound)}. All results are normalized to the \textbf{Baseline} (standard offline compilation).
 
 \begin{figure}[htbp]
     \centering
@@ -62,7 +62,7 @@ For the operator benchmark, we compare \textbf{\mysys} against the following met
     \vspace{-10pt}
 \end{figure}
 
-Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.06$\times$} across all operators, significantly outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the performance of \textbf{\mysys} is nearly identical to the \textbf{Optimal} oracle (within 0.5\% difference on average), demonstrating that our framework effectively captures and leverages almost all available runtime constant information for specialization without the heavy overhead of full compilation for each possible shape.
+Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.06$\times$} across all operators, significantly outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the performance of \textbf{\mysys} is nearly identical to the \textbf{Optimal (Upper Bound)} oracle (within 0.5\% difference on average), demonstrating that our framework effectively captures and leverages almost all available runtime constant information for specialization without the heavy overhead of full compilation for each possible shape.
 
 We observe distinct performance behaviors across different operator categories defined in \autoref{tab:dynamic_operators}:
 
@@ -77,29 +77,38 @@ We observe distinct performance behaviors across different operator categories d
 \end{itemize}
 
 \subsubsection{End-to-End Model Performance Analysis}
-The end-to-end model inference performance is depicted as \autoref{fig:eval:model-overall}, showing normalized speedup for \textbf{Llama2-7B} and \textbf{Qwen2-1.5B} across varying sequence lengths and batch sizes (BS=1, 2, 4) during both Prefill and Decode phases.
-
-\textbf{\mysys} improves inference speed across all sequence lengths and batch sizes, with speedups ranging from \textbf{1.01$\times$ to 1.04$\times$}.
-The end-to-end speedup is smaller compared to average kernel speedups because of non-computational overheads such as kernel launching, memory copying, and binary operators.
-
-Key observations from the model benchmarks include:
-\begin{itemize}
-    \item \textbf{Consistency across Phases:} Performance gains are observed in both the compute-bound Prefill phase and the memory-bound Decode phase. This confirms that \mysys effectively optimizes both large-GEMM style workloads (via P-Attn and FFN optimizations) and memory-intensive workloads (via \texttt{D-Attn} and Norm optimizations).
-    \item \textbf{Impact of Batch Size and Number of Tokens:} As the batch size increases from 1 to 4, the speedup remains stable. In the Decode phase for Llama2-7B (red line), we observe a slight increase in speedup at certain sequence lengths. This suggests that as the computational intensity increases with larger batches, the benefits of optimized tiling and loop structures generated by \mysys become more pronounced compared to the runtime scheduling overhead.
-    
-    % \item \textbf{Model Sensitivity:} Qwen2-1.5B generally exhibits similar speedup trends to Llama2-7B, indicating that \mysys is generalizable across different model architectures (e.g., different configurations of GQA or hidden dimensions) without requiring manual tuning.
-\end{itemize}
-
-% In summary, \mysys successfully bridges the gap between static compilation and runtime-adaptive optimization, delivering "Optimal-like" performance with negligible overhead.
+The end-to-end model inference performance is depicted in \autoref{fig:eval:model-overall}, showing normalized speedup for \textbf{Llama-3.2-3B} and \textbf{Qwen2.5-1.5B} across varying sequence lengths and batch sizes (BS=1, 2, 4) during both Prefill and Decode phases.
+Additionally, \autoref{fig:eval:operator-breakdown} presents the operator latency breakdown to illustrate the contribution of different operators to the total inference time.
 
 \begin{figure}
     \centering
     \includegraphics[width=\textwidth]{figures/evaluation/model-speedup/multi_model_speedup.png}
-    \caption{Overall normalized performance of \mysys compared to PyTorch baseline based on CANN compiler across various dynamic shape operators. For the prefill phase, we measure the time to first token (TTFT); for the decode phase, we measure the average time per output token (TPOT).}
-    \Description{Overall normalized performance of \mysys compared to PyTorch baseline based on CANN compiler across various dynamic shape operators.}
+    \caption{End-to-end speedup of \mysys compared to PyTorch baseline based on CANN compiler for Llama-3.2-3B and Qwen2.5-1.5B. For the prefill phase, we measure the time to first token (TTFT); for the decode phase, we measure the average time per output token (TPOT).}
+    \Description{End-to-end speedup of \mysys compared to PyTorch baseline based on CANN compiler for Llama-3.2-3B and Qwen2.5-1.5B.}
     \label{fig:eval:model-overall}
     \vspace{-10pt}
 \end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\textwidth]{figures/evaluation/model-speedup/operator_breakdown.png}
+    \caption{Operator latency breakdown for Llama-3.2-3B and Qwen2.5-1.5B during inference, showing the proportion of execution time attributed to each operator type.}
+    \Description{Operator latency breakdown for Llama-3.2-3B and Qwen2.5-1.5B during inference.}
+    \label{fig:eval:operator-breakdown}
+    \vspace{-10pt}
+\end{figure}
+
+As shown in \autoref{fig:eval:model-overall}, \textbf{\mysys} achieves an average speedup of \textbf{3\%} across various shape configurations.
+The speedup is more pronounced for shorter sequences, but decreases as the input length and the number of generated tokens increase.
+This trend is consistent across both the Prefill and Decode phases.
+
+Key observations from the model benchmarks include:
+\begin{itemize}
+    \item \textbf{Speedup Variation with Sequence Length:} The end-to-end speedup is more significant for small sequences, where the overhead of scalar calculations and control flow constitutes a larger proportion of the total execution time. As the sequence length increases, the computational workload dominated by matrix operations grows, diluting the relative benefit of constant specialization.
+    \item \textbf{Dominance of MatMul in LLM Inference:} As illustrated in \autoref{fig:eval:operator-breakdown}, MatMul operations account for the majority of inference time in typical LLM workloads. Although \mysys demonstrates significant speedups for complex fused operators such as FlashAttention and normalization layers, these operators contribute a smaller fraction to the overall inference latency compared to MatMul. Consequently, the overall end-to-end speedup from constant specialization is modest for LLMs.
+\end{itemize}
+
+In summary, while constant specialization yields substantial improvements for specific operators with complex control flow and scheduling parameters, the end-to-end benefit for LLM inference is limited by the dominance of MatMul operations, which are less amenable to constant-based optimizations.
 
 \subsubsection{Comparison between \mysys and specialization based on Standard LLVM}
 
