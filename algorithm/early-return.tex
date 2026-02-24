@@ -1,52 +1,40 @@
 \begin{algorithm}[H]
-    \caption{Early-Exit Edges Detection}
+    \caption{Early-Exit Edges Detection via Conditional Return-Value Flow}
     \label{algo:runtime-shape-check-detection}
     \footnotesize
     \SetKwFunction{RunOnFunction}{RunOnFunction}
     \SetKwFunction{MarkEarlyExitEdge}{MarkEarlyExitEdge}
-    \SetKwFunction{TraceGuardingBranch}{TraceGuardingBranch}
-    \SetKwFunction{GetPhiOperands}{GetPhiOperands}
-    \SetKwFunction{PushBack}{PushBack}
-    \SetKwFunction{Pop}{Pop}
-    \SetKwFunction{IsPhi}{IsPhi}
+    \SetKwFunction{GetReturnInst}{GetReturnInst}
+    \SetKwFunction{GetReturnValue}{GetReturnValue}
+    \SetKwFunction{BuildCRVFG}{BuildCRVFG}
+    \SetKwFunction{GetCondition}{GetCondition}
+    \SetKwFunction{GetValue}{GetValue}
+    \SetKwFunction{GetSourceBlock}{GetSourceBlock}
+    \SetKwFunction{FindBranchWithCondition}{FindBranchWithCondition}
+    \SetKwFunction{GetSuccessor}{GetSuccessor}
+    \SetKwFunction{IsError}{IsError}
     \SetKwFunction{IsCall}{IsCall}
-    \SetKwFunction{IsConstant}{IsConstant}
-    \SetKwFunction{FindBranchUser}{FindBranchUser}
-    \SetKwFunction{GetFailSuccessor}{GetFailSuccessor}
-    \SetKwFunction{ParentBlock}{ParentBlock}
     \SetKwProg{Fn}{Function}{:}{}
     
     \Fn{\RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}}{
-        $B_{exit} \gets$ exit block of $F$\;
-        $Inst_{ret} \gets$ return instruction in $B_{exit}$\;
-        $v_{ret} \gets$ operand of $Inst_{ret}$\;
+        $inst_{ret} \gets$ \GetReturnInst{$F$}\;
+        $v_{ret} \gets$ \GetReturnValue{$inst_{ret}$}\;
+        $E \gets$ \BuildCRVFG{$F, v_{ret}$}\;
         
-        $W \gets \varnothing$\;
-        \uIf{\IsPhi{$v_{ret}$}}{ $W \gets \GetPhiOperands(v_{ret})$\; }
-        \uElse{ $W.\PushBack(v_{ret}, B_{exit}, \text{null})$\; }
-        
-        \While{$W \neq \varnothing$}{
-            $(v, B_{in}, B_{to}) \gets W.\Pop{}$\;
+        \ForEach{edge $e \in E$}{
+            $\varphi \gets$ \GetCondition{$e$}\;
+            $v \gets$ \GetValue{$e$}\;
+            $B_{src} \gets$ \GetSourceBlock{$e$}\;
             
-            \uIf{\IsPhi{$v$}}{
-                $W.\PushBack(\GetPhiOperands(v))$\;
-            }
-            \uElseIf{\IsConstant{$v$}}{
-                \If{$v \in \mathcal{E}$}{
-                    \MarkEarlyExitEdge($B_{in} \to B_{to}$)\;
-                    \TraceGuardingBranch($F, B_{in}, \mathcal{E}, \mathcal{S}$)\;
+            \uIf{\IsError{$v, \varphi, \mathcal{E}, \mathcal{S}$}}{
+                $br \gets$ \FindBranchWithCondition{$B_{src}, \varphi$}\;
+                \If{$br \neq \text{null}$}{
+                    $B_{dst} \gets$ \GetSuccessor{$br, \varphi$}\;
+                    \MarkEarlyExitEdge{$B_{src} \rightarrow B_{dst}$}\;
                 }
             }
             \uElseIf{\IsCall{$v$}}{
                 \RunOnFunction{callee of $v$, $\mathcal{E},\ \mathcal{S}$}\;
-                
-                $br \gets \FindBranchUser(v)$\;
-                \If{$br \neq \text{null}$}{
-                    $B_{fail} \gets \GetFailSuccessor(br, v, \mathcal{E}, \mathcal{S})$\;
-                    \If{$B_{fail} \neq \text{null}$}{ 
-                        \MarkEarlyExitEdge($\text{ParentBlock}(br) \to B_{fail}$)\; 
-                    }
-                }
             }
         }
     }

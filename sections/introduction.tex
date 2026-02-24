@@ -31,7 +31,7 @@ Based on this insight, we propose leveraging the \initialconsts as the contextua
 By propagating these \initialconsts through the operator library down to the kernel call sites, we can statically specialize generic kernels and prune redundant instances in manually specialized libraries.
 However, implementing this strategy faces two critical challenges regarding the precision of static analysis: the \textbf{cross-language boundary} and \textbf{complex control flows}.
 First, the operator library is typically integrated into the framework via Python/C++ Foreign Function Interface (FFI), which cuts off the traditional static call graph.
-Second, the Host-side programs of operators involve many input validity checks (Sanity Checks), introducing numerous early-exit paths.
+Second, the Host-side programs of operators involve many shape checkers for input validity, introducing numerous early-exit paths that return error status codes when shape constraints are violated.
 Standard static analysis conservatively merges data flows from these early-exit paths with the normal path, polluting the precise constant information and causing significant precision loss (i.e., treating constants as "unknown" at merge points).
 
 To address the above challenges, we introduce \mysys, the first system designed to analyze cross-language constant propagation for kernel specialization. 
@@ -45,7 +45,8 @@ By introducing mechanisms specific to DL systems, \mysys extends traditional sta
 
     \item \textbf{Information Propagation:} 
     This module performs context-sensitive inter-procedural analysis to propagate constants through complex Host-side programs. 
-    It integrates an early-exit identification algorithm to prune invalid early-exit paths and employs field-sensitive points-to propagation, and adopts an optimized iterative analysis strategy for loop structures.
+    It integrates a conditional return-value flow analysis to identify early-exit edges---control-flow edges that lead to error returns when shape checkers fail. 
+    By constructing a lightweight value flow graph for return values and determining error states through simple constant comparison against predefined status code sets, \mysys precisely identifies and prunes these early-exit edges, enabling accurate constant propagation along valid execution paths.
 
     \item \textbf{Kernel Specialization:} 
     Utilizing the propagated invariants, this module performs IR-level transformations. 
@@ -56,7 +57,7 @@ By introducing mechanisms specific to DL systems, \mysys extends traditional sta
 In summary, the main contributions of this paper are as follows:
 \begin{enumerate}
     \item We propose \mysys, a novel static analysis framework that, for the first time, achieves precise constant propagation across the DL framework's language boundary (Python/C++) into the underlying operator libraries.
-    \item We introduce a cross-language context reconstruction method and an unreachable path pruning technique, effectively overcoming the barriers of FFI gaps and complex sanity checks that hinder standard static analysis.
+    \item We introduce a cross-language context reconstruction method and a conditional return-value flow analysis for identifying early-exit edges, effectively overcoming the barriers of FFI gaps and complex shape checkers that hinder standard static analysis.
     \item We implement \mysys based on LLVM~\cite{lattner2004llvm} and apply it to PyTorch~\cite{ansel2024dynamo}. The system is designed with extensibility, applicable to other Python-based frameworks (e.g., TensorFlow) and various hardware backends supported by LLVM.
     \item Evaluation on the different platform demonstrates the effectiveness of \mysys.
     For generic operators of Ascend, it achieves an average speedup of 1.06$\times$ (up to 1.17$\times$) and 1.03$\times$ end-to-end inference speedup on top of highly optimized vendor libraries.

@@ -1,381 +1,250 @@
-\section{Evaluation}
-
-\label{sec:eval}
+我在写一篇论文的系统设计图。这个论文是针对算子库做核函数特化的工作，动机是PyTorch等深度学习框架基于 Graph IR 通过Python跨语言调用C++算子代码，但是当前由于欠特化和过度特化导致算子库性能欠佳或者代码膨胀。我们的方案就是解决这个问题。
 
 
 
-Our evaluation mainly focuses on the following questions:
+需要你为我构思这个整体的流程图应该如何绘制。整体流图需要体现：
 
+1. 输入有两部分。一是 Graph IR，包含算子node、输入输出形状，其中包括动态维度和静态维。二是 C++的算子实现，通过 Pybind 等跨语言扩展与 Python DSL 绑定，其中算子实现内存在 built-in shape checkers；
+
+2. 从 Graph IR 利用 Extractor 可以提取算子 Node 的形状信息，并且通过程序合成生成 LLVM IR 类型的程序的调用上下文，核心是将各种类型的Node参数值映射到 LLVM 类型的数据对象内存布局中，从而形成LLVM IR based 的常量传播的上下文。
+
+3. 对于 C++ 算子程序，需要先处理其中的 shape checkers 程序片段，重点是识别出形状检查失败引发的 early-exit 路径。我们基于现有算子库的形状检查的形状检查模式，提出early-exit路径的识别规则。
+
+4. 基于 LLVM IR 的跨过程常量传播的模块，利用合成的 LLVM IR 常量传播上下文，对 C++ 算子程序进行常量传播优化，同时用 early-exit 路径识别规则对形状检查失败的路径进行特殊处理。该模块的输出是一些三元组，对应的是 <call site, kernel, parameter values>, 即程序内调用的每个 Kernel 的 Call Site 上的参数值。
+
+5. 核函数特化模块。基于上一步输出的三元组，对每个 Kernel 的所有 call site 进行核函数特化。对于每个三元组，利用参数值对 Kernel 进行特化生成新的核函数实现代码。该模块的输出是特化后的核函数代码。
+   对于算子库去冗余的场景，若常量传播过程中发现一些 call site 为 dead code，则可以直接将这些 call site 对应的核函数实现剔除。
+
+整体流程图可以按照以下结构进行绘制：
+- 输入部分：左侧绘制两个输入框，分别标注为 "Graph IR" 和 "C++ 算子实现"。其中 C++ 算子实现输入框关联一个小模块，标注为 "built-in Shape Checkers"。
+- 提取与合成部分：从 "Graph IR" 输入框引出箭头，指向一个标注为 "Extractor" 的模块框，表示提取算子 Node 形状信息和生成 LLVM IR 上下文。
+- 形状检查处理部分：从 "C++ 算子实现" 输入框引出箭头，指向一个标注为 "LLVM IR" 的模块框，关联一个 Early-exit 路径识别规则的模块。
+- 常量传播优化部分：从 "Extractor" 模块和 "LLVM IR" 模块分别引出箭头，指向一个标注为 "跨过程常量传播模块" 的模块框，表示对 C++ 算子程序进行常量传播优化和早期退出路径处理。
+- 核函数特化部分：从 "跨过程常量传播模块" 模块引出箭头，指向一个标注为 "核函数特化模块" 的模块框，表示对每个 Kernel 进行核函数特化生成新的核函数实现代码。
+- 输出部分：从 "核函数特化模块" 模块引出箭头，指向一个输出框，标注为 "特化后的核函数代码"。
+
+生成这个流图，要求流图的内容是英文，并且每个模块框内需要有简要的描述文字说明其功能，并且以 Flash Attention 算子为例子，给出 Graph IR、C++ 算子实现、 Shape Checkers、识别规则、LLVM IR 上下文的具体内容示例。
+
+sections/background.tex:152-315
+```
+\subsubsection{Challenge 2: Sanity Checks Leading to Early-Exit Paths}
+
+The second challenge stems from dynamic shape checks in production libraries.
+High-performance operators are often developed under strict constraints, such as mandatory memory alignment (e.g., dimensions must be multiples of 32) or equality of dimensions across tensors (e.g., the sequence length of key and value tensors must be equal for the Flash Attention operator).
+Consequently, these operators must verify input validity at runtime for robustness.
+
+Consider a simplified Flash Attention computation:
+\begin{equation*}
+    \text{Attention}(Q, K, V, M) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}} + M\right) V,
+\end{equation*}
+where $Q \in \mathbb{R}^{B_q \times S_q \times d_k}$, $K \in \mathbb{R}^{B_k \times S_k \times d_k}$, $V \in \mathbb{R}^{B_v \times S_v \times d_v}$, and $M \in \mathbb{R}^{L_q \times L_k}$ (the mask can be broadcast to $(B_q, S_q, S_k)$).
+The batch dimensions $B_q$, $B_k$, $B_v$ and sequence lengths $S_q$, $S_k$, $S_v$, $L_q$, $L_k$ are dynamic dimensions that vary across inference requests.
+The operator imposes several constraints:
 \begin{itemize}
-
-    \item Can \mysys enhance performance across a diverse set of operators and neural networks on Ascend devices?
-
-    \item Can \mysys effectively infer more invariable parameters for kernels with a reasonable compilation overhead compared to current compilers given same context information?
-
-    \item Can \mysys be useful for accelerators beyond Ascend which have high scalar capablity, such as GPUs?
-
+    \item $B_q = B_k = B_v$ (batch sizes must match across query, key, and value tensors);
+    \item $S_k = S_v$ (key and value sequence lengths must match);
+    \item $S_q = S_k$ for causal attention;
+    \item $L_q$ and $L_k$ must be broadcastable to $S_q$ and $S_k$, respectively (i.e., $L_q = S_q$ or $L_q = 1$, and similarly for $L_k$).
 \end{itemize}
-
-Apart from the above main questions, we evaluate the detailed performance metrics differnce brought by \mysys, the performance improvement under different shape configurations.
-
-
-
-\subsection{Experimental Setup}
-
-\label{sec:eval:setup}
-
-
-
-\paragraph{Hardware and Software Platforms}
-
-The main evaluation is on a platform equipped with an Ascend 910B1 NPU with 64GB HBM, an Intel Core i7-8700 CPU and 64GB DRAM.
-
-The version of Ascend Compute Architecture for Neural Networks(CANN) is 8.0.RC1.
-
-The version of LLVM is 15.0.5 and the version of PyTorch is 2.6.0.
-
-To ensure accuracy, the reported data represents the average of the last 90 runs out of 100 total executions.
-
-
-
-\paragraph{Benchmarks}
-
-\label{sec:eval:bench}
-
-To ensure a comprehensive evaluation, our benchmark suite comprises two main components: individual operator latency and end-to-end model inference.
-
-
-
-The operator benchmark is derived from mainstream deep learning workloads, encompassing Large Language Models, Computer Vision models, and recommendation models.
-
-\autoref{tab:dynamic_operators} summarizes the categorization and configurations of the evaluated operators.
-
-
-
-\input{tables/operator-specs.tex}
-
-
-
-
-
-Within this set, we particularly emphasize on complex fused operators widely adopted in industrial serving scenarios, such as \texttt{FlashAttention}, \texttt{FeedForward} (FFN), and \texttt{BatchMatMul}.
-
-These operators are characterized by complex implementations and a substantial number of kernel arguments, making them the primary targets for our optimization.
-
-For the end-to-end model evaluation, we select Qwen2-1.5B and Llama2-7B to represent varying scales of modern LLMs.
-
-We assume batch size of LLMs is fixed and the sequence length of the input prompt and kv cache is variable.
-
-
-
-\paragraph{Implementation and Experimental Setup}
-
-All evaluations for both operators and models are conducted using PyTorch 2.6.0.
-
-We encapsulate the target operators and models as \texttt{nn.Module} instances.
-
-Dynamic dimensions are explicitly marked using the \texttt{Dynamic} API, and we utilize PyTorch Dynamo with dynamic compilation enabled.
-
-
-
-For the operator benchmark, we compare \textbf{\mysys} against the following methods:
-
-\begin{itemize}
-
-    \item \textbf{Baseline:} The standard offline compilation approach. It compiles the operator library based on standard LLVM passes without access to any runtime operator invocation context.
-
-    \item \textbf{LLVM-spec:} A specialization method relying on standard LLVM capabilities. Leveraging the host-side entry function context provided by \mysys, we identify LLVM IR instructions that access constant function arguments and replace them with their corresponding constant values. We then enable the standard LLVM pass pipeline related to constant optimization.
-
-    \item \textbf{Optimal:} An oracle approach serving as the performance upper bound. For each specific input shape, we first execute the operator to capture the actual runtime values of the scalar arguments passed to the kernel. We then perform constant substitution on the kernel's LLVM IR using these captured values and apply the kernel specialization module of \mysys.
-
-\end{itemize}
-
-
-
-\begin{figure}[htbp]
-
-    \centering
-
-    \includegraphics[width=\textwidth]{figures/evaluation/op-speedup/speedup_histogram.pdf}
-
-    \caption{Overall normalized performance of \mysys compared to compiler baselines }
-
-    \label{fig:eval:op-overall}
-
-\end{figure}
-
-
-
-\subsection{Performance Result of Operators and Models}
-
-\label{sec:eval:result}
-
-
-
-\paragraph{Operator Performance Analysis}
-
-\autoref{fig:eval:op-overall} presents the normalized speedup of the evaluated operators across three methods: \textbf{LLVM-spec}, \textbf{\mysys}, and the \textbf{Optimal} upper bound. All results are normalized to the \textbf{Baseline} (standard offline compilation).
-
-
-
-Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.05$\times$} across all operators, significantly outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the performance of \textbf{\mysys} is nearly identical to the \textbf{Optimal} oracle (within 0.5\% difference on average), demonstrating that our framework effectively captures and leverages almost all available runtime constant information for specialization without the heavy overhead of full compilation for each possible shape.
-
-
-
-We observe distinct performance behaviors across different operator categories defined in \autoref{tab:dynamic_operators}:
-
-
-
-\begin{itemize}
-
-    \item \textbf{Attention mechanisms (P-Attn, D-Attn):} \mysys achieves the most significant gains in attention-related operators, with speedups reaching \textbf{1.15$\times$} for Prefill FlashAttention (P-Attn) and \textbf{1.18$\times$} for Decoding FlashAttention (\texttt{D-Attn}). 
-
-    These kernels heavily rely on tiling parameters (e.g., block sizes derived from sequence lengths).
-
-    While \textbf{LLVM-spec} fails to optimize these due to the complexity of index calculations, \mysys successfully propagates these runtime scalars into the kernel IR, enabling the backend compiler to generate more efficient pipelined instructions.
-
+These constraints are enforced via runtime sanity checks, leading to early-exit paths when violated.
+
+\autoref{lst:early_return_code} illustrates an example where sanity checks create branches that handle errors and exit the function immediately, referred to as an early-exit path.
+The function \texttt{set\_t} is a simplified tiling function from a Flash Attention operator, where \texttt{sq} and \texttt{sk} represent the sequence length dimensions of the key and value tensors, respectively.
+The Flash Attention operator requires these two dimensions to be equal.
+Since both \texttt{sq} and \texttt{sk} are dynamic dimensions, static analysis cannot determine whether the call to \texttt{\@check(\%sq, \%sk)} (line 4 in \autoref{fig:dynamic_shape_check_demo}) returns \texttt{SUCCESS}.
+Therefore, the compiler conservatively assumes both the success path (BB1->BB2->BB3) and the early‑exit path (BB1->BB3) are feasible.
+This leads to merging of values at BB3, causing the constant 32 stored in \texttt{t} to be polluted and treated as unknown.
+Standard path-insensitive data-flow analysis leads to specialization failure because it merges values from both the valid and early-exit paths. In \autoref{fig:dynamic_shape_check_demo}, the value stored at the memory location pointed to by \texttt{\%t} at BB3 is treated as non-constant because the early-exit path (BB1 to BB3) fails to assign a value. 
+This prevents the compiler from propagating the constant 32 at line 8. 
+While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish these paths, it is computationally expensive and suffers from path explosion.
+
+\begin{figure}[h]
+    \noindent
+    % --- 左侧 C++ 代码 ---
     
-
-    \item \textbf{Normalization and Up/Down sampling (GN, RMS, Resize):} Computation-intensive element-wise or reduction ops like GroupNorm (GN) and Resize also benefit notably, showing speedups of approximately \textbf{1.11$\times$} and \textbf{1.10$\times$} respectively. The constant specialization allows for the elimination of redundant boundary checks and simplifies division operations related to channel or spatial dimensions.
-
-    
-
-    % \item \textbf{Performance degradation:} As shown in the breakdown (e.g., for \textit{Pool3D} and \textit{P-MM}), \textbf{LLVM-spec} sometimes yields negligible improvements or even slight regressions (speedup $<$ 1.0). This indicates that merely replacing constant arguments without analyzing their propagation paths (as \mysys does) is insufficient to trigger high-level compiler optimizations on the Ascend NPU.
-
-\end{itemize}
-
-
-
-\paragraph{End-to-End Model Performance Analysis}
-
-We further evaluate how the operator-level speedups translate to end-to-end model inference performance. \autoref{fig:eval:model-overall} depicts the normalized speedup for \textbf{Llama2-7B} and \textbf{Qwen2-1.5B} across varying sequence lengths and batch sizes (BS=1, 2, 4) during both Prefill and Decode phases.
-
-
-
-\textbf{\mysys} consistently improves inference latency across all configurations, with speedups ranging from \textbf{1.01$\times$ to 1.04$\times$}.
-
-While the end-to-end gains are naturally diluted compared to individual kernel speedups (due to non-computational overheads such as kernel launching, memory copying, and unoptimized operators), the improvements remain robust.
-
-
-
-Key observations from the model benchmarks include:
-
-\begin{itemize}
-
-    \item \textbf{Consistency across Phases:} Performance gains are observed in both the compute-bound Prefill phase and the memory-bound Decode phase. This confirms that \mysys effectively optimizes both large-GEMM style workloads (via P-Attn and FFN optimizations) and memory-intensive workloads (via \texttt{D-Attn} and Norm optimizations).
-
-    \item \textbf{Impact of Batch Size and Number of Tokens:} As the batch size increases from 1 to 4, the speedup remains stable. In the Decode phase for Llama2-7B (red line), we observe a slight increase in speedup at certain sequence lengths. This suggests that as the computational intensity increases with larger batches, the benefits of optimized tiling and loop structures generated by \mysys become more pronounced compared to the runtime scheduling overhead.
-
-    
-
-    % \item \textbf{Model Sensitivity:} Qwen2-1.5B generally exhibits similar speedup trends to Llama2-7B, indicating that \mysys is generalizable across different model architectures (e.g., different configurations of GQA or hidden dimensions) without requiring manual tuning.
-
-\end{itemize}
-
-
-
-% In summary, \mysys successfully bridges the gap between static compilation and runtime-adaptive optimization, delivering "Optimal-like" performance with negligible overhead.
-
-
-
-\begin{figure}
-
-    \centering
-
-    \includegraphics[width=\textwidth]{figures/evaluation/model-speedup/multi_model_speedup.png}
-
-    \caption{Overall normalized performance of \mysys compared to PyTorch baseline based on CANN compiler across various dynamic shape operators. For prefill phase, we measure the time to first token (TTFT); for decode phase, we measure the average time per output token(TPOT).}
-
-    \Description{Overall normalized performance of \mysys compared to PyTorch baseline based on CANN compiler across various dynamic shape operators.}
-
-    \label{fig:eval:model-overall}
-
-\end{figure}
-
-
-
-\paragraph{Comparison between \mysys and specialization based on Standard LLVM}
-
-
-
-We analyze the trade-off between compilation overhead and optimization effects, as detailed in \autoref{tab:compilation_overhead_final}.
-
-
-
-LLVM-spec incurs minimal compilation overhead relative to the baseline (less than 0.60s in all cases).
-
-This efficiency stems from its efficient implementation: 
-
-it scans both host and device-side programs to perform immediate constant substitution on IR instructions that access constant arguments, followed by a cascade of standard constant-related optimization passes.
-
-Crucially, these standard passes are predominantly \textit{context-insensitive} and \textit{flow-insensitive}, allowing them to complete the analysis rapidly without deeply tracking complex variable states along the control flow and the function call graph.
-
-
-
-In contrast, \mysys exhibits a moderate increase in compilation time, ranging from 0.24s to 2.70s.
-
-This additional overhead is inherently driven by the adoption of \textit{flow-sensitive} and \textit{context-sensitive} analysis.
-
-Unlike the direct substitution in LLVM-spec, \mysys must infer and propagate significantly more detailed information throughout the kernel's execution path.
-
-However, given that this compilation is a one-off cost during deployment, we consider this overhead acceptable, especially as it enables the backend compiler to generate significantly more efficient binaries (as evidenced by the 1.05$\times$ speedup).
-
-Besides, \mysys avoids the need for path-sensitive analysis due to early-return paths pruning, makes the compilation overhead acceptable.
-
-
-
-% TODO:
-
-% Comparison of the number of inferred parameters
-
-
-
-\input{tables/compilation_overhead.tex}
-
-
-
-\subsection{Analysis on Benefits of Kernel Specialization}
-
-
-
-\input{tables/benefits-all}
-
-
-
-\label{sec:eval:analysis}
-
-
-
-To deeply understand the sources of the performance gains demonstrated in \autoref{sec:eval:result}, we analyze low-level hardware performance metrics collected during operator execution.
-
-\autoref{tab:performance_metrics} details the Speedup alongside key architectural metrics: Instruction Cache (I-Cache) Miss Rate, Scalar Instruction Ratio, Memory Transfer Engine (MTE) Ratios, and the final compiled Binary Size.
-
-Comparing \textbf{\mysys} (T) against the \textbf{Baseline} (B) and \textbf{LLVM-spec} (L), we attribute the improvements to two primary factors: reduced instruction fetch overhead and simplified runtime calculation.
-
-
-
-\paragraph{Reduction in Binary Size and I-Cache Misses}
-
-One of the most significant benefits of \mysys is the reduction in binary size, which directly correlates with improved instruction fetch efficiency.
-
-By propagating runtime invariants, \mysys enables the backend compiler to aggressively perform Dead Code Elimination (DCE) and simplify control flow graphs.
-
-As shown in \autoref{tab:performance_metrics}, operators with complex control logic exhibit dramatic reductions in binary size (e.g., 34.0\% for \texttt{Resize} and 22.7\% for \texttt{D-Attn}).
-
-Consequently, the I-Cache Miss rate for both \texttt{Resize} (9.83\% $\rightarrow$ \textbf{0.00\%}) and \texttt{D-Attn} (4.45\% $\rightarrow$ \textbf{0.00\%}) is completely eliminated, contributing to their respective speedups of 1.18$\times$ and 1.20$\times$.
-
-Notably, even for the computation-heavy \texttt{FFN} operator, specialization reduces the binary size by 20\%, dropping the I-Cache Miss rate from 3.89\% to \textbf{0.00\%}.
-
-For the large kernel \texttt{P-Attn}, \mysys reduces the binary size by over 50KB, decreasing the I-Cache miss rate from 16.40\% to 11.39\%.
-
-
-
-\paragraph{Optimization of Computational Intensity and Memory Scheduling}
-
-The \textit{Scalar Ratio} metric indicates the percentage of scalar instructions (used for address calculation and loop control) versus vector/matrix instructions. A lower Scalar Ratio implies that the NPU spends more cycles on actual data processing.
-
-\mysys effectively lowers the Scalar Ratio for operators like \texttt{RMS} (97.9\% $\rightarrow$ 88.6\%), confirming that by resolving loop bounds and offsets at compile time, runtime scalar calculations are converted into immediate operands.
-
-Furthermore, we observe significant improvements in memory scheduling, indicated by the reduction in \textit{MTE2 Ratio} (memory read instructions).
-
-For \texttt{M-Gate} and \texttt{GN}, the MTE2 ratios decrease from 25.0\% to 16.4\% and 25.0\% to 18.8\% respectively.
-
-This suggests that constant specialization facilitates better compiler scheduling, enabling more efficient data tiling and coalesced memory accesses, which directly contributes to their speedups of 1.12$\times$ and 1.17$\times$.
-
-
-
-\paragraph{Insensitive Operators}
-
-While most operators benefit from specialization, some, such as \texttt{Pool3D} and \texttt{BMM}, show negligible speedups (1.00$\times$ $\sim$ 1.02$\times$).
-
-For \texttt{Pool3D}, the baseline binary size is already extremely small (13.35KB) with a 0.00\% I-Cache miss rate, leaving virtually no room for control flow simplification.
-
-In the case of \texttt{BMM} (BatchMatMul), the workload is heavily compute-bound, dominated by Matrix Multiplication Unit (Cube) operations.
-
-Although \mysys slightly optimizes the binary size, the overhead of scalar instructions and instruction fetching is already minimal compared to the dense matrix computation.
-
-Therefore, optimizations in the instruction stream do not translate into visible latency reductions when the bottleneck lies strictly in the arithmetic units.
-
-
-
-\begin{figure}[H]
-
-    \centering
-
+    \begin{minipage}{0.4\textwidth}
+    \begin{lstlisting}[
+      language=C++, 
+      frame=single, 
+      caption={Early return path example.}, 
+      basicstyle=\ttfamily\small, 
+      label={lst:early_return_code}
+    ]
+const status SUCCESS = 0;
+const status ERROR = -1;
+status check(int s1, s2) {
+  if(s1 != s2)
+    return ERROR;
+  return SUCCESS;
+}
+status set_t(int sq, int sk, int& t) {
+  int ret = check(sq, sk);
+  if (ret != SUCCESS)
+    return ret;
+  t = 32;
+  return SUCCESS;
+}
+    \end{lstlisting}
+    \vspace{-15pt}
+    \end{minipage}
     \hfill
-
-    \begin{minipage}{0.47\textwidth}
-
-        \includegraphics[width=\linewidth]{figures/evaluation/op-speedup/d_attn_kv_length_speedup.pdf}
-
-        % 图11: 强调针对 Decoding Attention 算子，在不同 KV 长度和配置下的表现
-
-        \caption{Speedup ratio of \texttt{D-Attn} under varying cached KV sequence lengths and configurations.} 
-
-        \label{fig:eval:d_attn_kv}
-
+    % --- 右侧 LLVM 代码 ---
+    \begin{minipage}{0.45\textwidth}
+        % 添加 numbers=left 显示行号，xleftmargin 留出空间
+        \begin{lstlisting}[
+            language=llvm, 
+            escapechar=!, 
+            frame=single, 
+            basicstyle=\ttfamily\small,
+            numbers=left,
+            xleftmargin=2.5em,   % 给行号留出左边距
+            numbersep=5pt,
+            caption={LLVM IR of the function \texttt{set\_t}. },
+            label={fig:dynamic_shape_check_demo}
+        ] 
+; call context: %s = ?, *(%t) = 0
+define @set_t(i32 %sq, i32 %sk, i32* %t) {
+!\tikzmark{loc_entry}!BB1:
+  %0 = call @check(%sq, %sk)
+  %1 = icmp eq %0, 0
+  br %1, %BB2, %BB3
+BB2:
+!\tikzmark{loc_bb2}!  store 32, %t
+  br %BB3
+!\tikzmark{loc_bb3}!BB3:
+  %2 = phi [0, %BB2], [%0, %BB1]
+  ret %2
+}
+        \end{lstlisting}
+        \vspace{-15pt}
     \end{minipage}
 
-    \hfill
+    % --- 绘制叠加层 (Overlay) ---
+    \begin{tikzpicture}[overlay, remember picture]
+        
+        \tikzset{
+            bubble/.style={
+                rectangle callout,
+                callout absolute pointer={#1}, 
+                callout pointer width=0.3cm,
+                fill=propcolor, 
+                draw=propborder, 
+                thick,
+                rounded corners=3pt, 
+                font=\ttfamily\small, 
+                align=center,
+                inner sep=4pt
+            }
+        }
 
-    \begin{minipage}{0.47\textwidth}
+        % -------------------------------------------------------
+        % 1. Entry Bubble -> 指向 line 2
+        % -------------------------------------------------------
+        % 指针目标：loc_entry 向左 0.8cm (行号区)，向上 0.08cm (行高中心)
+        \node[bubble={($(loc_entry) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_entry) 
+            at ($(loc_entry) + (-0.5cm, 0.08cm)$) { % 气泡主体更靠左
+            \textbf{BB1}\\
+            *(\%t) = 0
+        };
 
-        \includegraphics[width=\linewidth]{figures/evaluation/op-speedup/d_attn_execution_speedup.pdf}
+        % -------------------------------------------------------
+        % 2. BB2 Bubble -> 指向 line 8
+        % -------------------------------------------------------
+        % 注意：loc_bb2 在缩进后，所以需要向左偏移更多 (-0.3cm) 才能指到行号
+        \node[bubble={($(loc_bb2) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb2) 
+            at ($(loc_bb2) + (-0.5cm, 0.28cm)$) { 
+            \textbf{BB2}\\
+            *(\%t) = 32
+        };
 
-        % 图12: 强调加速比与基准延迟（即任务量）的相关性/分布
+        % -------------------------------------------------------
+        % 3. BB3 Bubble -> 指向 line 10
+        % -------------------------------------------------------
+        \node[bubble={($(loc_bb3) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb3) 
+            at ($(loc_bb3) + (-0.5cm, -0.28cm)$) {
+            \textbf{BB3}\\
+            *(\%t) = ?
+        };
 
-        \caption{Distribution of speedup ratios of \texttt{D-Attn} relative to baseline kernel latency.} 
+        % -------------------------------------------------------
+        % 绘制连接箭头
+        % -------------------------------------------------------
+        \draw[->, >=stealth, thick] 
+            (node_entry.south west) to[bend right=45] (node_bb3.west);
 
-        \label{fig:eval:latency_dist}
+        \draw[->, >=stealth, thick] 
+            (node_bb2.south east) to[bend left=45] (node_bb3.north east);
 
-    \end{minipage}
-
-    \hfill
-
+    \end{tikzpicture}
 \end{figure}
 
+\textit{Insight: Pattern-Based Early-Exit Path Identification.} 
+We observe that dynamic shape operators use canonical patterns to signal failure, primarily through compile-time known status codes (e.g., \texttt{SUCCESS=0}, \texttt{ERROR=-1}) or by throwing exceptions at runtime. 
+Following the API contract, output parameters and kernel launches are only valid upon successful check. 
+Therefore, values originating from early-exit paths are irrelevant for Kernel Specialization.
+
+For a given function, \mysys identifies control-flow edges that first lead to early exits by back-tracing the root-cause of error status code from the exit block.
+the conditional branch statement that cause the program to return an error status code or throw an exception. 
+\mysys performs inter-procedural analysis to recognize these failure patterns across function boundaries.
+Crucially, this approach involves no risk of incorrect path pruning. 
+We only mark a control flow edge as an early-exit edge if it strictly matches the predefined failure patterns.
+
+By marking these edges, \mysys can shield the subsequent forward data-flow analysis from polluted values. This allows the constant propagation pass to focus exclusively on the success paths, which are the only paths where the kernel will actually execute. Consequently, we achieve higher precision than path-insensitive methods without facing the path explosion challenges of symbolic execution.
+
+```
+
+润色、简化这一段的内容，只重点突出如下点，删减冗余、不清晰的其他内容：
+1. 算子库的 Host 代码中存在形状合法性检查，因为需要确保...。 并且这种形状检查依赖于动态维度的运行时值，且维度间的约束数目非常多。
+2. 然后以flash attention算子为例子，说明其形式化描述、存在的约束，点出动态维度上的约束数目有很多即可。
+3. 接下来结合例子 lst:early_return_code 和 fig:dynamic_shape_check_demo 说明动态维度上的形状检查会产生 early-exit 路径，由于动态维度的不确定性导致编译器退化为保守分析，正常路径上的状态会被 early-exit 路径的状态影响，导致常量信息丢失。此外路径不敏感的分析（符号执行等）面临路径爆炸的挑战，且C++编译器内不存在动态维度上的约束信息难以修剪取出 early-exit 路径。
+4. 最后突出我们解决这个方法的insight：（1）首先做出一些假设和约定：运行时不正确的输入会被Host程序识别出来，因此对这些输入不会实际调用核函数；所以只有合法的输入才会调用核函数，因此可以在所有输入都是合法的assumption上开展核函数特化。（2）在LLVM IR上，fig:dynamic_shape_check_demo 所示的shape checkers有明确的跨过程调用的模式，通过识别这些模式可以标记出所有的 early-exit paths，使得后续的常量传播中可以避免这些路径的影响。
+
+
+
+我需要重写这个摘要，摘要里需要突出如下几点：
+
+1. 算子库的重要性，以及模型存在动态性：不同模型参数和动态形状。为高效支持各种模型和形状，算子库的核函数通常定义了许多参数，用于根据输入确定最优调度，这导致核函数存在大量参数。现有工作缺少有效的核函数特化的自动方法，导致难以在性能和代码体积上取得平衡。本论文的核心动机便是利用深度学习框架层已知的常量参数信息以及输入输出张量的部分常量维度信息，在编译期做全程序的常量传播，确定核函数参数中的编译期不变量并自动特化。但该过程面临两个关键挑战：（1）算子的常量信息保存在Graph IR（一种 Python DSL）中，缺少有效的机制传播到C++程序的Device-Native编译器中，称作跨层的常量信息丢失，（2）算子库内存在许多动态维度相关的形状检查，这些编译期不可确定的控制流制约信息传播的效率和精度。
+
+2. 为了解决这个问题，我们提出 \mysys, 第一个...框架，基于 ... 实现; \mysys 核心解决了上述的两个关键挑战：（1）基于深度学习框架的Graph表示通过程序合成技术，直接生成算子程序的部分求值的程序用于分析，解决常量信息怎么来的问题（2）利用形状检查的特征模式匹配，在常量传播的过程中剪枝形状不合法的路径，确保常量信息沿着合法路径传播，避免路径爆炸，解决常量信息如何传播的问题。\mysys 因此是一个面向 Kernel Function 的常量特化工具，主要是为了解决跨语言、动态形状场景下的特有挑战。
+
+4. 我们将这些工作实现在 Ascend NPU and Nvidia GPU platform 上. 对两个平台当前最流行SOTA的算子库（CANN vendor libraries on NPU， FlashInfer on GPU）之一的实验证明：  \mysys's ability to infer invariants and specialize kernels across diverse operators and models:
+
+compared to the baseline compiler for Ascend, \mysys achieves 1.06$\times$ speedup on average and up to 1.17$\times$ speedup on specific operators, 1.03$\times$ speedup on large language models(LLMs) inference speed.
+
+Besides, \mysys shows potential on operator libraries slimming by using inferred invariants for GPUs, reducing the binary size of FlashInfer by over 96\%.
 
 
 
 
-\paragraph{Impact of Workload Scale on Performance}
+
+核函数特化可以用常量值替换部分参数，从而促进编译期优化，显著优化性能，但潜在代价是代码膨胀。
+
+模型参数多：head_dim（头维度）、quant_mode（量化方式，如 fp8/int4）、page_size（分页大小）等；动态维度多：batch size、QKV 输入或缓存序列长度等。
 
 
+修改 /home/ls/research/compile_unknown_shape/sections/background.tex 的 \subsubsection{Challenge 2: Sanity Checks Leading to Early-Exit Paths} 小节以及 /home/ls/research/compile_unknown_shape/sections/design.tex 的 \subsection{Identify Early Exit Edge} 小节，以及 /home/ls/research/compile_unknown_shape/sections/introduction.tex 中对于 early-exit edges 识别的说明，我需要对现有的insight以及设计进行重写，要点如下：
+1. 不同于现有版本这种基于特定模式做匹配的方法， 我最新的设计是基于  conditional return-value flow，首先为含有 shape checkers 的函数确定 return 值的 value flow 及其条件表达式，引用并参考 /home/ls/research/compile_unknown_shape/figures/sys-design/tilinginfer-conditioanl-value-flow.png。若 return 的值在当前路径上的条件下可以判定为属于 ERROR 状态码，则代表该路径会导致形状检查错误。此时，我们根据值流图上return error 的条件表达式定值所在的基本块及其后继基本块的条件表达式，可以确定该条件表达式 guard 的 edge 即为 early-exit，我们标记该边为 early-exit edge，具体示例引用并参考/home/ls/research/compile_unknown_shape/figures/sys-design/infeasible-paths-on-cfg.png。
+代码示例为：
+int e = check(...);
+if (e != SUCC) {
+   print(...);
+   return e;
+}
+*t=32; // Tiling
+return SUCC;
+2. 这里的 value flow 是 on-demand、在单个函数内构建的，体现在：我们只对明确包含 shape-checkers 的函数构建值流图，而不是对所有函数都构建，以避免过度的精度带来的开销；我们只对 return 值的 value flow 进行创建，由于包含 shape-checkers 的函数的 return 值在 SSA 格式的 IR 上通常都是 top-level variables（指示当前函数内的形状检查是否成功），几乎不涉及与 memory objects 相关的 implicit value flow，因此该 value flow graph 通常非常小。
+3. 体现出在当前路径的条件表达式下，判定 return value 是否属于 ERROR 的算法，是基于预定义的 SUCCESS 和 ERROR 状态码集合的常量值的。需要在文中明确指出这一点，并且明确给出这个判定的方法（无需 SMT Solver，由于形状检查的条件表达式通常只涉及与常量状态码相等和不等的判断，因此可以直接判断）。
+4. 综合 2 和 3，需要明确说明本设计的 return-value flow graph 很小，分析开销远小于针对通用程序设计的 value flow；此外无需针对通用程序的 SMT Solver 求解，只需要判断 return value 在给定条件上是否属于SUCCESS状态码集合或ERROR 状态码集合即可。
+5. 还需要修改 /home/ls/research/compile_unknown_shape/algorithm/early-return.tex 算法，体现出最新的识别 early-exit edges 的完整算法，是如何通过 conditional return-value flow 确定 Control Flow Graph 上哪些边是 early-exit edges。这个算法需要尽量简洁，可以引入helper函数以保持算法的简洁，需要在正文中介绍这些helper函数的含义。
+6. 需要对 introduction、background 和 design 修改，需要规范针对 early-exit edges identification 算法这部分的所有描述，所有地方都用 shape checkers 指代针对动态形状的检查，并且都用 early-exit edges 代表形状检查出错导致的错误返回的路径。
+7. 需要修改 background 中的代码示例以及对应的IR程序以及正文中的描述，需要修改为下面的代码示例：
+int e = check(...);
+if (e != SUCC) {
+   print(...);
+   return e;
+}
+*t=32; // Tiling
+return SUCC;
 
-To understand how \mysys performs under different workload intensities, we analyze the speedup of the \texttt{D-Attn} operator across varying KV cache lengths as \autoref{fig:eval:d_attn_kv} and the relationship between speedup and baseline kernel latency for all operators as \autoref{fig:eval:latency_dist}.
-
-The results demonstrate a clear correlation: the speedup ratio gradually decreases and converges towards 1.0 as the workload (sequence length or execution time) increases.
-
-This trend implies that the performance benefits derived from kernel specialization, primarily the elimination of scalar calculations, control flow overhead and the improvement of instruction cache utilization, are relatively fixed in absolute time and are largely independent of the total task volume.
-
-Consequently, this fixed reduction in overhead translates into significant speedup ratios for small-scale, low-latency kernels, but becomes little by the dominant computation and memory access time in heavy workloads.
-
-
-
-\paragraph{Analysis on the compilation pipelines of the kernel specialization}
-
-
-
-% TODO:
-
-% 绘制几种算子启动kernel特化后的 IR 指令数目随pass执行的变化情况，其中只标注 JIT spec pass
-
-
-
-\subsection{Generalize to other architectures: reducing binary size of AoT compiled operator libraries on GPU}
-
-
-
-
-
-
-
-我的论文的实验的最后一小节是 \subsection{Generalize to other architectures: reducing binary size of AoT compiled operator libraries on GPU}。这里我想讨论的是，\mysys 如何应用到其他的架构上。我需要你为我生成这一节的内容，要点如下：
-
-1. 需要首先承认，应用到诸如 GPU 等其他加速器架构上是困难的，这一点主要来自于：
-
-当代 GPU 等硬件的寄存器资源丰富、标量计算能力强（CUDA Core），尤其重要的是，当代GPU上的主流算子库已经演进的相当成熟，对性能影响较大的参数已经通过预先枚举所有可能的模板参数取值被手工常量特化了（这类参数通常是与控制流相关的参数，特化这些参数可以对循环做完全展开，从而避免控制流导致的SIMT架构不擅长处理的branch，同时还能通过更大范围的指令调度使能更好的流水线调度优化）。
-
-2. 但是，我们发现当前的 GPU 算子库普遍采用 AoT 的编译方式。在编译时，为了支持各种可能的模型、硬件，一个核函数通常需要实例化出很多个版本。但其中的绝大多数在特定的模型、特定的硬件上完全不会调用。这实际上造成了极大的代码冗余。
-
-3. 我们对于 FlashInfer 这一GPU上用于 LLM serving 的关键算子库（vLLM在GPU后端上的默认会调用的算子库）初步适配了 \mysys 。我们基于 \mysys 的 context generation module，从 pytorch前端为 FlashInfer 算子构建了调用上下文，基于 LLVM 编译 FlashInfer 算子程序，并对算子的 Host-side 代码做跨程序的信息传播，并标记所有被发射的核函数对象。最终，我们收集了算子库中所有可能被调用的核函数，并将确定不被调用的核函数的定义以及调用点删除（本质是一个枚举了模板参数取值后实例化的核函数）。最终，我们验证发现 \mysys 最多可以将 FlashInfer 这一算子库裁剪到原体积的 
+这里面增加了在错误路径上的print代码来反映形状检查出错路径上存在一些其他语句。
+8. 所有的增删改都需要保持英文论文写作的严谨、需要保证前后上下文逻辑连贯、简洁

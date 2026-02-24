@@ -149,18 +149,123 @@ This ensures that when the downstream analyzer accesses \texttt{query.sizes[1]},
 The rules in \autoref{tab:semantic-rules} cover all five core parameter types (Scalar, String, Tensor, Array, and Optional) used in the PyTorch operator interface.
 Recursive rules allow for complex compositions, such as the $\texttt{Optional}\langle\texttt{Array}\rangle$ used in the \texttt{seq\_lengths} example, ensuring the approach is generic across the standard deep learning operator schema.
 
-% 首先快速讨论一下算子库中的状态码都是常量，因而可以手工设置成功和失败的状态码集合。然后基于我现在提供的四种patterns(fig:early-return-patterns), 说明有sanity checks的函数的返回值一定是状态码，且这个return的值最终只能来源于编译期常量或含有sanity checks的子调用的返回值。对于给定的函数，识别early-exit边只需要从return value反向遍历data flow图（由于返回值只涉及top-level variable， 反向遍历 llvm 的 def-use链即可），直到确定最终来源值即可。对于来源值是常量的情况，与状态码做比较，若代表失败则来源基本块到exit block的路径的每条边都被标记为 early-exit 边；否则为normal 边。若来源是变量（子调用的返回值），则可以进一步利用对这个变量做检查的 condition branch 指令来判断哪个分支通向 early-exit 的路径，从而可以标记 early-exit 边。
-
-% 至于跨过程做early-exit识别。以 C++ operator program 的 entry function 作为开始递归地上述过程内的分析。如果当前函数含有sanity check，且子调用的返回值被return了，或者子调用的返回值作为条件导致了early-exit路径，则这个子调用也要做early-exit识别。对于间接函数调用，我们将这个early-exit 识别延迟到该信息传播阶段再进行，因为那时候函数调用语句的函数对象可能会通过信息传播被确定下来。
 
 \subsection{Identify Early Exit Edge}\label{sec:design:early-return}
 
 In production operator libraries, execution status is predominantly managed via compile-time constant integer status codes.
-We first define two sets of constants, $\mathcal{S}$ and $\mathcal{E}$, representing success and error states respectively (e.g., $\mathcal{S}=\{0\}$ and $\mathcal{E}=\{-1\}$).
-The identification of early-exit paths relies on the structural characteristics of the LLVM IR in functions containing sanity checks.
-As illustrated in \autoref{fig:early-return-patterns}, which depicts different situations of functions containing sanity checks, the return value comes from either a compile-time constant or the result of a sub-routine call.
-For \autoref{fig:early-return-patterns}(b) and \autoref{fig:early-return-patterns}(c), compile-time constant error code (i.e., -1) is directly returned.
-For \autoref{fig:early-return-patterns}(a) and \autoref{fig:early-return-patterns}(d), the result \texttt{\%ret} of a sub-routine call is directly returned.
+We first define two sets of constants, $\mathcal{S}$ and $\mathcal{E}$, representing success and error states respectively (e.g., $\mathcal{S}=\{0\}$ and $\mathcal{E}=\{-1\}$ for CANN operator libraries).
+The identification of early-exit edges relies on analyzing the \textit{conditional return-value flow} within functions containing shape checkers.
+
+\begin{figure}[ht]
+  \centering
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    % Placeholder for tilinginfer-conditioanl-value-flow.png
+    \framebox{\parbox{0.9\textwidth}{\centering
+      \vspace{2cm}
+      \textbf{Value Flow Graph Placeholder} \\
+      \small\textit{tilinginfer-conditioanl-value-flow.png}
+      \vspace{2cm}
+    }}
+    \caption{Conditional Return-Value Flow Graph for the \texttt{set\_t} function. The graph captures how the return value depends on conditionally guarded expressions.}
+    \label{fig:conditional-value-flow}
+    
+    \vspace{15pt}
+    
+    % Placeholder for infeasible-paths-on-cfg.png
+    \framebox{\parbox{0.9\textwidth}{\centering
+      \vspace{2cm}
+      \textbf{CFG Placeholder} \\
+      \small\textit{infeasible-paths-on-cfg.png}
+      \vspace{2cm}
+    }}
+    \caption{Control Flow Graph with early-exit edge identification. By mapping the condition predicate to the CFG, the early-exit edge is identified (marked with \ding{55}).}
+    \label{fig:infeasible-paths-cfg}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    % Inline algorithm replacing \input{algorithm/early-return}
+    \begin{algorithm}[H]
+      \caption{Early-Exit Edge Identification}
+      \label{algo:early-exit-identification}
+      \begin{algorithmic}[1]
+        \Require Function $F$, Success set $\mathcal{S}$, Error set $\mathcal{E}$
+        \Ensure Set of early-exit edges $E_{exit}$
+        \State $E_{exit} \gets \emptyset$
+        \State $inst \gets \texttt{GetReturnInst}(F)$
+        \State $v_{ret} \gets \texttt{GetReturnValue}(inst)$
+        \State $E_{flow} \gets \texttt{BuildCRVFG}(F, v_{ret})$
+        \ForAll{$edge \in E_{flow}$}
+          \State $\varphi \gets \texttt{GetCondition}(edge)$
+          \State $v \gets \texttt{GetValue}(edge)$
+          \If{$\text{isError}(v, \varphi)$}
+            \State $B_{src} \gets \texttt{GetSourceBlock}(edge)$
+            \State $br \gets \texttt{FindBranchWithCondition}(B_{src}, \varphi)$
+            \State $B_{dst} \gets \texttt{GetSuccessor}(br, \varphi)$
+            \State $\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$
+            \State $E_{exit} \gets E_{exit} \cup \{B_{src} \rightarrow B_{dst}\}$
+          \EndIf
+        \EndFor
+        \State \Return $E_{exit}$
+      \end{algorithmic}
+    \end{algorithm}
+  \end{minipage}
+  \vspace{-10pt}
+\end{figure}
+
+\subsubsection{Conditional Return-Value Flow Graph Construction}
+
+Our method constructs a \textit{Conditional Return-Value Flow Graph} (CRVFG) to precisely capture the relationship between shape checker conditions and early-exit paths.
+The CRVFG is built \textit{on-demand} and \textit{intra-procedurally}, with two key characteristics that ensure efficiency:
+
+\begin{enumerate}
+    \item \textbf{On-Demand Construction:} We construct the value flow graph only for functions that explicitly contain shape checkers, rather than for all functions in the program. This selective construction avoids the overhead of analyzing functions irrelevant to shape checking.
+    
+    \item \textbf{Return-Value Focus:} We exclusively track the value flow of return values. In SSA-form IR, return values of functions containing shape checkers are typically top-level variables (indicating whether shape checks succeeded), rarely involving implicit value flows through memory objects. Consequently, the resulting value flow graph is remarkably small and efficient to analyze.
+\end{enumerate}
+
+\autoref{fig:conditional-value-flow} illustrates the CRVFG for the \texttt{set\_t} function.
+The graph captures the conditional predicate $\varphi_1 = (e \neq \text{SUCC})$ that guards the error return path, establishing the data-flow relationship between the shape check condition and the error return value $e$.
+
+\subsubsection{Error Status Determination via Constant Comparison}
+
+A key advantage of our approach is that determining whether a return value indicates an error state under a given condition requires only simple constant comparison, without invoking an SMT solver.
+Since shape checker conditions in operator libraries typically involve equality or inequality comparisons against predefined status code constants, we formalize the error state determination for a given return value $v$ and its governing condition $\varphi$ as follows:
+
+$$
+    \text{isError}(v, \varphi) = 
+    \begin{cases}
+        \text{true} & \text{if } \varphi \Rightarrow (v \notin \mathcal{S}) \lor \varphi \Rightarrow (v \in \mathcal{E}) \\
+        \text{false} & \text{if } \varphi \Rightarrow (v \in \mathcal{S}) \\
+        \text{unknown} & \text{otherwise}
+    \end{cases}
+$$
+
+In practice, conditional guards for shape checkers often test for inequality against success codes (e.g., $v \neq 0$). Thus, proving that $v \notin \mathcal{S}$ is strictly sufficient to identify an error path. This determination reduces to straightforward set membership tests against $\mathcal{S}$ and $\mathcal{E}$, bypassing complex constraint solving.
+
+\subsubsection{Early-Exit Edge Identification Algorithm}
+
+Based on the CRVFG and the error status determination, we propose an early-exit edge identification algorithm to locate all control-flow edges that lead to early exits. The algorithm takes a function $F$ containing shape checkers, along with the predefined success and error status code sets $\mathcal{S}$ and $\mathcal{E}$. The process begins by obtaining the return instruction and its specific return value $v_{ret}$ via $\texttt{GetReturnInst}(F)$ and $\texttt{GetReturnValue}(inst)$. We then construct the Conditional Return-Value Flow Graph by calling $\texttt{BuildCRVFG}(F, v_{ret})$, which traces the value definitions backwards to yield a set of conditional value-flow edges. For each edge, we extract the associated condition predicate $\varphi$ ($\texttt{GetCondition}(edge)$) and the value $v$ flowing along it ($\texttt{GetValue}(edge)$). Applying the $\texttt{isError}(v, \varphi)$ logic, we evaluate whether this data flow represents an error return path. If confirmed, we trace back to the source basic block $B_{src}$ ($\texttt{GetSourceBlock}(edge)$) and locate the precise conditional branch instruction matching $\varphi$ ($\texttt{FindBranchWithCondition}(B_{src}, \varphi)$). Finally, we determine the branch's successor block $B_{dst}$ taken when $\varphi$ evaluates to true ($\texttt{GetSuccessor}(br, \varphi)$) and formally mark the control-flow transition from $B_{src}$ to $B_{dst}$ as an early-exit edge ($\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$).
+
+
+\subsubsection{Early-Exit Edge Identification Algorithm}
+
+Based on the CRVFG and error status determination, we propose \autoref{algo:runtime-shape-check-detection} to identify early-exit edges.
+The algorithm takes a function $F$ containing shape checkers, along with the predefined success and error status code sets $\mathcal{S}$ and $\mathcal{E}$, and identifies all control-flow edges that lead to early exits.
+
+We define several helper functions to keep the algorithm concise:
+\begin{itemize}
+    \item $\texttt{GetReturnInst}(F)$: Returns the return instruction of function $F$.
+    \item $\texttt{GetReturnValue}(inst)$: Extracts the return value from a return instruction.
+    \item $\texttt{BuildCRVFG}(F, v_{ret})$: Constructs the Conditional Return-Value Flow Graph for the return value $v_{ret}$ within function $F$, returning a set of conditional value-flow edges.
+    \item $\texttt{GetCondition}(edge)$: Extracts the condition predicate $\varphi$ associated with a value-flow edge.
+    \item $\texttt{GetValue}(edge)$: Extracts the value flowing along a value-flow edge.
+    \item $\texttt{GetSourceBlock}(edge)$: Returns the source basic block of the value-flow edge.
+    \item $\texttt{FindBranchWithCondition}(B, \varphi)$: Locates the conditional branch instruction in block $B$ whose condition matches $\varphi$.
+    \item $\texttt{GetSuccessor}(br, \varphi)$: Returns the successor block of branch $br$ that is taken when condition $\varphi$ evaluates to true.
+    \item $\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$: Marks the control-flow edge from $B_{src}$ to $B_{dst}$ as an early-exit edge.
+\end{itemize}
 
 \begin{figure}[ht]
   \centering
@@ -172,10 +277,10 @@ For \autoref{fig:early-return-patterns}(a) and \autoref{fig:early-return-pattern
             \begin{lstlisting}[language=C++, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
 status SUCCESS = 0;
 status ERROR = -1;
-int ret = check(...);
-if (ret != SUCCESS)
+int e = check(...);
+if (e != SUCCESS)
   // Check Fails
-  return ret;
+  return e;
             \end{lstlisting}
         \end{minipage}
         \hfill
@@ -183,11 +288,11 @@ if (ret != SUCCESS)
         \begin{minipage}[t]{0.54\linewidth}
             \begin{lstlisting}[language=llvm, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
 pred:
- %ret = call @check(...)
- %c = icmp ne %ret, 0
+ %e = call @check(...)
+ %c = icmp ne %e, 0
  br %c, %exit, %nxt
 exit: 
- %v=phi [%ret, %pred], ...
+ %v=phi [%e, %pred], ...
  ret %v
             \end{lstlisting}
         \end{minipage}
@@ -203,8 +308,8 @@ exit:
             \begin{lstlisting}[language=C++, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
 status SUCCESS = 0;
 status ERROR = -1;
-int ret = check(...);
-if (ret != SUCCESS)
+int e = check(...);
+if (e != SUCCESS)
   // Check Fails
   return ERROR;
             \end{lstlisting}
@@ -214,8 +319,8 @@ if (ret != SUCCESS)
         \begin{minipage}[t]{0.54\linewidth}
             \begin{lstlisting}[language=llvm, frame=single, breaklines=true, basicstyle=\scriptsize\ttfamily\color{codefont}]
 pred:
- %ret = call @check(...)
- %c = icmp ne %ret, 0
+ %e = call @check(...)
+ %c = icmp ne %e, 0
  br %c, %exit, %nxt
 exit: 
  %v = phi [-1, %pred], ...
@@ -274,7 +379,7 @@ return check(...);
     \end{minipage}
 
     \vspace{-5pt}
-    \caption{Examples of early exit patterns. Left is C++ semantics and right is the corresponding LLVM IR snippets.}
+    \caption{Examples of early exit patterns in functions containing shape checkers. Left is C++ semantics and right is the corresponding LLVM IR snippets.}
     \label{fig:early-return-patterns}
     \vspace{-10pt}
   \end{minipage}
@@ -287,40 +392,36 @@ return check(...);
   \end{minipage}%
 \end{figure}
 
-Based on these patterns, we propose \autoref{algo:runtime-shape-check-detection} to identify early-exit edges via a reverse data-flow analysis.
-To start with, we define specific auxiliary functions: \texttt{GetPhiOperands(v)} extracts the (value, incoming block, parent block of v) 3-items tuple from a \texttt{phi} node \texttt{v}; \texttt{FindBranchUser(v)} locates the conditional branch instruction that depends on value $v$; and \texttt{GetFailSuccessor(br, v, E, S)} evaluates the branch condition to identify which successor block corresponds to the error state.
-The analysis begins at the return instruction $Inst_{ret}$ within the function's exit block $B_{exit}$.
-We utilize a worklist $W$ to store pairs of $(v, B_{in}, B_{to})$, representing a value $v$ flowing into the analysis site from a predecessor block $B_{in}$.
-The analysis iteratively processes items from $W$ by tracing the Def-Use chain backwards.
-If the popped value $v$ is a \texttt{phi} node (checked via \texttt{IsPhi}), its operands are retrieved using \texttt{GetPhiOperands} and pushed back into $W$, effectively resolving control flow merges (at line 13 of \autoref{algo:runtime-shape-check-detection}).
-Based on the source type of the return value, there are two process methods:
+\autoref{fig:early-return-patterns} illustrates common patterns in functions containing shape checkers.
+For patterns (b) and (c), a compile-time constant error code is directly returned.
+For patterns (a) and (d), the result of a sub-routine call is returned.
+The algorithm handles all these patterns uniformly through the CRVFG-based approach.
 
+The algorithm proceeds as follows:
 \begin{enumerate}
-    \item \textbf{Constant Source:} When the source $v$ is a constant (as in \autoref{fig:early-return-patterns}(b) and (c)), we verify if it represents a failure state by checking if $v \in \mathcal{E}$.
-    If true, the path from $B_{in}$ to the basic block  $B_{to}$ that contains the \texttt{phi} instruction is confirmed as an early-exit path.
-    We invoke \texttt{MarkEarlyExitEdge} on the control flow edge $B_{in} \rightarrow B_{to}$, marking it as an early-exit edge.
+    \item \textbf{CRVFG Construction:} For the given function $F$, we first obtain the return instruction and its return value $v_{ret}$. We then build the CRVFG by tracing the def-use chain of $v_{ret}$ backwards, capturing all conditional value-flow edges.
     
-    \item \textbf{Variable Source:} When $v$ is the result of a function call (checked via \texttt{IsCall}), we call \texttt{FindBranchUser(v)} to locate the sanity check statements whose condition is associated with $v$.
-    Using \texttt{GetFailSuccessor}, we determine which successor block $B_{fail}$ leads to the error return. 
-    If a valid $B_{fail}$ exists, the edge leading to it is marked via \texttt{MarkEarlyExitEdge}.
-    For tail calls without any checks, no local edge is marked.
+    \item \textbf{Error Path Identification:} For each edge in the CRVFG, we extract the condition $\varphi$ and the value $v$ flowing along that edge. Using the $\texttt{isError}$ function, we determine whether this edge represents an error return path.
+    
+    \item \textbf{CFG Edge Marking:} If an edge is identified as leading to an error return, we locate the source basic block $B_{src}$ and find the conditional branch instruction whose condition matches $\varphi$. The control-flow edge from $B_{src}$ to the successor block taken when $\varphi$ is true is then marked as an early-exit edge.
 \end{enumerate}
 
-\autoref{algo:runtime-shape-check-detection} is an inter-procedural analysis to handle cases (a)(b)(d) of \autoref{fig:early-return-patterns}.
-When the returned value is from a callee, that callee is identified as containing sanity checks (Line 19 of \autoref{algo:runtime-shape-check-detection}).
-However, a challenge arises when an explicit error constant is returned (e.g., \autoref{fig:early-return-patterns}(b)).
-In such cases, there is no direct data-flow dependency between the returned constant and the return value of the callee.
-Furthermore, the basic block $B_{in}$ returning the error constant is not necessarily the block $B_{check}$ containing the actual sanity check statements due to intermediate error reporting logic.
+\subsubsection{Inter-Procedural Analysis}
 
-To address this, we leverage the control dependency inherent in the Control Flow Graph (CFG).
-We calculate a modified CFG $G'$ where edges along the path from $B_{in}$ to $B_{exit}$ are removed, treating $B_{in}$ as an independent sink.
-Then we locate $B_{check}$ by calculating the Immediate Common Dominator (ICD) of the error return block $B_{in}$ and the function's normal exit block $B_{exit}$ on $G'$.
-This approach is justified by the structural property of early exits: $B_{check}$ serves as the unique divergence point that splits execution into either the failure path (ending at $B_{in}$) or the normal path (reaching $B_{exit}$).
-In the modified graph $G'$, $B_{check}$ is the nearest node that strictly dominates both outcomes.
+\autoref{algo:runtime-shape-check-detection} performs inter-procedural analysis to handle cases where the return value originates from a callee function (patterns (a) and (d) in \autoref{fig:early-return-patterns}).
+When the return value is the result of a function call, we recursively apply the early-exit edge identification to the callee function.
+This ensures that shape checkers nested in sub-routines are properly analyzed.
 
-The \texttt{TraceGuardingBranch} function of \autoref{algo:runtime-shape-check-detection} calculates  $B_{check}$ and inspects the conditional branch instruction of $B_{check}$.
-If the condition depends on a function call's return value compared against the error set $\mathcal{E}$, \texttt{TraceGuardingBranch} identifies that callee function also contains sanity check.
-\texttt{TraceGuardingBranch} then recursively analyzes on this callee function to propagate the early-exit detection.
+For indirect function calls, the early-exit identification is deferred to the information propagation phase (\S\ref{sec:design:propagation}), where function pointer analysis may resolve the callee target.
+
+\subsubsection{Efficiency Analysis}
+
+The proposed approach is significantly more efficient than general-purpose value flow analysis for the following reasons:
+\begin{enumerate}
+    \item The CRVFG is constructed only for functions containing shape checkers, avoiding whole-program analysis overhead.
+    \item The graph size is minimal because return values in SSA-form IR are top-level variables, rarely involving memory object flows.
+    \item Error status determination requires only constant comparison against predefined sets $\mathcal{S}$ and $\mathcal{E}$, eliminating the need for expensive SMT solving.
+\end{enumerate}
 
 Some implementations may utilize runtime exceptions for error handling.
 In such cases, identification is trivial: control flow edges leading to exception handling blocks are directly marked as early-exit edges.
