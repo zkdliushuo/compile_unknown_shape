@@ -158,27 +158,19 @@ The identification of early-exit edges relies on analyzing the \textit{condition
 
 \begin{figure}[ht]
   \centering
-  \begin{minipage}[t]{0.48\textwidth}
-    \begin{minipage}{0.48\textwidth}
-      \centering
-      \includegraphics[width=\linewidth]{figures/sys-design/tilinginfer-conditioanl-value-flow.png}
-      \caption{Conditional Return-Value Flow Graph for the \texttt{set\_t} function. The graph captures how the return value depends on conditionally guarded expressions, establishing the data-flow relationship between check conditions and error return values.}
-      \label{fig:conditional-value-flow}
-      \vspace{-10pt}
-    \end{minipage}
-    \hfill
-    \begin{minipage}{0.48\textwidth}
-      \centering
-      \includegraphics[width=\linewidth]{figures/sys-design/infeasible-paths-on-cfg.png}
-      \caption{Control Flow Graph with early-exit edge identification. By mapping the condition predicate $\varphi_1 = (e \neq \text{SUCC})$ from the value flow graph to the CFG, the edge from BB0 to BB1 is identified as an early-exit edge.}
-      \label{fig:infeasible-paths-cfg}
-      \vspace{-10pt}
-    \end{minipage}
+  \begin{minipage}[c]{0.45\textwidth}
+    \centering
+    \resizebox{\textwidth}{!}{%
+    \input{figures/sys-design/conditional-value-flow}
+    }
+    \caption{Conditional Return-Value Flow Graph (CRVFG) for the \texttt{set\_t} function. Solid edges represent data flow; dashed edges represent conditional guards.}
+    \Description{Diagram showing the conditional value flow graph with IR variables for return values.}
+    \label{fig:conditional-value-flow}
+    \vspace{-10pt}
   \end{minipage}
   \hfill
-  \begin{minipage}[t]{0.48\textwidth}
+  \begin{minipage}[c]{0.5\textwidth}
     \centering
-    % Inline algorithm replacing \input{algorithm/early-return}
     \begin{algorithm}[H]
       \caption{Early-Exit Edge Identification}
       \label{algo:early-exit-identification}
@@ -219,7 +211,8 @@ The CRVFG is built \textit{on-demand} and \textit{intra-procedurally}, with two 
 \end{enumerate}
 
 \autoref{fig:conditional-value-flow} illustrates the CRVFG for the \texttt{set\_t} function.
-The graph captures the conditional predicate $\varphi_1 = (e \neq \text{SUCC})$ that guards the error return path, establishing the data-flow relationship between the shape check condition and the error return value $e$.
+The graph captures the conditional predicate $\varphi_1 = (\%1 = \text{true})$, where $\%1 = \texttt{icmp ne \%0, 0}$, that guards the error return path.
+This establishes the data-flow relationship between the shape check condition and the error return value $\%0$ (the return value of \texttt{check}).
 
 \subsubsection{Error Status Determination via Constant Comparison}
 
@@ -241,14 +234,14 @@ In practice, conditional guards for shape checkers often test for inequality aga
 
 Based on the CRVFG and the error status determination, we propose an early-exit edge identification algorithm to locate all control-flow edges that lead to early exits. The algorithm takes a function $F$ containing shape checkers, along with the predefined success and error status code sets $\mathcal{S}$ and $\mathcal{E}$. The process begins by obtaining the return instruction and its specific return value $v_{ret}$ via $\texttt{GetReturnInst}(F)$ and $\texttt{GetReturnValue}(inst)$. We then construct the Conditional Return-Value Flow Graph by calling $\texttt{BuildCRVFG}(F, v_{ret})$, which traces the value definitions backwards to yield a set of conditional value-flow edges. For each edge, we extract the associated condition predicate $\varphi$ ($\texttt{GetCondition}(edge)$) and the value $v$ flowing along it ($\texttt{GetValue}(edge)$). Applying the $\texttt{isError}(v, \varphi)$ logic, we evaluate whether this data flow represents an error return path. If confirmed, we trace back to the source basic block $B_{src}$ ($\texttt{GetSourceBlock}(edge)$) and locate the precise conditional branch instruction matching $\varphi$ ($\texttt{FindBranchWithCondition}(B_{src}, \varphi)$). Finally, we determine the branch's successor block $B_{dst}$ taken when $\varphi$ evaluates to true ($\texttt{GetSuccessor}(br, \varphi)$) and formally mark the control-flow transition from $B_{src}$ to $B_{dst}$ as an early-exit edge ($\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$).
 
+For the \texttt{set\_t} function shown in \autoref{fig:set_t_cfg}, the CRVFG in \autoref{fig:conditional-value-flow} reveals that when condition $\varphi_1 = (\%1 = \text{true})$ holds, the return value $\%0 \in \mathcal{E}$ (error set). Therefore, the edge from BB0 to BB1 (the error path where $\%1$ is true) is marked as an early-exit edge. This edge corresponds to the branch where the condition $\texttt{icmp ne \%0, 0}$ evaluates to true, indicating that the shape check failed.
+
 
 \subsection{Inter-Procedural Information Propagation for Host-Side Programs}\label{sec:design:propagation}
 
-Our primary objective is to optimize the performance of device kernel functions and eliminate those kernels not called at runtime. 
-To this end, \mysys \mysys employs a unified inter-procedural analysis framework integrating pointer analysis, function object propagation, and scalar constant propagation for the host-side programs.
+Our primary objective is to optimize the performance of device kernel functions and eliminate those kernels not called at runtime.
+To this end, \mysys employs a unified inter-procedural analysis framework integrating pointer analysis, function object propagation, and scalar constant propagation for the host-side programs.
 \mysys propagates precise semantic information up to the kernel launch sites.
-
-\mysys employs a unified inter-procedural analysis framework integrating pointer analysis, function object propagation, and scalar constant propagation.
 Operating on the CFG, the analysis maintains a symbolic environment $\mathbb{E}$ and a flow-sensitive memory store $\mathbb{S}$.
 We detail the handling of key program constructs below.
 
@@ -283,17 +276,17 @@ The merging applies standard lattice operations.
 Crucially, this step integrates with the optimization described in \cref{sec:design:early-return}.
 Any predecessor edge marked as an \texttt{early-exit} path, or determined to be unreachable by the branch analysis, is treated as \texttt{Inactive}.
 Consequently, the memory states and values from these inactive blocks are excluded entirely from the merge operation.
-This prevents the pollution of the analysis state by imprecise or error-handling logic, significantly improving the precision of the propagated information at join points. stores $\mathbb{S}$ from all predecessors.
+This prevents the pollution of the analysis state by imprecise or error-handling logic, significantly improving the precision of the propagated information at join points.
 
 \subsection{Kernel Specialization and Library Pruning} \label{sec:design:specialization}
 
-Based on the context derived from the inter-procedural analysis, \mysys performs two key optimizations: generic kernel specialization and pruning redundant template instantiations for manual specialized library.
+Based on the context derived from the inter-procedural analysis, \mysys performs two key optimizations: generic kernel specialization and pruning redundant template instantiations for manually specialized libraries.
 
 For generic kernels, \mysys substitutes the variable inside the kernel with the concrete schedule parameters identified from the analysis on the host-side program.
 Then \mysys employs a sequence of optimization passes, specifically \texttt{IPSCCP}, \texttt{Loop Unrolling}, and \texttt{CFG Simplification}. 
 These passes exploit the newly introduced constants to fold computations and simplify control structures, generating a highly optimized kernel binary.
 
-For manual specialized libraries, \mysys reduces code size by leveraging path liveness information from the host analysis. 
+For manually specialized libraries, \mysys reduces code size by leveraging path liveness information from the host analysis.
 During constant propagation, we identify \texttt{Dead Paths}, i.e., execution branches where guard conditions are evaluated to be false based on deterministic constants.
 If a specific template function instance is invoked only on these dead paths, \mysys determines it is unreachable at runtime and removes the instance entirely.
 This selective pruning ensures that only potentially active operator instances are retained in the final binary.

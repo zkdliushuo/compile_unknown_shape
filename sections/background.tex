@@ -1,15 +1,27 @@
 \section{Motivation and Challenges}
 \label{sec:motivation}
 
-In this section, we first illustrate the opportunity for constant propagation across the deep learning (DL) software stack (\S\ref{sec:motivation:auto-spec}). 
+In this section, we use the Flash Attention (FA) operator from PyTorch's operator library as a running example to illustrate our motivation and the challenges of constant specialization.
+We first introduce the FA operator definition.
+Given query, key, and value tensors $Q \in \mathbb{R}^{B_q \times h \times S_q \times d_k}$, $K \in \mathbb{R}^{B_k \times h \times S_k \times d_k}$, $V \in \mathbb{R}^{B_v \times h \times S_v \times d_v}$, and an optional mask $M$, Flash Attention computes:
+\begin{equation}
+    \text{Attention}(Q, K, V, M) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}} + M\right) V
+    \label{eq:flash_attention}
+\end{equation}
+This operator imposes strict constraints on shape dimensions: batch sizes must match ($B_q = B_k = B_v$), the number of attention heads $h$ must be consistent across $Q$, $K$, and $V$, sequence lengths for $K$ and $V$ must be equal ($S_k = S_v$), and head dimensions must satisfy $d_k = d_v$.
+Modern FA implementations support diverse configurations: varying numbers of attention heads ($h \in \{8, 16, 32, 40, \ldots\}$), head dimensions ($d_k \in \{64, 128, 256\}$), mask types (none, causal, sliding window), attention variants (GQA, MLA), and position encodings (RoPE, ALiBi).
+These configuration parameters are typically fixed for a given model but vary across different models, making them ideal candidates for compile-time specialization.
+
+In this section, we first illustrate the opportunity for constant propagation across the DL software stack (\S\ref{sec:motivation:auto-spec}).
 Next, we analyze the challenges and present our design insights (\S\ref{sec:motivation:challenges}).
 
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\linewidth]{figures/motivation/motivating-example.png}
     \caption{A simplified example illustrating how constant information propagation of the Flash-Attention operator across Python and C++. The final constants (e.g., \texttt{stages}) derived from \initialconsts (e.g., \texttt{q->size(1) = 40}) can be used to specialize the device kernel \texttt{kernel\_fa}.}
+    \Description{Diagram showing constant propagation from Python through FFI to C++ and device kernel.}
     \label{fig:motivating-example}
-    \vspace{-10pt} 
+    \vspace{-10pt}
 \end{figure}
 
 \subsection{Motivation of Automatic Kernel Specialization}
@@ -24,11 +36,11 @@ The \textbf{\textit{partial dynamics}} characteristic of DL models implies that 
 \autoref{fig:motivating-example} illustrates how these constants propagate through the software stack.
 When a Python-level operator (e.g., \texttt{torch.fa}) is invoked, arguments flow through the FFI layer to the Host C++ library.
 While some parameters are runtime-dependent (e.g., batch size), others are derived from the fixed model configuration (e.g., number of attention heads $h=40$).
-Subsequently, within the Host C++ runtime, the software pipeline depth (i.e., \texttt{stages}) are computed based on $h$ to configure the memory access latency hiding inside the kernel \texttt{kernel\_fa}.
+Subsequently, within the Host C++ runtime, the software pipeline depth (i.e., \texttt{stages}) is computed based on $h$ to configure the memory access latency hiding inside the kernel \texttt{kernel\_fa}.
 
 This observation suggests an opportunity: by statically tracking \initialconsts from the Python front-end down to the kernel launch, we can identify runtime invariants that are currently treated as variables.
 For generic kernels, this enables aggressive specialization of the device code.
-Furthermore, for manually specialized libraries, this allows to identify the specific kernel instantiations not matching the derived compile-time constants.
+Furthermore, for manually specialized libraries, this allows us to identify the specific kernel instantiations not matching the derived compile-time constants.
 This facilitates the pruning of unreachable code paths for a specific model, mitigating binary bloat.
 
 \subsubsection{Disadvantages of Generic Kernels and Manually Specialized Libraries}
@@ -42,16 +54,16 @@ To understand the impact of this design, we examine the execution flow on Ascend
 
 On Ascend, the Cube and Vector units execute the primary tensor operations (e.g., MatMul on Cube and Softmax on Vector), while the architecture provides sophisticated programmable memory hierarchies.
 The kernel must explicitly manage the chunk size and data layout at every level, as well as the data movement and layout transformations between these levels.
-Besides, the Scalar unit acts as the central control unit, responsible for scalar data process, instructions dispatch, and handling control flows (such data paths are indicated by red dashed lines, for simplicity we only display some of them).
-For example, the kernel moves a tile of the tensor $Q_{GM}$ from the global memory (GM) to the L1 memory unit per time, denoted as $Q_{L1}$.
-The Scalar unit is responsible to calculate the starting address of the data movement based on the input shapes, layout strides, tile factors on all dimensions, pipeline depths.
+Besides, the Scalar unit acts as the central control unit, responsible for scalar data processing, instruction dispatch, and handling control flows (such data paths are indicated by red dashed lines, for simplicity we only display some of them).
+For example, the kernel moves a tile of the tensor $Q_{GM}$ from the global memory (GM) to the L1 memory unit at a time, denoted as $Q_{L1}$.
+The Scalar unit is responsible for calculating the starting address of the data movement based on the input shapes, layout strides, tile factors on all dimensions, and pipeline depths.
 
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=0.8\textwidth]{figures/motivation/ascend-data-path.png}
   \caption{Execution flow of Flash Attention kernel \texttt{kernel\_fa} on the Ascend architecture.
   The \textbf{Scalar} unit acts as the central scheduler. 
-  It continuously perform scalar calculations and dispatches instructions based on runtime parameters. 
+  It continuously performs scalar calculations and dispatches instructions based on runtime parameters.
   The heavy scalar workload required by generic kernels may lead to a scalar bottleneck.}
   \Description{Diagram showing the interaction between Scalar, Cube, Vector, L1, and GM units on Ascend.}
   \label{fig:fa_on_ascend}
@@ -61,7 +73,7 @@ The Scalar unit is responsible to calculate the starting address of the data mov
 
 In generic kernels, the Scalar unit may be over-occupied.
 Since the Scalar unit typically possesses much lower computing power than a general-purpose host CPU, excessive scalar calculations related to schedule parameters can overload the unit.
-Worst, too many scalar intermediates may causes registers spill since there are only 32 general-purpose registers. 
+Worst, too many scalar intermediates may cause register spill since there are only 32 general-purpose registers.
 As a result, the powerful Cube and Vector units will stall to await instruction dispatch or scalar operands.
 Furthermore, generic kernels often involve complex control flows (e.g., branching to handle different operator variants), which exerts heavy pressure on the instruction cache (I-Cache).
 Frequent instruction jumps in such complex logic inevitably lead to I-Cache misses and pipeline flushes.
@@ -70,38 +82,35 @@ Consequently, instruction scheduling is confined to the scope of a single iterat
 
 We further study this impact by profiling key operators from the \textbf{Qwen2-1.5B} model on the Ascend NPU.
 \autoref{fig:perf_stats} presents the ratio of scalar instructions and I-Cache miss rates.
-The data reveals that LLMs' operators exhibit high proportion of scalar instructions and suffer from considerably high I-Cache miss rate.
+The data reveals that LLMs' operators exhibit a high proportion of scalar instructions and suffer from considerably high I-Cache miss rates.
 
 \textit{Code Bloat in Manually Specialized Libraries.}
-High-performance GPU libraries like FlashInfer~\cite{ye2025flashinfer} rely on C++ template metaprogramming to enable aggressive compiler optimizations. 
-To avoid runtime JIT overhead in serving scenarios, these libraries must pre-instantiate kernels for the Cartesian product of all template parameters.
-Taking FlashInfer as an example, where template parameters are denoted as $\mathcal{T} = \langle D, M, G, P, T_{tile} \rangle$, covering standard head dimensions ($D \in \{64, 128, 256\}$), mask modes ($M \in \{None, Causal\}$), diverse GQA sizes ($G \in \{1, 2, 4, 5, 6, 7, 8\}$), Position Embedding ($P \in \{None, RoPE, ALiBa\}$) and $\sim 10$ different tile size configurations $T_{tile}$ results in over 1000 binary instantiations.
-
-This design causes significant binary bloat.
-For a specific deployment like \textbf{Qwen2-1.5B} ($D=128, G=6, M=Causal, P=RoPE$), the runtime utilizes only about 10 kernel instantiations.
-Consequently, relative to the $\sim 1000$ available kernels, most kernels are dead for a given model.
-Crucially, while this pre-instantiation strategy is manageable on GPUs due to relatively simple schedule, it is ill-suited for Ascend.
-As discussed in \S\ref{sec:motivation:disadvantages}, achieving peak performance on Ascend requires a massive set of fine-grained schedule parameters.
-The resulting combinatorial explosion makes static specialization infeasible, forcing Ascend libraries to rely on suboptimal generic kernels.
+High-performance GPU libraries like FlashInfer~\cite{ye2025flashinfer} rely on C++ template metaprogramming to enable aggressive compiler optimizations.
+To avoid runtime JIT overhead, these libraries pre-instantiate kernels for the Cartesian product of all template parameters.
+As described in \autoref{eq:flash_attention}, FA's configuration space includes head dimensions ($d_k \in \{64, 128, 256\}$), mask types, GQA sizes, and position encodings.
+Combined with tile size configurations, this results in over 1000 binary instantiations, yet a specific model like \textbf{Qwen2-1.5B} utilizes only $\sim$10 kernels.
+This pre-instantiation strategy, while manageable on GPUs, is ill-suited for Ascend due to its more complex schedule parameters, forcing Ascend libraries to rely on suboptimal generic kernels.
 
 \begin{figure}[htbp]
   \centering
   \begin{minipage}{0.47\textwidth}
-      \includegraphics[width=\linewidth]{figures/motivation/metrics_analysis.pdf} 
+      \includegraphics[width=\linewidth]{figures/motivation/metrics_analysis.pdf}
       \caption{Performance profiling of generic kernels. Lower is better for both metrics. Decoding Attention (\textbf{D-Attn}), Prefill Attention (\textbf{P-Attn}), Feed Forward Networks (\textbf{FFN}), and MatMul (\textbf{MM}).}
+      \Description{Bar chart showing scalar instruction ratio and I-Cache miss rate for different operators.}
       \label{fig:perf_stats}
-      \vspace{-10pt} 
+      \vspace{-10pt}
   \end{minipage}
   \hfill
   \begin{minipage}{0.47\textwidth}
-      \includegraphics[width=\linewidth]{figures/motivation/parameter_breakdown.pdf} 
+      \includegraphics[width=\linewidth]{figures/motivation/parameter_breakdown.pdf}
       \caption{Number of schedule parameters of representative kernels. The vast majority are runtime invariants (Invariable Params), validating the potential for specialization.}
+      \Description{Bar chart showing breakdown of kernel parameters into variable and invariable categories.}
       \label{fig:param_stats}
-      \vspace{-10pt} 
+      \vspace{-10pt}
   \end{minipage}
 \end{figure}
 
-\subsubsection{Why Automatic Kernel Specialization is Beneficial?}
+\subsubsection{Why Is Automatic Kernel Specialization Beneficial?}
 
 Our analysis of kernel parameters in \autoref{fig:param_stats}, which breaks down the schedule parameters of representative kernels into variable and invariable categories, reveals a critical insight: the overwhelming majority of kernel parameters are runtime invariants.
 By globally propagating \initialconsts to resolve most schedule parameters at compile time, there are twofold benefits.
@@ -115,7 +124,7 @@ This allows us to identify kernel instantiations called at the unreachable paths
 \subsection{Challenges and Design Insights}
 \label{sec:motivation:challenges}
 
-To achieve automatic kernel specialization, it requires analyzing the value flow from Python down to C++, which presents two major challenges that cannot be properly addressed by the existing static analysis.
+Achieving automatic kernel specialization requires analyzing the value flow from Python down to C++, which presents two major challenges that cannot be properly addressed by existing static analysis.
 
 \subsubsection{Challenge 1: The cross-language semantic gap.}
 
@@ -135,7 +144,7 @@ Nevertheless, these methods face significant challenges when applied to DL syste
     When dealing with massive DL libraries, performing full interpretation of dynamic language source code is inefficient. Furthermore, it struggles to accurately deduce the side effects of complex C++ internal heap allocations from the Python side, leading to over-approximated analysis results.
 \end{enumerate}
 
-\textit{Insight: semantic modeling core data types in DL systems.}
+\textit{Insight: Semantic modeling of core data types in DL systems.}
 Instead of the traditional paradigm of analyzing FFI control flows, we propose a cross-language semantic modeling approach. 
 Our methodology is grounded in two key observations:
 \begin{enumerate}
@@ -148,16 +157,13 @@ Our methodology is grounded in two key observations:
 
 Building on these insights, we directly map computation graph node information to the abstract states of C++ entry functions. 
 By bridging the language boundary through type system modeling, we achieve high-precision reconstruction of C++ contexts while avoiding the overhead of analyzing complex FFI glue code.
-\subsubsection{Challenge 2: Shape Checkers Leading to Early-Exit Paths}
-
-Operator libraries enforce hardware and semantic constraints (e.g., memory alignment, dimension equality) through runtime shape checkers. These checks depend on dynamic dimensions; violating them triggers an early exit with an error status code.
 
 
 \begin{figure}[htbp]
   \noindent
   % --- 左侧 C++ 代码 ---
   
-  \begin{minipage}{0.4\textwidth}
+  \begin{minipage}{0.45\textwidth}
   \begin{lstlisting}[
     language=C++,
     frame=single,
@@ -168,140 +174,112 @@ Operator libraries enforce hardware and semantic constraints (e.g., memory align
 const status SUCCESS = 0;
 const status ERROR = -1;
 status check(int s1, s2) {
-    if(s1 != s2)
+  if(s1 != s2)
     return ERROR;
-    return SUCCESS;
+  return SUCCESS;
 }
 status set_t(int sq, int sk, int* t) {
-    int e = check(sq, sk);
-    if (e != SUCCESS) {
+  int e = check(sq, sk);
+  if (e != SUCCESS) {
     print("error");
     return e;
-    }
-    *t=32; // Tiling
-    return SUCCESS;
+  }
+  *t=32; // Tiling
+  return SUCCESS;
 }
   \end{lstlisting}
   \vspace{-15pt}
   \end{minipage}
   \hfill
-  % --- 右侧 LLVM 代码 ---
-  \begin{minipage}{0.45\textwidth}
-      % 添加 numbers=left 显示行号，xleftmargin 留出空间
-      \begin{lstlisting}[
-          language=llvm,
-          escapechar=!,
-          frame=single,
-          basicstyle=\ttfamily\small,
-          numbers=left,
-          xleftmargin=2.5em,   % 给行号留出左边距
-          numbersep=5pt,
-          caption={LLVM IR of the function \texttt{set\_t}. },
-          label={fig:dynamic_shape_check_demo}
-      ]
-; call context: %s = ?, *(%t) = 0
-define @set_t(i32 %sq, i32 %sk, i32* %t) {
-!\tikzmark{loc_entry}!BB0:
-%0 = call @check(%sq, %sk)
-%1 = icmp ne %0, 0
-br %1, %BB1, %BB2
-!\tikzmark{loc_bb1}!BB1:
-call @print(...)
-br %BB3
-!\tikzmark{loc_bb2}!BB2:
-store 32, %t
-br %BB3
-!\tikzmark{loc_bb3}!BB3:
-%2 = phi [%0, %BB1], [0, %BB2]
-ret %2
-}
-      \end{lstlisting}
-      \vspace{-15pt}
+  % --- 右侧 CFG 图 ---
+  \begin{minipage}{0.5\textwidth}
+    \centering
+    \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[
+        bb/.style={
+            rectangle,
+            rounded corners=5pt,
+            draw=black,
+            thick,
+            minimum width=3.2cm,
+            inner sep=6pt,
+            font=\ttfamily\small,
+            align=left
+        },
+        edge_label/.style={
+            font=\ttfamily\small,
+            midway
+        },
+        >=stealth
+    ]
+        % BB0: Entry
+        \node[bb] (BB0) at (0, 0) {
+            \textbf{BB0:}\\
+            \%0 = call @check(\%sq, \%sk)\\
+            \%1 = icmp ne \%0, 0
+        };
+        
+        % BB1: Error path
+        \node[bb, fill=red!10] (BB1) at (-2.2, -1.8) {
+            \textbf{BB1:}\\
+            call @print(...)
+        };
+        
+        % BB2: Normal path
+        \node[bb, fill=green!10] (BB2) at (2.2, -1.8) {
+            \textbf{BB2:}\\
+            store 32, \%t
+        };
+        
+        % BB3: Exit
+        \node[bb] (BB3) at (0, -4) {
+            \textbf{BB3:}\\
+            \%2 = phi [\%0, \%BB1], [0, \%BB2]\\
+            ret \%2
+        };
+        
+        % Edges
+        \draw[->, thick] (BB0.south) -- (BB1.north)
+            node[edge_label, left, pos=0.6] {$\%1$ (true)};
+        \draw[->, thick] (BB0.south) -- (BB2.north)
+            node[edge_label, right, pos=0.6] {$\neg\%1$ (false)};
+        \draw[->, thick] (BB1.south) -- (BB3.north);
+        \draw[->, thick] (BB2.south) -- (BB3.north);
+        
+        % State annotations at convergence point
+        \node[font=\ttfamily\fontsize{8pt}{9pt}\selectfont, align=center] at (-2.3, -2.8) {
+            $*(\%t) = 0$\\
+            {\color{red}Error Path}
+        };
+        \node[font=\ttfamily\fontsize{8pt}{9pt}\selectfont, align=center] at (2.3, -2.8) {
+            $*(\%t) = 32$\\
+            {\color{green!50!black}Normal Path}
+        };
+    \end{tikzpicture}
+    }
+    \caption{Control Flow Graph of \texttt{set\_t}'s LLVM IR. Each node is a basic block containing LLVM IR instructions. Edges are labeled with branch conditions.}
+    \label{fig:set_t_cfg}
+    \vspace{-15pt}
   \end{minipage}
-
-  % --- 绘制叠加层 (Overlay) ---
-  \begin{tikzpicture}[overlay, remember picture]
-      
-      \tikzset{
-          bubble/.style={
-              rectangle callout,
-              callout absolute pointer={#1},
-              callout pointer width=0.3cm,
-              fill=propcolor,
-              draw=propborder,
-              thick,
-              rounded corners=3pt,
-              font=\ttfamily\small,
-              align=center,
-              inner sep=4pt
-          }
-      }
-
-      % -------------------------------------------------------
-      % 1. Entry Bubble -> 指向 line 2
-      % -------------------------------------------------------
-      % 指针目标：loc_entry 向左 0.8cm (行号区)，向上 0.08cm (行高中心)
-      \node[bubble={($(loc_entry) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_entry)
-          at ($(loc_entry) + (-0.5cm, 0.08cm)$) { % 气泡主体更靠左
-          \textbf{BB0}\\
-          *(\%t) = 0
-      };
-
-      % -------------------------------------------------------
-      % 2. BB1 Bubble -> 指向 error path
-      % -------------------------------------------------------
-      \node[bubble={($(loc_bb1) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb1)
-          at ($(loc_bb1) + (-0.5cm, 0.28cm)$) {
-          \textbf{BB1}\\
-          Error Path
-      };
-
-      % -------------------------------------------------------
-      % 3. BB2 Bubble -> 指向 line 8
-      % -------------------------------------------------------
-      % 注意：loc_bb2 在缩进后，所以需要向左偏移更多 (-0.3cm) 才能指到行号
-      \node[bubble={($(loc_bb2) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb2)
-          at ($(loc_bb2) + (-0.5cm, 0.28cm)$) {
-          \textbf{BB2}\\
-          *(\%t) = 32
-      };
-
-      % -------------------------------------------------------
-      % 4. BB3 Bubble -> 指向 line 10
-      % -------------------------------------------------------
-      \node[bubble={($(loc_bb3) + (-0.3cm, 0.08cm)$)}, anchor=east] (node_bb3)
-          at ($(loc_bb3) + (-0.5cm, -0.28cm)$) {
-          \textbf{BB3}\\
-          *(\%t) = ?
-      };
-
-      % -------------------------------------------------------
-      % 绘制连接箭头
-      % -------------------------------------------------------
-      \draw[->, >=stealth, thick]
-          (node_entry.south west) to[bend right=45] (node_bb1.west);
-
-      \draw[->, >=stealth, thick]
-          (node_bb1.south west) to[bend right=30] (node_bb3.north west);
-
-      \draw[->, >=stealth, thick]
-          (node_bb2.south east) to[bend left=45] (node_bb3.north east);
-
-  \end{tikzpicture}
+  \Description{Control flow graph showing early return path in LLVM IR.}
 \end{figure}
 
-Consider Flash Attention as an example. Its computation is defined as:
-\begin{equation*}
-    \text{Attention}(Q, K, V, M) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}} + M\right) V
-\end{equation*}
-This operator imposes strict constraints on dynamic dimensions, such as matching batch sizes ($B_q = B_k = B_v$) and sequence lengths ($S_k = S_v$).
 
-\autoref{lst:early_return_code} demonstrates how these shape checkers impede optimization. The function \texttt{set\_t} verifies if sequence lengths \texttt{sq} and \texttt{sk} match. Since these dimensions are dynamic, the compiler cannot statically guarantee the check passes. Consequently, standard path-insensitive analysis conservatively merges data flows from both the success path (where \texttt{t=32}) and the early-exit path (where \texttt{t} remains uninitialized/unknown).
-As shown in \autoref{fig:dynamic_shape_check_demo}, this merging "pollutes" the value of \texttt{t} at the exit block (BB3), causing the compiler to treat the constant 32 as a variable. This prevents constant propagation. While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish these paths, it is often prohibitively expensive due to path explosion.
+\subsubsection{Challenge 2: Shape Checkers Leading to Early-Exit Paths}
+
+Operator libraries enforce hardware and semantic constraints (e.g., memory alignment, dimension equality) through runtime shape checkers.
+As described in \autoref{eq:flash_attention}, FA imposes strict constraints such as matching batch sizes ($B_q = B_k = B_v$) and sequence lengths ($S_k = S_v$).
+Violating these constraints triggers an early exit with an error status code.
+
+\autoref{lst:early_return_code} demonstrates how shape checkers impede optimization.
+The function \texttt{set\_t} verifies if sequence lengths \texttt{sq} and \texttt{sk} match.
+Since these dimensions are dynamic, the compiler cannot statically guarantee the check passes.
+Consequently, standard path-insensitive analysis conservatively merges data flows from both the success path (where \texttt{t=32}) and the early-exit path (where \texttt{t} remains uninitialized).
+As shown in \autoref{fig:set_t_cfg}, this merging ``pollutes'' the value of \texttt{t} at the exit block (BB3), causing the compiler to treat the constant 32 as a variable.
+While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish these paths, it is often prohibitively expensive due to path explosion.
 
 \textit{Insight: Conditional Return-Value Flow for Early-Exit Edge Identification.}
-Our approach is grounded in the invariant that kernels are only launched for valid inputs. We observe that functions containing shape checkers exhibit a distinctive structural property: their return values are determined by conditional expressions that distinguish between success and error status codes.
-
-Unlike pattern-based matching approaches, we propose a \textit{conditional return-value flow} analysis to precisely identify early-exit edges. The key insight is that for functions containing shape checkers, the return value's data flow, combined with its governing conditional expressions, directly reveals which control-flow edges lead to error returns. Specifically, we construct a lightweight value flow graph for the return value within each function, tracking how the return value depends on conditionally guarded expressions. By determining whether the return value belongs to a predefined error status code set under specific path conditions, we can identify the conditional branch that guards the early-exit path. The edge corresponding to this condition is then marked as an early-exit edge.
-
-This approach offers significant advantages over general-purpose value flow analysis: (1) the value flow graph is constructed \textit{on-demand} only for functions explicitly containing shape checkers, avoiding unnecessary overhead; (2) the analysis focuses exclusively on return values, which in SSA-form IR are typically top-level variables that rarely involve complex memory object flows, resulting in very small graphs; and (3) determining whether a return value indicates error under a given condition requires only simple constant comparison against predefined status code sets, eliminating the need for expensive SMT solving. By marking these early-exit edges, we shield the forward data-flow analysis from values on error paths, achieving path-sensitive precision without the computational overhead of symbolic execution.
+For functions containing shape checkers, if we can infer from the guard condition on a specific execution path whether the return value belongs to the SUCCESS or ERROR status code, we can determine whether that path is an early-exit path or a normal path.
+We propose to construct a \textit{conditional value flow graph} for the return value on-demand.
+This graph explicitly represents the conditional expressions and their corresponding return values on different paths.
+By checking whether the return value on a path indicates an error, we can identify whether the path is an early-exit path.

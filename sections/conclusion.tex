@@ -2,20 +2,20 @@
 
 \textit{First}, the performance benefits of performing kernel specialization with \mysys are not uniform across all kernel types and different hardware platforms.
 For Ascend, \mysys is most effective for lightweight kernels that are invoked with high frequency, where the reduction of dispatch and setup overhead yields the most significant impact.
-For GPU, however, we have evaluated to further specialize on the basis of existing manual specialization.
-Such enhancement receives little performance improvement.
-The root reason lies in that GPU is equipped with sufficient general purpose registers, more powerful scalar computation capacity, and existing baseline operator libraries have been well specialized by hands.
+For GPU, however, we have evaluated further specialization on the basis of existing manual specialization.
+Such enhancement yields little performance improvement.
+The root reason is that GPUs are equipped with sufficient general-purpose registers, more powerful scalar computation capacity, and existing baseline operator libraries have already been well specialized by hand.
 \textit{Second}, the prototype of \mysys is based on PyTorch.
-Although the core types of metadata for other systems are same as \autoref{tab:semantic-rules}, the C++ definitions are different.
-Utilizing \mysys on DL systems such as Tensorflow involving constructing update rules for Tensorflow's core data types.
+Although the core types of metadata for other systems are the same as in \autoref{tab:semantic-rules}, the C++ definitions are different.
+Utilizing \mysys on DL systems such as TensorFlow involves constructing update rules for TensorFlow's core data types.
 \textit{Third}, our research focuses on optimizing kernel functions, while \mysys can be used to specialize Host-side programs.
 Such optimization is more complex than kernel specialization since the Host-side programs involve more complex control flows.
 Early evaluations of Host specialization for specific operators have demonstrated performance improvement.
-We leave the Host program specialization for the future work.
+We leave the Host program specialization for future work.
 
 \section{Conclusion}
 \label{sec:concl}
 
 We present \mysys, a framework that addresses optimization challenges in dynamic tensor programs through context-aware constant propagation.
 By leveraging \initialconsts and inter-procedural analysis, \mysys infers invariant schedule parameters and enables optimization such as kernel specialization and dead code elimination.
-Experimental validation demonstrates that \initialconsts effectively optimizes operators in practical applications, with performance improvements of up to 6\% for Ascend operators and 96\% reduction ratio of code size of GPU operator library.
+Experimental validation demonstrates that \mysys effectively optimizes operators in practical applications, with performance improvements of up to 6\% for Ascend operators and a 96\% reduction in code size of GPU operator libraries.

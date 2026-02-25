@@ -4,10 +4,10 @@
 Our evaluation mainly focuses on the following questions:
 \begin{itemize}
     \item Can \mysys enhance performance across a diverse set of operators and neural networks on Ascend devices?
-    \item Can \mysys effectively infer more invariable parameters for kernels with a reasonable compilation overhead compared to current compilers given same context information?
+    \item Can \mysys effectively infer more invariable parameters for kernels with reasonable compilation overhead compared to current compilers given the same context information?
     \item Can \mysys effectively eliminate dead code for operator libraries on GPUs?
 \end{itemize}
-Apart from the above main questions, we evaluate the detailed performance metrics differnce brought by \mysys, the performance improvement under different shape configurations.
+Apart from the above main questions, we evaluate the detailed performance metrics difference brought by \mysys and the performance improvement under different shape configurations.
 
 \subsection{Experimental Setup}
 \label{sec:eval:setup}
@@ -58,6 +58,7 @@ For the operator benchmark, we compare \textbf{\mysys} against the following met
     \centering
     \includegraphics[width=0.95\textwidth]{figures/evaluation/op-speedup/speedup_histogram.pdf}
     \caption{Overall normalized performance of \mysys compared to compiler baselines }
+    \Description{Bar chart showing speedup ratios for different operators comparing TilingInfer, LLVM-spec, and Optimal methods.}
     \label{fig:eval:op-overall}
     \vspace{-10pt}
 \end{figure}
@@ -154,16 +155,16 @@ For the large kernel \texttt{P-Attn}, \mysys reduces the binary size by over 50K
     \hfill
     \begin{minipage}{0.42\textwidth}
         \includegraphics[width=\linewidth]{figures/evaluation/op-speedup/d_attn_kv_length_speedup.pdf}
-        % 图11: 强调针对 Decoding Attention 算子，在不同 KV 长度和配置下的表现
-        \caption{Speedup ratio of \texttt{D-Attn} under varying cached KV sequence lengths and configurations.} 
+        \caption{Speedup ratio of \texttt{D-Attn} under varying cached KV sequence lengths and configurations.}
+        \Description{Line chart showing speedup ratio of D-Attn operator under different KV lengths.}
         \label{fig:eval:d_attn_kv}
         \vspace{-10pt}
     \end{minipage}
     \hfill
     \begin{minipage}{0.42\textwidth}
         \includegraphics[width=\linewidth]{figures/evaluation/op-speedup/d_attn_execution_speedup.pdf}
-        % 图12: 强调加速比与基准延迟（即任务量）的相关性/分布
-        \caption{Distribution of speedup ratios of \mysys for the operator \texttt{D-Attn} relative to baseline kernel latency.} 
+        \caption{Distribution of speedup ratios of \mysys for the operator \texttt{D-Attn} relative to baseline kernel latency.}
+        \Description{Scatter plot showing distribution of speedup ratios relative to baseline kernel latency.}
         \label{fig:eval:latency_dist}
         \vspace{-10pt}
     \end{minipage}
@@ -211,4 +212,4 @@ We evaluated the binary size reduction for different LLM families (Llama and Qwe
 On average, \mysys achieves a \textbf{96.2\% reduction} in binary size.
 Other DSA architectures with AoT compiled operator libraries that suffer from similar code bloat issues could also benefit from \mysys.
 
-In summary, \mysys remains a powerful tool improves the performance of operator libraries on different DSA architectures, whether for latency reduction on NPUs or code debloat on GPUs.
+In summary, \mysys remains a powerful tool that improves the performance of operator libraries on different DSA architectures, whether for latency reduction on NPUs or code debloating on GPUs.

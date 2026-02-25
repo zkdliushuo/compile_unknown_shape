@@ -59,7 +59,7 @@ In summary, the main contributions of this paper are as follows:
     \item We propose \mysys, a novel static analysis framework that, for the first time, achieves precise constant propagation across the DL framework's language boundary (Python/C++) into the underlying operator libraries.
     \item We introduce a cross-language context reconstruction method and a conditional return-value flow analysis for identifying early-exit edges, effectively overcoming the barriers of FFI gaps and complex shape checkers that hinder standard static analysis.
     \item We implement \mysys based on LLVM~\cite{lattner2004llvm} and apply it to PyTorch~\cite{ansel2024dynamo}. The system is designed with extensibility, applicable to other Python-based frameworks (e.g., TensorFlow) and various hardware backends supported by LLVM.
-    \item Evaluation on the different platform demonstrates the effectiveness of \mysys.
+    \item Evaluation on different platforms demonstrates the effectiveness of \mysys.
     For generic operators of Ascend, it achieves an average speedup of 1.06$\times$ (up to 1.17$\times$) and 1.03$\times$ end-to-end inference speedup on top of highly optimized vendor libraries.
     For manually specialized libraries, \mysys removes over 96\% of redundant kernels, solving the code bloat issue while maintaining optimal performance.
 \end{enumerate}
