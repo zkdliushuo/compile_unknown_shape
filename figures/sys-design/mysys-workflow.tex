@@ -123,11 +123,12 @@
         \draw[->] (merge_point) -- (N7.west);
         
         % 从 N4 (C++ impls of Op) 到 N7 (Constant Folding) 的连线
-        \draw[->] (N4.east) -- ++(0.55,0) |- node[pos=0.25, above, font=\itshape] {LLVM IR Program} (N7);
+        \draw[->] (N4.east) -- ++(0.55,0) |- node[pos=0.25, above, font=\itshape] {LLVM IR} (N7);
 
     \end{tikzpicture}
     }
     \caption{The overall workflow of \mysys.}
+    \Description{Flow diagram showing the TilingInfer workflow from Graph IR through Program Synthesis, Early-Exit Identification, Constant Folding, to Specialization.}
     \label{fig:overall_workflow}
     \vspace{-10pt}
 \end{figure}

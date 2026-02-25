@@ -1,18 +1,18 @@
 % \usepackage{cite}
 \usepackage{amsmath,amsfonts}
 % \usepackage[numbers,sort]{natbib}
-\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 \usepackage{graphicx}
 \usepackage{textcomp}
+\usepackage{xspace}
 
 \usepackage{wrapfig}
 
 % \usepackage[hyphens]{url}
-\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+% \usepackage[linesnumbered,ruled,vlined]{algorithm2e}
 \usepackage[utf8]{inputenc}
-\newcommand\commentformat[1]{\small\ttfamily{#1}}
-\SetCommentSty{commentformat}
-\SetKwComment{Comment}{// }{}
+% algorithm2e commands removed - using algorithm+algpseudocode instead
 \usepackage{array}
 \usepackage{tabularx}
 \usepackage{stfloats}
@@ -156,7 +156,7 @@
 
 \usepackage{alltt}
 
-\usepackage{algorithm2e}
+% \usepackage{algorithm2e}  % Disabled: conflicts with algorithm+algpseudocode
 % \usepackage{algorithm}
 % \usepackage{algpseudocode}
 % \usepackage{CJKutf8} % Commented out: conflicts with ctex's xeCJK
