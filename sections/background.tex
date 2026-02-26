@@ -112,14 +112,8 @@ This pre-instantiation strategy, while manageable on GPUs, is ill-suited for Asc
 
 \subsubsection{Why Is Automatic Kernel Specialization Beneficial?}
 
-Our analysis of kernel parameters in \autoref{fig:param_stats}, which breaks down the schedule parameters of representative kernels into variable and invariable categories, reveals a critical insight: the overwhelming majority of kernel parameters are runtime invariants.
-By globally propagating \initialconsts to resolve most schedule parameters at compile time, this approach yields two key benefits.
-First, for operator libraries adopting generic kernels, this enables the generation of model-specific specialized kernels. 
-The compiler can perform aggressive constant folding on these parameters, drastically reducing scalar instruction overhead and simplifying control flow to minimize I-Cache misses.
-Second, this approach effectively addresses code bloat in manually specialized libraries.
-In such libraries, the host runtime calculates schedule parameters to dispatch specific pre-compiled kernel instantiations.
-Once these parameters are statically derived via constant propagation, the kernel dispatch path becomes deterministic, enabling identification of unreachable paths.
-This allows us to identify kernel instantiations called at the unreachable paths, enabling the precise pruning of unused binaries to retain only the minimal code set required for the specific model deployment.
+\autoref{fig:param_stats} reveals that the overwhelming majority of kernel parameters are runtime invariants.
+Propagating \initialconsts to resolve schedule parameters at compile time yields two benefits: (1) for generic kernels, it enables model-specific specialization with aggressive constant folding, reducing scalar overhead and I-Cache misses; (2) for manually specialized libraries, it makes kernel dispatch paths deterministic, enabling precise pruning of unused binaries.
 
 \subsection{Challenges and Design Insights}
 \label{sec:motivation:challenges}
@@ -135,28 +129,14 @@ This poses a severe challenge for traditional source-based cross-language analys
 
 Existing cross-language analysis works~\cite{kan2024taint4javac,Monat2021PythonC} primarily rely on abstract interpretation techniques to address general multi-language interoperability issues (e.g., Python-C, Java-C). 
 Nevertheless, these methods face significant challenges when applied to DL systems due to two main limitations:
-\begin{enumerate}
-    \item \textbf{Lack of Domain Awareness:} 
-    Existing tools typically model generic FFI APIs (such as JNI~\cite{jni} or the Python C API~\cite{pythoncapi}) as black boxes or simple data conduits. 
-    They fail to comprehend the complex \textit{domain-specific objects} within DL systems, particularly the deep heap memory layouts and internal indirect reference relationships. 
-    For instance, consider a Tensor \texttt{q} constructed on the Python side with a shape of \texttt{(\%B, 40, \%S, 64)} as shown in \autoref{fig:motivating-example}. Generic analyzers struggle to trace the heap memory state associated with the C++ \texttt{sizes} pointer (i.e., establishing the structural constraints between the Python shape attribute and the underlying C++ array).
-    \item \textbf{Efficiency and Precision Bottlenecks:} 
-    When dealing with massive DL libraries, performing full interpretation of dynamic language source code is inefficient. Furthermore, it struggles to accurately deduce the side effects of complex C++ internal heap allocations from the Python side, leading to over-approximated analysis results.
-\end{enumerate}
+(1) \textbf{Lack of Domain Awareness:} Existing tools typically model generic FFI APIs as black boxes, failing to comprehend the complex \textit{domain-specific objects} within DL systems, particularly the deep heap memory layouts and internal indirect reference relationships.
+(2) \textbf{Efficiency and Precision Bottlenecks:} Performing full interpretation of dynamic language source code is inefficient and struggles to accurately deduce the side effects of complex C++ internal heap allocations from the Python side.
 
 \textit{Insight: Semantic modeling of core data types in DL systems.}
-Instead of the traditional paradigm of analyzing FFI control flows, we propose a cross-language semantic modeling approach. 
-Our methodology is grounded in two key observations:
-\begin{enumerate}
-    \item \textbf{Finite and Stable Core Types:} Data types used for cross-language interaction in DL systems are highly convergent and stable (\texttt{Tensor}, \texttt{Array}, etc.). 
-    This stability enables us to perform comprehensive and precise semantic modeling of these core types.
-    \item \textbf{Extract Constant Information from Graph IR:} DL systems compile models and represent them using Graph IR (e.g. ATen IR).
-    The instructions in the Graph IR contain precise information regarding operator input parameters. 
-    By leveraging this information, we can directly extract the semantic values of parameters, bypassing the need for expensive or imprecise analysis of Python source code.
-\end{enumerate}
-
-Building on these insights, we directly map computation graph node information to the abstract states of C++ entry functions. 
-By bridging the language boundary through type system modeling, we achieve high-precision reconstruction of C++ contexts while avoiding the overhead of analyzing complex FFI glue code.
+Instead of the traditional paradigm of analyzing FFI control flows, we propose a cross-language semantic modeling approach grounded in two observations:
+(1) \textbf{Finite and Stable Core Types:} Data types used for cross-language interaction in DL systems are highly convergent and stable (\texttt{Tensor}, \texttt{Array}, etc.), enabling comprehensive and precise semantic modeling.
+(2) \textbf{Extract Constant Information from Graph IR:} DL systems compile models and represent them using Graph IR (e.g. ATen IR), which contains precise information regarding operator input parameters, enabling direct extraction of semantic values without analyzing Python source code.
+Building on these insights, we directly map computation graph node information to the abstract states of C++ entry functions, achieving high-precision reconstruction of C++ contexts while avoiding the overhead of analyzing complex FFI glue code.
 
 
 \begin{figure}[htbp]
@@ -267,19 +247,14 @@ status set_t(int sq, int sk, int* t) {
 
 \subsubsection{Challenge 2: Shape Checkers Leading to Early-Exit Paths}
 
-Operator libraries enforce hardware and semantic constraints (e.g., memory alignment, dimension equality) through runtime shape checkers.
-As described in \autoref{eq:flash_attention}, FA imposes strict constraints such as matching batch sizes ($B_q = B_k = B_v$) and sequence lengths ($S_k = S_v$).
-Violating these constraints triggers an early exit with an error status code.
+Operator libraries enforce constraints (memory alignment, dimension equality) through runtime shape checkers.
+FA requires matching batch sizes ($B_q = B_k = B_v$) and sequence lengths ($S_k = S_v$); violations trigger early exits with error codes.
 
-\autoref{lst:early_return_code} demonstrates how shape checkers impede optimization.
-The function \texttt{set\_t} verifies if sequence lengths \texttt{sq} and \texttt{sk} match.
-Since these dimensions are dynamic, the compiler cannot statically guarantee the check passes.
-Consequently, standard path-insensitive analysis conservatively merges data flows from both the success path (where \texttt{t=32}) and the early-exit path (where \texttt{t} remains uninitialized).
-As shown in \autoref{fig:set_t_cfg}, this merging ``pollutes'' the value of \texttt{t} at the exit block (BB3), causing the compiler to treat the constant 32 as a variable.
-While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish these paths, it is often prohibitively expensive due to path explosion.
+\autoref{lst:early_return_code} shows how shape checkers impede optimization.
+Function \texttt{set\_t} verifies if sequence lengths match; since dimensions are dynamic, the compiler cannot guarantee the check passes.
+Standard path-insensitive analysis merges data flows from success (\texttt{t=32}) and early-exit paths, ``polluting'' the value of \texttt{t} at the exit block (\autoref{fig:set_t_cfg}).
+While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish paths, it is prohibitively expensive due to path explosion.
 
-\textit{Insight: Conditional Return-Value Flow for Early-Exit Edge Identification.}
-For functions containing shape checkers, if we can infer from the guard condition on a specific execution path whether the return value belongs to the SUCCESS or ERROR status code, we can determine whether that path is an early-exit path or a normal path.
-We propose to construct a \textit{conditional value flow graph} for the return value on-demand.
-This graph explicitly represents the conditional expressions and their corresponding return values on different paths.
-By checking whether the return value on a path indicates an error, we can identify whether the path is an early-exit path.
+\textit{Insight: Conditional Return-Value Flow.}
+If we can infer from guard conditions whether return values belong to SUCCESS or ERROR status codes, we can identify early-exit vs. normal paths.
+We construct a \textit{conditional value flow graph} for return values, explicitly representing conditional expressions and their corresponding return values, enabling early-exit path identification.

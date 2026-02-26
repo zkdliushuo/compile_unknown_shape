@@ -5,7 +5,7 @@ To achieve universal applicability, these libraries must handle \dynamics arisin
 To accommodate such dynamics, operator libraries typically adopt a generic implementation strategy: they calculate \textit{schedule parameters} (configuration values such as tiling sizes and loop bounds) at runtime on the host side and pass them to the kernel function as variable arguments.
 However, this generic design comes at a cost.
 From the perspective of the underlying device native compiler, these critical configuration values appear as unknown variables rather than compile-time constants.
-This ambiguity effectively disables aggressive compiler optimizations that rely on static information, such as constant folding, loop unrolling, and register allocation optimization.
+This ambiguity effectively weakens aggressive compiler optimizations that rely on static information, such as constant folding, loop unrolling, and instruction schedule.
 Consequently, this often leads to suboptimal performance.
 In this context, specializing kernels by replacing input schedule parameters with constants at compile time is generally beneficial, as it can enhance subsequent compiler optimizations.
 As the complexity of operators~\cite{dao2024flashattention2,ye2025flashinfer} continues to increase and programmable units~\cite{liao2019davinci,jouppi2023tpu} within hardware become increasingly diverse, the number of schedule parameters of kernels explodes, further necessitating kernel specialization.
@@ -13,57 +13,38 @@ As the complexity of operators~\cite{dao2024flashattention2,ye2025flashinfer} co
 \input{figures/intro/dl-system-status}
 
 Existing operator libraries adopt different specialization strategies depending on the underlying hardware characteristics, yet both approaches face critical limitations as illustrated in \autoref{fig:comparison-libraries}.
-On GPU platforms, which are highly sensitive to compiler optimizations like loop unrolling, developers usually resort to manual specialization using C++ templates~\cite{nvidia2017cutlass,ye2025flashinfer,dao2024flashattention2} (depicted as \ding{183}).
-While this resolves control-flow-related parameters at compile-time, exhaustively enumerating parameter combinations to accommodate input dynamics leads to combinatorial explosion and severe code bloat.
+On GPU platforms, which are highly sensitive to compiler optimizations like loop unrolling, developers usually resort to manual specialization using C++ templates~\cite{nvidia2017cutlass,ye2025flashinfer,dao2024flashattention2} (depicted as \ding{182}).
+While this resolves schedule parameters at compile-time, exhaustively enumerating parameter combinations to accommodate input dynamics leads to combinatorial explosion and severe code bloat.
 Conversely, on architectures like Ascend~\cite{liao2019davinci} that provide diverse programmable units, the schedule parameters are substantially more numerous.
-Since manually specializing for such a vast search space is intractable, the vendor libraries (e.g., CANN~\cite{ascend_cannopsadv}) on such platforms primarily invoke generic kernels (depicted as \ding{182}), resulting in performance loss due to missed compiler optimizations.
-While AI compilers~\cite{tillet2019triton,chen2018tvm,zheng2022dietcode,shen2021nimble,zheng2023bladedisc} offer an alternative by generating specialized kernels at runtime, they are typically confined to specific high-level IRs (e.g., Triton IR and Relax~\cite{Lai2023RelaxCA}) and incur non-negligible runtime compilation overhead.
-Focusing on hand-written operator libraries, the goal of this paper is twofold: \textit{achieving automatic specialization for generic libraries to recover performance loss, and pruning manually specialized libraries to mitigate combinatorial explosion and code bloat}.
+Since manually specializing for such a vast search space is intractable, the vendor libraries (e.g., CANN~\cite{ascend_cannopsadv}) on such platforms primarily invoke generic kernels (depicted as \ding{183}), resulting in performance loss due to weakened compiler optimizations.
+Meanwhile, although AI compilers~\cite{tillet2019triton,chen2018tvm,zheng2022dietcode,shen2021nimble,zheng2023bladedisc} offer an alternative by generating specialized kernels at runtime, they are typically confined to specific high-level IRs (e.g., Triton IR~\cite{tillet2019triton} and Relax~\cite{Lai2023RelaxCA}) and incur non-negligible runtime compilation overhead.
+Given these limitations, we focus on hand-written operator libraries and aim to address the shortcomings of both manual specialization and generic kernel approaches: \textit{achieving automatic specialization for generic libraries to recover performance loss, and pruning manually specialized libraries to mitigate combinatorial explosion and code bloat}.
 
-Moreover, deploying a specific model exhibits \partialdynamics.
-While inputs involve dynamic dimensions like batch size, model-specific attributes (e.g., hidden size, head number) and algorithmic variants are determined at compile time and remain invariant throughout the serving phase.
-We denote these immutable values as \initialconsts, which can be resolved by symbolic shape inference in current DL frameworks~\cite{shen2021nimble, zheng2023bladedisc, Lai2023RelaxCA, ansel2024dynamo}.
-\textbf{A key insight is that schedule configurations of kernels are mainly determined by these \initialconsts.}
-Our analysis (detailed in \S\ref{sec:motivation}) reveals that given \initialconsts, over 90\% of kernel schedule parameters become deterministic.
-This suggests that the vast majority of dynamic schedule decisions inside kernels can effectively be resolved statically before execution.
+To address these limitations, we observe that deploying a specific model exhibits \partialdynamics: while input dimensions (e.g., batch size, sequence length) vary at runtime, model-specific attributes (e.g., hidden size, head number) remain invariant throughout serving.
+We denote these compile-time constants as \initialconsts, which can be resolved by symbolic shape inference in current DL frameworks~\cite{shen2021nimble, zheng2023bladedisc, Lai2023RelaxCA, ansel2024dynamo}.
+\textbf{A key insight is that kernel schedule configurations are primarily determined by these \initialconsts.}
+Our analysis (\S\ref{sec:motivation}) shows that over 90\% of schedule parameters become deterministic given \initialconsts, enabling static resolution of most dynamic schedule decisions.
 
 Based on this insight, we propose leveraging the \initialconsts as contextual information to perform whole-program constant propagation.
-By propagating these \initialconsts through the operator library down to the kernel call sites, we can statically specialize generic kernels and prune redundant instances in manually specialized libraries.
+By propagating these \initialconsts through the operator library down to the kernel call sites, we can statically specialize generic kernels or prune redundant instances in manually specialized libraries.
 However, implementing this strategy faces two critical challenges regarding the precision of static analysis: the \textbf{cross-language semantic gap} and \textbf{early-exit paths from dynamic shape checks}.
 First, the operator library is typically integrated into the framework via Python/C++ Foreign Function Interface (FFI), which creates a semantic gap between high-level Python objects and low-level C++ memory states.
-Standard static analysis cannot bridge this gap, as Python objects are high-level wrappers while C++ analysis requires precise, bit-level memory states.
-Second, the host-side programs of operators involve many shape checkers for input validity, introducing numerous early-exit paths that return error status codes when shape constraints are violated.
-Standard static analysis conservatively merges data flows from these early-exit paths with the normal path, thereby corrupting precise constant information and causing significant precision loss at control-flow merge points.
+Standard static analysis cannot bridge this gap, as existing tools treat FFI glue code as black boxes, failing to model the deep heap layouts and internal indirections of domain-specific objects (e.g., Tensor's nested size arrays) that are essential for reconstructing precise C++ calling contexts.
+Second, the host-side programs of operators involve many shape checkers for validiting input shape, introducing numerous early-exit paths that return error status codes when shape constraints are violated.
+Standard static analysis conservatively merges data flows from these early-exit paths with the normal path, thereby corrupting precise constant information and causing significant precision loss at control-flow merge sites.
 
-To address the above challenges, we introduce \mysys, the first system designed to enable precise constant propagation across language boundaries for kernel specialization. 
+To address the above challenges, we introduce \mysys, the first system designed to enable precise constant propagation across language boundaries for kernel specialization.
 We construct an automated cross-language and whole-program analysis framework for automatic specialization of generic library kernels and code debloating for manually specialized libraries.
-By introducing mechanisms specific to DL systems, \mysys extends traditional static analysis techniques and consists of three main components:
-
-\begin{itemize}
-    \item \textbf{Cross-Language Context Reconstruction (\S\ref{sec:design:context_construction}):} 
-    Instead of analyzing the complex FFI implementation or Python source code, \mysys employs domain-aware semantic modeling for core DL data types. 
-    This approach directly maps high-level operator attributes and tensor metadata from the Graph IR to the memory offsets of C++ operator arguments, thereby reconstructing the precise calling context for subsequent analysis.
-
-    \item \textbf{Early-Exit Edge Identification (\S\ref{sec:design:early-return}):} 
-    This module identifies and prunes early-exit edges introduced by dynamic shape checks. 
-    By constructing a Conditional Return-Value Flow Graph (CRVFG) and determining error states through constant comparison against predefined status code sets, \mysys precisely identifies control-flow edges that lead to error returns, enabling accurate constant propagation along valid execution paths.
-
-    \item \textbf{Inter-Procedural Constant Propagation (\S\ref{sec:design:propagation}):} 
-    This module performs context-sensitive inter-procedural analysis to propagate constants through complex host-side programs.
-    Operating on the CFG with a symbolic environment and flow-sensitive memory store, it integrates pointer analysis, function object propagation, and scalar constant propagation to derive invariant schedule parameters at kernel launch sites.
-
-    \item \textbf{Kernel Specialization and Library Pruning (\S\ref{sec:design:specialization}):} 
-    Utilizing the propagated invariants, this module performs IR-level transformations. 
-    For generic libraries, it specializes kernels by substituting variable arguments with constants and applies aggressive compiler optimizations. 
-    For manually specialized libraries, it identifies and eliminates redundant template instantiations, achieving significant library debloating.
-\end{itemize}
+By introducing mechanisms specific to DL systems, \mysys extends traditional static analysis techniques and consists of four main components:
+(1) \textbf{Cross-Language Context Reconstruction} (\S\ref{sec:design:context_construction}) defines semantic mapping rules from Graph IR parameter types to the typed records in C++ memory, automatically generating partially-evaluated calling contexts without analyzing complex FFI glue code;
+(2) \textbf{Early-Exit Edge Identification} (\S\ref{sec:design:early-return}) tracks the value flow of return values and determines whether a path leads to error status codes based on guard conditions, enabling precise pruning of infeasible edges at control-flow merge points;
+(3) \textbf{Inter-Procedural Constant Propagation} (\S\ref{sec:design:propagation}) performs context-sensitive analysis to propagate constants through complex host-side programs;
+(4) \textbf{Kernel Specialization and Library Pruning} (\S\ref{sec:design:specialization}) performs LLVM IR-level transformations to specialize generic kernels and eliminate redundant template instantiations.
 
 In summary, the main contributions of this paper are as follows:
 \begin{enumerate}
-    \item We propose \mysys, a novel static analysis framework that enables precise constant propagation across the DL framework's language boundary (Python/C++) into the underlying operator libraries—a capability not previously achieved.
-    \item We introduce a cross-language context reconstruction method based on semantic modeling of core DL data types, and a conditional return-value flow analysis for identifying early-exit edges, effectively overcoming the barriers of the cross-language semantic gap and complex shape checkers that hinder standard static analysis.
-    \item We implement \mysys based on LLVM~\cite{lattner2004llvm} and apply it to PyTorch~\cite{ansel2024dynamo}. The system is designed with extensibility, applicable to other Python-based frameworks (e.g., TensorFlow) and various hardware backends supported by LLVM.
-    \item Evaluation on different platforms demonstrates the effectiveness of \mysys.
-    For generic operators on Ascend, it achieves an average speedup of \textbf{1.06$\times$} (up to \textbf{1.17$\times$}) and \textbf{3\%} end-to-end inference speedup on top of highly optimized vendor libraries.
-    For manually specialized libraries on GPU, \mysys removes over \textbf{96\%} of redundant kernels, solving the code bloat issue while maintaining optimal performance.
+    \item We propose \mysys, a novel static analysis framework that enables precise constant propagation across the DL framework's language boundary (Python/C++) into the underlying operator libraries.
+    \item We introduce a cross-language context reconstruction method based on semantic modeling of core DL data types, and a conditional return-value flow analysis for identifying early-exit edges.
+    \item We implement \mysys based on LLVM~\cite{lattner2004llvm} and apply it to PyTorch~\cite{ansel2024dynamo}, with extensibility to other Python-based frameworks and hardware backends.
+    \item Evaluation demonstrates \mysys's effectiveness: for generic operators on Ascend, it achieves an average speedup of \textbf{1.06$\times$} (up to \textbf{1.17$\times$}) and \textbf{3\%} end-to-end inference speedup; for manually specialized libraries on GPU, it removes over \textbf{96\%} of redundant kernels.
 \end{enumerate}

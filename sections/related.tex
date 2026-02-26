@@ -1,25 +1,20 @@
 \section{Related Works}
 \label{sec:related}
 
-Recent years have witnessed significant research on dynamic shape compilation, which can be categorized into three main directions.
-
 \textbf{IR-level schedule search for dynamic tensors.}
-DietCode~\cite{zheng2022dietcode} introduces a dynamic shape-aware auto-scheduler that generates shape-agnostic schedules with symbolic tiling parameters.
-Nimble~\cite{shen2021nimble} provides graph-level compilation for dynamic neural networks with runtime shape specialization.
-HAOTuner~\cite{mu2023haotuner} employs micro-kernel-based schedules to handle dynamic shapes through hardware-adaptive tuning.
-MikPoly~\cite{yu2024mikpoly} proposes on-the-fly micro-kernel polymerization for dynamic-shape neural networks on accelerators.
-These systems operate primarily within compiler IRs (e.g., TVM, Relax~\cite{Lai2023RelaxCA}) and focus on generating optimized kernels from high-level tensor expressions.
-In contrast, \mysys targets a different problem: propagating invariants across the Python/C++ language boundary into existing \textit{hand-written} operator libraries, which are widely deployed in production but lack integration with compiler-based auto-tuning pipelines.
+DietCode~\cite{zheng2022dietcode} introduces dynamic shape-aware auto-scheduling with symbolic tiling parameters.
+Nimble~\cite{shen2021nimble} provides graph-level compilation for dynamic neural networks.
+HAOTuner~\cite{mu2023haotuner} and MikPoly~\cite{yu2024mikpoly} employ micro-kernel-based approaches for dynamic shapes.
+These systems operate within compiler IRs (TVM, Relax~\cite{Lai2023RelaxCA}) and focus on generating kernels from high-level tensor expressions.
+In contrast, \mysys propagates invariants across the Python/C++ boundary into existing \textit{hand-written} operator libraries.
 
 \textbf{Memory and layout optimization for dynamic shapes.}
-BladeDISC~\cite{zheng2023bladedisc} introduces symbolic shape representation and cross-level shape propagation for dynamic shape fusion, focusing on memory layout optimization at the graph level.
-CoRa~\cite{fegade2022cora} addresses ragged tensor computation with minimal padding through compiler techniques.
-While these works optimize memory efficiency for dynamic workloads, they do not address the specialization of pre-compiled hand-written kernels that dominate production operator libraries.
+BladeDISC~\cite{zheng2023bladedisc} introduces symbolic shape representation for dynamic shape fusion.
+CoRa~\cite{fegade2022cora} addresses ragged tensor computation with minimal padding.
+While these optimize memory efficiency, they do not address specialization of pre-compiled hand-written kernels.
 
 \textbf{Industrial practices for dynamic shapes.}
-PyTorch 2~\cite{ansel2024dynamo} introduces SymInt and ShapeEnv for symbolic shape reasoning at the graph level, enabling dynamic shape tracing and compilation.
-TensorRT~\cite{nvidia2021tensorrt} supports dynamic shapes through profile-based optimization and \texttt{setOptimizationProfile} API, selecting specialized kernels at runtime.
-However, these frameworks primarily focus on graph-level optimizations and have limited support for specializing third-party AoT hand-written libraries (e.g., FlashInfer~\cite{ye2025flashinfer}, CANN~\cite{ascend_cannopsadv}) that are critical for achieving peak performance on DSAs.
-\mysys complements these frameworks by enabling cross-language invariant propagation into such libraries, filling the gap between graph-level dynamic shape handling and kernel-level specialization.
-
-In summary, \mysys distinguishes itself by addressing a unique niche: \textit{cross-language invariant propagation from Python to C++ hand-written operator libraries, with control-flow-aware specialization and DSA-friendly AoT library debloating}.
+PyTorch 2~\cite{ansel2024dynamo} introduces SymInt and ShapeEnv for symbolic shape reasoning.
+TensorRT~\cite{nvidia2021tensorrt} supports dynamic shapes through profile-based optimization.
+However, these frameworks have limited support for specializing third-party AoT libraries (FlashInfer~\cite{ye2025flashinfer}, CANN~\cite{ascend_cannopsadv}).
+\mysys complements these by enabling cross-language invariant propagation, filling the gap between graph-level handling and kernel-level specialization.

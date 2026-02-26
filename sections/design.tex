@@ -51,31 +51,11 @@ At the end of the analysis, the derived constant schedule parameters of the kern
 
 \subsection{Definitions}\label{sec:design:definitions}
 
-To formally describe the analysis of \mysys, we first define the abstract domains and notations used in our framework, as summarized in \autoref{fig:abstract-domain}.
+\autoref{fig:abstract-domain} summarizes the abstract domains. \textit{Memory Model:} \kw{Top-level variables} ($v \in \mathcal{V}$) correspond to LLVM virtual registers; \kw{Base objects} ($b \in \mathcal{B}$) represent abstract base addresses of memory blocks; \kw{Memory locations} ($o \in \mathcal{O}$) are pairs $\langle b, \delta \rangle$ with byte offset $\delta$.
 
-\textit{Memory Model and Variables.}
-We distinguish between SSA values and memory locations:
-\begin{itemize}
-    \item \kw{Top-level variables} ($v \in \mathcal{V}$) correspond to virtual registers in the LLVM IR.
-    \item \kw{Base objects} ($b \in \mathcal{B}$) represent the abstract base addresses of memory blocks created at allocation sites (e.g., \texttt{alloca} instructions, global variables, or heap allocations).
-    \item \kw{Memory locations} ($o \in \mathcal{O}$) represent specific fields within allocated objects. A location is defined as a pair $\langle b, \delta \rangle$, where $\delta \in \mathbb{Z}$ denotes a concrete byte offset relative to the base address $b$.
-\end{itemize}
+\textit{Abstract Values:} The domain $\mathcal{SV}$ forms a lattice: \kw{Top} ($\top$) represents undefined/uninitialized states; \kw{Bottom} ($\bot$) represents variable states where values cannot be statically determined; \kw{Concrete Constants} ($c$) include integers, floats, and \kw{Function Objects} ($f \in \mathcal{F}$); \kw{Abstract Pointers} ($p := \langle b, \hat{\delta} \rangle$) represent addresses with abstract offsets.
 
-\textit{Abstract Values and Lattice.}
-The analysis tracks the state of variables using \kw{Specialized Values} ($sv \in \mathcal{SV}$). The domain $\mathcal{SV}$ forms a lattice comprising the following elements:
-\begin{itemize}
-    \item \kw{Top ($\top$) and Bottom ($\bot$):} $\top$ represents an \textit{undefined} or \textit{uninitialized} state (the lattice top, indicating no information), while $\bot$ represents a generic \textit{variable} state where the value cannot be statically determined (the lattice bottom, indicating over-approximation).
-    \item \kw{Concrete Constants ($c$):} These represent precise, known values. This category includes integers ($\in \mathbb{Z}$), floating-point numbers ($\in \mathbb{R}$), and \kw{Function Objects} ($f \in \mathcal{F}$), which represent references to functions targeted by direct or indirect calls.
-    \item \kw{Abstract Pointers ($p$):} Defined structurally as $\langle b, \hat{\delta} \rangle$. A pointer $p$ represents an address computed by adding an \kw{Abstract Offset} $\hat{\delta}$ to a base object $b$. Here, $\hat{\delta} \in \mathbb{Z} \cup \{\bot\}$ allows the analysis to track precise offsets when possible, or degrade to $\bot$ if the offset is variable (e.g., a runtime index).
-\end{itemize}
-
-\textit{Context and State.}
-The program state and inter-procedural context are captured by the following mappings:
-\begin{itemize}
-    \item The \kw{Environment} $\mathbb{E}: \mathcal{V} \mapsto \mathcal{SV}$ maps top-level virtual registers to their abstract values.
-    \item The \kw{Store} $\mathbb{S}: \mathcal{O} \mapsto \mathcal{SV}$ maps memory locations to the values stored therein. By mapping from pairs of $\langle b, \delta \rangle$, the store naturally supports field-sensitive tracking of structure fields and array elements.
-    \item The \kw{Calling Context}~$\mathbb{C} := (\mathbb{E}, \mathbb{S})$ encapsulates the analysis state (environment and store) at the entry basic block of the current function. This context is determined by the caller and propagates constraints across function boundaries during inter-procedural analysis.
-\end{itemize}
+\textit{Context:} The \kw{Environment} $\mathbb{E}: \mathcal{V} \mapsto \mathcal{SV}$ maps registers to abstract values; the \kw{Store} $\mathbb{S}: \mathcal{O} \mapsto \mathcal{SV}$ maps memory locations to values; the \kw{Calling Context} $\mathbb{C} := (\mathbb{E}, \mathbb{S})$ encapsulates the analysis state at function entry.
 
 \input{figures/sys-design/context-generation-workflow}
 \subsection{Calling Context Generation for C++}\label{sec:design:context_construction}
@@ -229,13 +209,7 @@ The identification of early-exit edges relies on analyzing the \textit{condition
 \subsubsection{Conditional Return-Value Flow Graph Construction}
 
 Our method constructs a \textit{Conditional Return-Value Flow Graph} (CRVFG) to precisely capture the relationship between shape checker conditions and early-exit paths.
-The CRVFG is constructed \textit{on-demand} and \textit{intra-procedurally}, featuring two key characteristics that ensure efficiency:
-
-\begin{enumerate}
-    \item \textbf{On-Demand Construction:} We construct the value flow graph only for functions that explicitly contain shape checkers, rather than for all functions in the program. This selective construction avoids the overhead of analyzing functions irrelevant to shape checking.
-    
-    \item \textbf{Return-Value Focus:} We exclusively track the value flow of return values. In SSA-form IR, return values of functions containing shape checkers are typically top-level variables (indicating whether shape checks succeeded), rarely involving implicit value flows through memory objects. Consequently, the resulting value flow graph is compact and efficient to analyze.
-\end{enumerate}
+The CRVFG is constructed \textit{on-demand} and \textit{intra-procedurally}, featuring two key characteristics: (1) \textbf{On-Demand Construction}—we construct the value flow graph only for functions that explicitly contain shape checkers, avoiding the overhead of analyzing irrelevant functions; (2) \textbf{Return-Value Focus}—we exclusively track the value flow of return values, which in SSA-form IR are typically top-level variables, yielding compact and efficient graphs.
 
 \autoref{fig:conditional-value-flow} illustrates the CRVFG for the \texttt{set\_t} function.
 The graph captures the conditional predicate $\varphi_1 = (\%1 = \text{true})$, where $\%1 = \texttt{icmp ne \%0, 0}$, that guards the error return path.
@@ -259,7 +233,7 @@ In practice, conditional guards for shape checkers often test for inequality aga
 
 \subsubsection{Early-Exit Edge Identification Algorithm}
 
-Based on the CRVFG and the error status determination, we propose an early-exit edge identification algorithm to locate all control-flow edges that lead to early exits. The algorithm takes as input a function $F$ containing shape checkers, along with the predefined success and error status code sets $\mathcal{S}$ and $\mathcal{E}$, and outputs the set of early-exit edges. The process begins by obtaining the return instruction and its specific return value $v_{ret}$ via $\texttt{GetReturnInst}(F)$ and $\texttt{GetReturnValue}(inst)$. We then construct the Conditional Return-Value Flow Graph by calling $\texttt{BuildCRVFG}(F, v_{ret})$, which traces the value definitions backwards to yield a set of conditional value-flow edges. For each edge, we extract the associated condition predicate $\varphi$ ($\texttt{GetCondition}(edge)$) and the value $v$ flowing along it ($\texttt{GetValue}(edge)$). Applying the $\texttt{isError}(v, \varphi)$ logic, we evaluate whether this data flow represents an error return path. If confirmed, we trace back to the source basic block $B_{src}$ ($\texttt{GetSourceBlock}(edge)$) and locate the precise conditional branch instruction matching $\varphi$ ($\texttt{FindBranchWithCondition}(B_{src}, \varphi)$). Finally, we determine the branch's successor block $B_{dst}$ taken when $\varphi$ evaluates to true ($\texttt{GetSuccessor}(br, \varphi)$) and formally mark the control-flow transition from $B_{src}$ to $B_{dst}$ as an early-exit edge ($\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$).
+\autoref{algo:early-exit-identification} shows the algorithm. Given function $F$ and status code sets $\mathcal{S}$, $\mathcal{E}$, it outputs early-exit edges. The process: obtain return value $v_{ret}$; construct CRVFG via $\texttt{BuildCRVFG}(F, v_{ret})$; for each edge, extract condition $\varphi$ and value $v$; if $\texttt{isError}(v, \varphi)$, locate the corresponding branch and mark the control-flow edge as early-exit.
 
 For the \texttt{set\_t} function shown in \autoref{fig:set_t_cfg}, the CRVFG in \autoref{fig:conditional-value-flow} reveals that when condition $\varphi_1 = (\%1 = \text{true})$ holds, the return value $\%0 \in \mathcal{E}$ (error set). Therefore, the edge from BB0 to BB1 (the error path where $\%1$ is true) is marked as an early-exit edge. This edge corresponds to the branch where the condition $\texttt{icmp ne \%0, 0}$ evaluates to true, indicating that the shape check failed.
 
