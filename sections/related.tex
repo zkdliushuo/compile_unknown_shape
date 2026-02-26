@@ -1,49 +1,25 @@
 \section{Related Works}
 \label{sec:related}
 
-% %\yu{Yitong, 1) Automatic tuning based on decoupling computation and schedule; 2) Automatic tuning based on polyhedrol; 3) Various Optimization on Dynamic Models}
+Recent years have witnessed significant research on dynamic shape compilation, which can be categorized into three main directions.
 
+\textbf{IR-level schedule search for dynamic tensors.}
+DietCode~\cite{zheng2022dietcode} introduces a dynamic shape-aware auto-scheduler that generates shape-agnostic schedules with symbolic tiling parameters.
+Nimble~\cite{shen2021nimble} provides graph-level compilation for dynamic neural networks with runtime shape specialization.
+HAOTuner~\cite{mu2023haotuner} employs micro-kernel-based schedules to handle dynamic shapes through hardware-adaptive tuning.
+MikPoly~\cite{yu2024mikpoly} proposes on-the-fly micro-kernel polymerization for dynamic-shape neural networks on accelerators.
+These systems operate primarily within compiler IRs (e.g., TVM, Relax~\cite{Lai2023RelaxCA}) and focus on generating optimized kernels from high-level tensor expressions.
+In contrast, \mysys targets a different problem: propagating invariants across the Python/C++ language boundary into existing \textit{hand-written} operator libraries, which are widely deployed in production but lack integration with compiler-based auto-tuning pipelines.
 
-% % \subsection{Automatic Tuning}
+\textbf{Memory and layout optimization for dynamic shapes.}
+BladeDISC~\cite{zheng2023bladedisc} introduces symbolic shape representation and cross-level shape propagation for dynamic shape fusion, focusing on memory layout optimization at the graph level.
+CoRa~\cite{fegade2022cora} addresses ragged tensor computation with minimal padding through compiler techniques.
+While these works optimize memory efficiency for dynamic workloads, they do not address the specialization of pre-compiled hand-written kernels that dominate production operator libraries.
 
-% % There are many existing work on the automatic tuning of static parameter operators. According to the difference of the intermediate representation, it can be divided into the automatic tuning algorithm based on the Halide representation and the polyhedron representation.
+\textbf{Industrial practices for dynamic shapes.}
+PyTorch 2~\cite{ansel2024dynamo} introduces SymInt and ShapeEnv for symbolic shape reasoning at the graph level, enabling dynamic shape tracing and compilation.
+TensorRT~\cite{nvidia2021tensorrt} supports dynamic shapes through profile-based optimization and \texttt{setOptimizationProfile} API, selecting specialized kernels at runtime.
+However, these frameworks primarily focus on graph-level optimizations and have limited support for specializing third-party AoT hand-written libraries (e.g., FlashInfer~\cite{ye2025flashinfer}, CANN~\cite{ascend_cannopsadv}) that are critical for achieving peak performance on DSAs.
+\mysys complements these frameworks by enabling cross-language invariant propagation into such libraries, filling the gap between graph-level dynamic shape handling and kernel-level specialization.
 
-% % \textbf{Automatic tuning algorithms based on Halide representation.} 
-% % \kd{Decoupling Computation and Schedule.}
-% % Halide\cite{ragan2013halide} is a domain-specific language and compiler used to develop high-performance image processing pipelines. It innovatively proposes the idea of separation of computing definition and schedule. %The definition represents the mathematical nature of calculation, and the scheduling represents the optimization strategy combination of the implementation details such as the order of calculation. 
-% % Based on this idea, TVM~\cite{chen2018tvm} designs the TE language to express the computation of deep learning operators and provides code generation and optimization for different hardware. AutoTVM~\cite{chen2018autotvm} uses the learning model to learn the cost model, and uses the scheduling template to automatically search for optimized operator implementations. FlexTensor~\cite{zheng2020flextensor} designs different scheduling primitives for different hardware, and uses heuristics and machine learning methods to search for optimal scheduling configurations.  Ansor~\cite{zheng2020ansor} uses a hierarchical search space for sampling to obtain more optimized combinations.
-% % These works have been successful in static shape workloads, but the support for dynamic shape is insufficient. 
-
-% % \kd{Automatic Tuning Based on Polyhedral.}
-% % Polyhedral representation was originally mainly used for the compilation and optimization of nested loop programs~\cite{feautrier1988parametric}. 
-% % In recent years, it has been widely used in specific fields to optimize computationally intensive programs, such as image processing~\cite{mullapudi2015polymage} and deep learning\cite{vasilache2018tensor}. 
-% % Diesel~\cite{elango2018diesel} uses polyhedral compilation techniques to obtain the initial schedule, and subsequently applies hardware-related optimizations such as loop binding, memory enhancement, and software pipeline. Tensor comprehensions~\cite{vasilache2018tensor} uses a polyhedral Just-In-Time compiler to automatically tune the CPU and GPU code. In addition, some works try to expand the expressive power of polyhedral representation. Tiramisu~\cite{baghdadi2019tiramisu} uses Halide's decoupling idea and introduces a set of scheduling commands on the basis of polyhedral representation, and completely decoupled computing representation, cyclic transformation, data layout and multi-machine communication through four-level intermediate representation. Stripe~\cite{zerrell2019stripe} proposes a nested polyhedral model to compare the nested structure of deep learning operators and accelerator topology to support large-scale parallel computing on different target hardware. These works also lack support for \kw{dynamic operators}.
-
-% % \subsection{Various Optimization on Dynamic Models}
-% % There is several existing work on dynamic operator tuning. The representitive ones are Nimble~\cite{shen2021nimble}, DietCode~\cite{zheng2022dietcode}, and HAOTuner~\cite{mu2023haotuner}. Nimble takes globally applicable scheduling assumption.
-% % DietCode and HAOTuner leverage micro-kernel-based schedules to tune for dynamic shape.
-% % Compared with existing works, \mysys achieves better runtime performance on a wide range of shapes and accelerates the compilation process.
-
-% \kd{Other Optimization on Dynamic Models.} There are some other optimizations for dynamic models. 
-% Yu \etal~\cite{yu2018dynamicflow} proposes a distributed programming model for the dynamic structure of the network model (mainly branches and while loops). This programming model can divide the conditional branches and loop bodies in the loop into different hardware devices for execution. 
-% BladeDISC\cite{zheng2023bladedisc} is a compiler approach that addresses the challenges of dynamic shape optimization by abstracting and extracting shape information, creating a cross-level symbolic shape representation, and introducing a dynamic shape fusion approach based on the propagation of shape information.
-% CoRa\cite{fegade2022cora} is an efficient compiler tailored for operations on irregular tensors, also known as ragged tensors. It reduces computational waste compared to traditional padding and masking techniques, thereby enhancing processing efficiency.
-% Some works try to infer the shape of tensors in dynamic networks\cite{hattori2020shape}. These works all involve dynamic models, but none of them are optimized for the automatic tuning of tensor operators with parameters unknown at compile time. 
-
-% % \yu{Paper：
-% % Dynamic Control Flow in Large-Scale Machine Learning
-
-% % Dynet: The dynamic neural network toolkit.
-
-% % Semi-static Type, Shape, and Symbolic Shape Inference for Dynamic Computation Graphs
-
-% % DISC
-
-% % Nimble
-
-% % AdaTune: Adaptive Tensor Program Compilation Made Efficient
-
-% % FlexTensor
-
-% % 。。。
-% % }
+In summary, \mysys distinguishes itself by addressing a unique niche: \textit{cross-language invariant propagation from Python to C++ hand-written operator libraries, with control-flow-aware specialization and DSA-friendly AoT library debloating}.

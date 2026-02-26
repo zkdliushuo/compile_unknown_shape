@@ -536,11 +536,11 @@ series = {KDD '16}
   howpublished="\url{https://www.tensorflow.org/xla}"
 }
 
-@manual{nvidia2021tensorrt,
-  title={TensorRT developer guide},
-  author={Nvidia},
+@misc{nvidia2021tensorrt,
+  title={TensorRT Developer Guide},
+  author={{NVIDIA}},
   year={2021},
-  howpublished="\url{https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html}"
+  howpublished={\url{https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html}}
 }
 
 % 动态性例证
@@ -674,13 +674,11 @@ series = {KDD '16}
   title={HAOTuner: A Hardware Adaptive Operator Auto-Tuner for Dynamic Shape Tensor Compilers},
   author={Mu, Pengyu and Liu, Yi and Wang, Rui and Liu, Guoxiang and Sun, Zhonghao and Yang, Hailong and Luan, Zhongzhi and Qian, Depei},
   journal={IEEE Transactions on Computers},
+  volume={72},
+  number={11},
+  pages={3191--3204},
   year={2023},
-  publisher={IEEE},
-  volume={""},         
-  number={""},
-  pages={""},
-  numpages={""}, 
-  note={No formal volume, number, or pages available}
+  publisher={IEEE}
 }
 
 @inproceedings{yu2024mikpoly,
@@ -692,9 +690,8 @@ publisher = {Association for Computing Machinery},
 address = {New York, NY, USA},
 url = {https://doi.org/10.1145/3620665.3640390},
 doi = {10.1145/3620665.3640390},
-abstract = {In recent times, dynamic-shape neural networks have gained widespread usage in intelligent applications to address complex tasks, introducing challenges in optimizing tensor programs due to their dynamic nature. As the operators' shapes are determined at runtime in dynamic scenarios, the compilation process becomes expensive, limiting the practicality of existing static-shape tensor compilers. To address the need for effective and efficient optimization of dynamic-shape neural networks, this paper introduces MikPoly, a novel dynamic-shape tensor compiler based on micro-kernel polymerization. MikPoly employs a two-stage optimization approach, dynamically combining multiple statically generated micro-kernels using a lightweight cost model based on the shape of a tensor operator known at runtime. We evaluate the effectiveness of MikPoly by employing popular dynamic-shape operators and neural networks on two representative accelerators, namely GPU Tensor Cores and Ascend NPUs. Our experimental results demonstrate that MikPoly effectively optimizes dynamic-shape workloads, yielding an average performance improvement of 1.49\texttimes{} over state-of-the-art vendor libraries.},
 booktitle = {Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2},
-pages = {797–812},
+pages = {797--812},
 numpages = {16},
 keywords = {tensor compilers, deep learning},
 location = {La Jolla, CA, USA},
