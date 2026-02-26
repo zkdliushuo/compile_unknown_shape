@@ -1,13 +1,13 @@
 \section{Evaluation}
 \label{sec:eval}
 
-Our evaluation mainly focuses on the following questions:
+Our evaluation addresses the following research questions:
 \begin{itemize}
-    \item Can \mysys enhance performance across a diverse set of operators and neural networks on Ascend devices?
-    \item Can \mysys effectively infer more invariable parameters for kernels with reasonable compilation overhead compared to current compilers given the same context information?
-    \item Can \mysys effectively eliminate dead code for operator libraries on GPUs?
+    \item \textbf{RQ1:} Can \mysys enhance performance across a diverse set of operators and neural networks on Ascend devices?
+    \item \textbf{RQ2:} Can \mysys effectively infer more invariant parameters for kernels with reasonable compilation overhead, compared to existing compilers given the same context information?
+    \item \textbf{RQ3:} Can \mysys effectively eliminate redundant code for manually specialized operator libraries on GPUs?
 \end{itemize}
-Apart from the above main questions, we evaluate the detailed performance metrics difference brought by \mysys and the performance improvement under different shape configurations.
+Beyond these primary questions, we evaluate detailed performance metric differences achieved by \mysys and the performance improvement under different shape configurations.
 
 \subsection{Experimental Setup}
 \label{sec:eval:setup}
@@ -30,7 +30,7 @@ The operator benchmark is derived from mainstream deep learning workloads, encom
 
 
 Within this set, we particularly emphasize complex fused operators widely adopted in industrial serving scenarios, such as \texttt{FlashAttention}, \texttt{FeedForward} (FusedFFN), and \texttt{MatMul}.
-These operators are characterized by intensive workload and a substantial number of schedule parameters, making them the primary targets for our optimization.
+These operators are characterized by intensive workloads and a substantial number of schedule parameters, making them the primary targets for our optimization.
 For the end-to-end model evaluation, we select Qwen2.5-1.5B and Llama-3.2-3B to represent varying scales of modern LLMs.
 We assume the batch size of LLMs is fixed, and the sequence length of the input prompt and the KV cache is variable.
 
@@ -47,7 +47,7 @@ For the operator benchmark, we compare \textbf{\mysys} against the following met
 \end{itemize}
 
 
-\subsection{Performance Result of \mysys on Operator-level and Model-level}
+\subsection{Performance Results on Ascend}
 \label{sec:eval:result}
 
 
@@ -63,7 +63,7 @@ For the operator benchmark, we compare \textbf{\mysys} against the following met
     \vspace{-10pt}
 \end{figure}
 
-Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.06$\times$} across all operators, significantly outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the performance of \textbf{\mysys} is nearly identical to the \textbf{Optimal (Upper Bound)} oracle (within 0.5\% difference on average), demonstrating that our framework effectively captures and leverages almost all available runtime constant information for specialization without the heavy overhead of full compilation for each possible shape.
+Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.06$\times$} across all operators, substantially outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the performance of \textbf{\mysys} is nearly identical to the \textbf{Optimal (Upper Bound)} oracle (within 0.5\% difference on average), demonstrating that our framework effectively captures and leverages almost all available runtime constant information for specialization without the heavy overhead of full compilation for each possible shape.
 
 We observe distinct performance behaviors across different operator categories defined in \autoref{tab:dynamic_operators}:
 
@@ -105,7 +105,7 @@ This trend is consistent across both the Prefill and Decode phases.
 
 Key observations from the model benchmarks include:
 \begin{itemize}
-    \item \textbf{Speedup Variation with Sequence Length:} The end-to-end speedup is more significant for small sequences, where the overhead of scalar calculations and control flow constitutes a larger proportion of the total execution time. As the sequence length increases, the computational workload dominated by matrix operations grows, diluting the relative benefit of constant specialization.
+    \item \textbf{Speedup Variation with Sequence Length:} The end-to-end speedup is more significant for small sequences, where scalar calculation and control flow overhead constitutes a larger proportion of the total execution time. As the sequence length increases, the computational workload—dominated by matrix operations—grows, diluting the relative benefit of constant specialization.
     \item \textbf{Dominance of MatMul in LLM Inference:} As illustrated in \autoref{fig:eval:operator-breakdown}, MatMul operations account for the majority of inference time in typical LLM workloads. Although \mysys demonstrates significant speedups for complex fused operators such as FlashAttention and normalization layers, these operators contribute a smaller fraction to the overall inference latency compared to MatMul. Consequently, the overall end-to-end speedup from constant specialization is modest for LLMs.
 \end{itemize}
 
@@ -116,15 +116,15 @@ In summary, while constant specialization yields substantial improvements for sp
 We analyze the trade-off between compilation overhead and optimization effects, as detailed in \autoref{tab:compilation_detail}.
 
 LLVM-spec incurs minimal compilation overhead relative to the baseline (less than 0.60s in all cases).
-This efficiency stems from its efficient implementation.
+This efficiency stems from its streamlined implementation.
 It scans both host and device-side programs to perform immediate constant substitution on IR instructions that access the constant function arguments, followed by a cascade of standard constant-related optimization passes.
 Crucially, these standard passes are predominantly \textit{context-insensitive} and \textit{flow-insensitive}, allowing them to complete the analysis rapidly without deeply tracking complex variable states along the control flow and the function call graph.
 
 In contrast, \mysys exhibits a moderate increase in compilation time, ranging from 0.24s to 2.70s.
 This additional overhead is inherently driven by the adoption of \textit{flow-sensitive} and \textit{context-sensitive} analysis.
-Unlike the direct substitution in LLVM-spec, \mysys must infer and propagate significantly more detailed information throughout the kernel's execution path.
-However, given that this compilation is a one-off cost during deployment, we consider this overhead acceptable, especially as it enables the backend compiler to generate significantly more efficient binaries (as evidenced by the 1.05$\times$ speedup).
-Besides, \mysys avoids the need for path-sensitive analysis due to early-return paths pruning, making the compilation overhead acceptable.
+Unlike the direct substitution in LLVM-spec, \mysys must infer and propagate substantially more detailed information throughout the kernel's execution path.
+However, given that this compilation is a one-off cost during deployment, we consider this overhead acceptable, especially as it enables the backend compiler to generate considerably more efficient binaries (as evidenced by the 1.05$\times$ speedup).
+Furthermore, \mysys avoids the need for path-sensitive analysis through early-return path pruning, keeping compilation overhead acceptable.
 
 % TODO:
 % Comparison of the number of inferred parameters
@@ -137,7 +137,7 @@ Besides, \mysys avoids the need for path-sensitive analysis due to early-return 
 
 \label{sec:eval:analysis}
 
-To deeply understand the sources of the performance gains demonstrated in \autoref{sec:eval:result}, we analyze low-level hardware performance metrics collected during operator execution.
+To gain deeper insight into the sources of performance gains demonstrated in \autoref{sec:eval:result}, we analyze low-level hardware performance metrics collected during operator execution.
 \autoref{tab:performance_metrics} details the Speedup alongside key architectural metrics: Instruction Cache (I-Cache) Miss Rate, Scalar Instruction Ratio, Memory Access (Read \& Write) Ratios, and the final compiled Binary Size.
 Comparing \textbf{\mysys} (T) against the \textbf{Baseline} (B) and \textbf{LLVM-spec} (L), we attribute the improvements to two primary factors: reduced instruction fetch overhead and simplified runtime calculation.
 
@@ -175,7 +175,7 @@ For the large kernel \texttt{P-Attn}, \mysys reduces the binary size by over 50K
 \textit{Optimization of Computational Intensity and Memory Schedule.}
 The \textit{Scalar Ratio} quantifies the proportion of execution cycles of scalar units relative to the total execution cycles of the kernel. 
 A lower ratio indicates that the NPU devotes more cycles to effective data processing.
-\mysys significantly reduces the Scalar Ratio for operators like \texttt{RMS} (97.9\% $\rightarrow$ 88.6\%), confirming that resolving loop bounds and offsets at compile-time effectively converts runtime scalar calculations into immediate operands.
+\mysys substantially reduces the Scalar Ratio for operators like \texttt{RMS} (97.9\% $\rightarrow$ 88.6\%), confirming that resolving loop bounds and offsets at compile-time effectively converts runtime scalar calculations into immediate operands.
 
 Concurrently, the \textit{Memory Read Ratio} shows marked improvement, dropping from 25.0\% to 16.4\% for \texttt{M-Gate} and to 18.8\% for \texttt{GN}.
 This reduction stems from the use of concrete schedule parameters, which enables the compiler to aggressively unroll loops containing tensor operations.
@@ -191,7 +191,7 @@ Therefore, optimizations in the instruction stream do not translate into visible
 \textit{Impact of Workload Scale on Effectiveness of \mysys.}
 To understand how \mysys performs under different workload intensities, we analyze the speedup of the \texttt{D-Attn} operator across varying KV cache lengths as \autoref{fig:eval:d_attn_kv} and the relationship between speedup and baseline kernel latency for all operators as \autoref{fig:eval:latency_dist}.
 The results demonstrate a clear correlation: the speedup ratio gradually decreases and converges towards 1.0 as the workload (sequence length or execution time) increases.
-This trend implies that the performance benefits derived from kernel specialization, primarily the elimination of scalar calculations, control flow overhead, and the improvement of instruction cache utilization, are relatively fixed in absolute time and are largely independent of the total task volume.
+This trend implies that the performance benefits derived from kernel specialization—including the elimination of scalar calculations, reduction of control flow overhead, and improvement of instruction cache utilization—are relatively fixed in absolute time and are largely independent of the total task volume.
 Consequently, this fixed reduction in overhead translates into significant speedup ratios for small-scale, low-latency kernels, but becomes negligible due to the dominant computation and memory access time in heavy workloads.
 
 % \textit{Analysis on the compilation pipelines of the kernel specialization}

@@ -1,18 +1,14 @@
-% C++ 算子程序中普遍使用库 API 获取算子属性，从源码分析的角度，这些库 API 函数是不可见的黑盒函数，需要首先解决常量信息从哪里来的的问题。
-% 此外，动态形状检查在算子程序中普遍存在，针对变量维度及其表达式的条件检查语句会造成多条程序路径，传统的路径不敏感的分析会导致常量信息的大量丢失，而路径敏感分析会造成昂贵的编译开销。
+\section{Motivation: Challenges and Insights}
+\label{sec:motivation}
 
-% 通过上述常量传播，我们可以分析得出核函数的部分参数取值，并将这些参数替换为对应的常量，再对核函数进行常量相关的优化，得到特化的核函数程序。
-% 在运行时，对于给定的运行时形状，我们首先运行一遍 guard，若满足约束则调用特化核函数；否则，调用原版非特化的核函数。
+Operator programs in deep learning libraries involve challenging patterns that hinder the effectiveness of existing constant propagation techniques.
+In this section, we analyze these patterns and present key insights that motivate our design.
 
-\section{Challenges in Constant Propagation and Insights}
-
-Our targeted operator programs involve some challenging patterns that hinder the effectiveness of existing constant propagation techniques.
-In this section, we discuss the impact of these patterns on constant propagation and our key insights.
-
-\subsection{Propagating constant informations through Python/C++ Bindings}
+\subsection{Challenge 1: Cross-Language Semantic Gap}
+\label{sec:motivation:semantic-gap}
 
 Deep learning models are typically defined in high-level frameworks like PyTorch using Python APIs. The model is organized as a computation graph where each node represents an operator. The input shapes and attributes of these operators, which contain the runtime invariant values we wish to propagate, are passed to the underlying C++ implementations through Python bindings.
-However, recovering the C++ side calling context from the Python API invocation presents a significant challenge known as the \textbf{Cross-Language Semantic Gap}.
+However, recovering the C++ calling context from the Python API invocation presents a significant challenge known as the \textbf{Cross-Language Semantic Gap}.
 
 Specifically, to perform static constant propagation on the C++ operator programs, the analyzer must identify which memory load instructions correspond to the constant values known by the framework.
 This is difficult because Python objects are high-level wrappers, while C++ analysis requires precise, bit-level memory states.
@@ -47,42 +43,44 @@ void add(Tensor& A, Tensor& B, Tensor& C) {
 %impl_ptr = load %struct.TensorImpl*, %struct.Tensor* %a_ptr
 %sizes_base = getelementptr i8, i8* %impl_ptr, i64 24
 %dim0_addr = bitcast i8* %sizes_base to i64*
-; We should replace the following load instruction with constant 4
+; We should replace the following load with constant 4
 %val = load i64, i64* %dim0_addr
 \end{lstlisting}
 \end{minipage}
-\caption{The Cross-Language Semantic Gap. Framework-level constants (e.g., shape dimension `4`) are known in Python but physically invisible to the C++ static analyzer unless the memory context is reconstructed at the bit level.}
+\caption{The Cross-Language Semantic Gap. Framework-level constants (e.g., shape dimension `4') are known in Python but physically invisible to the C++ static analyzer unless the memory context is reconstructed at the bit level.}
 \label{fig:semantic_gap}
 \end{figure}
 
 As illustrated in \autoref{fig:semantic_gap}, the framework sees the concrete shape \kw{[4]}, yet the compiled C++ code degenerates into LLVM IR that performs raw pointer arithmetic and byte loads.
-No existing cross-language tooling exposes these constants in Python-side codes to the C++ analyzer. 
+No existing cross-language tooling exposes these constants in Python-side code to the C++ analyzer. 
 Enabling constant propagation therefore requires:
 \begin{enumerate}
-    \item \textbf{Reconstruct Bit-Level Context.} We must synthesize an initial memory image where the bytes at the offset corresponding to \kw{TensorImpl::sizes\_[0]} contain the binary encoding of \kw{4}.
-    \item \textbf{Identify Variable Fields.} We must also recognize that \kw{sizes\_[0]} of tensor \kw{B} represents the symbolic dimension \kw{s0} and explicitly mark those bytes as \kw{Unknown} (Top) to keep the analysis sound.
+    \item \textbf{Reconstructing Bit-Level Context.} We must synthesize an initial memory image where the bytes at the offset corresponding to \kw{TensorImpl::sizes\_[0]} contain the binary encoding of \kw{4}.
+    \item \textbf{Identifying Variable Fields.} We must also recognize that \kw{sizes\_[0]} of tensor \kw{B} represents the symbolic dimension \kw{s0} and explicitly mark those bytes as \kw{Unknown} (Top) to keep the analysis sound.
 \end{enumerate}
 
-To bridge this gap, we propose a method to reconstruct a precise C++ calling context.
+\textbf{Insight: Domain-Aware Semantic Modeling.}
+To bridge this gap, we propose a method to reconstruct a precise C++ calling context through domain-aware semantic modeling.
 Conceptually, this context serves as a mapping that associates the memory locations of input parameters with their abstract values, either specific constants (e.g., shape dimensions) or \kw{Unknown} (Top).
-To do so, we first analyze the AST of the operator library to recover the physical memory layout (i.e., bytes offsets of fields) of the parameter data structures.
-Second, we predefine the mapping rules to map the known constant values from the Python frontend into their corresponding offsets for each parameter, while initializing all other variable fields by mapping to \kw{Unknown}.
-The feasibility of this approach relies on two key observations: (1) C++ operator programs utilize a limited set of parameter types (e.g., \kw{Tensor}, \kw{int}, \kw{float}) and , and (2) constant propagation primarily depends on shape dimensions and operator attributes. 
+To do so, we first analyze the AST of the operator library to recover the physical memory layout (i.e., byte offsets of fields) of the parameter data structures.
+Second, we predefine mapping rules to map the known constant values from the Graph IR into their corresponding offsets for each parameter, while initializing all other variable fields by mapping them to \kw{Unknown}.
+The feasibility of this approach relies on two key observations: (1) C++ operator programs utilize a limited set of parameter types (e.g., \kw{Tensor}, \kw{int}, \kw{float}), and (2) constant propagation primarily depends on shape dimensions and operator attributes. 
 Consequently, this reconstructed context provides the necessary initial state for the subsequent static analysis.
 
-\subsection{Dynamic Shape Checks leading to Early Return Paths}
+\subsection{Challenge 2: Early-Exit Paths from Dynamic Shape Checks}
+\label{sec:motivation:early-exit}
 
 Dynamic shape operators need to employ shape checks to detect invalid inputs for robustness due to several reasons:
-1) Some high-performance algorithms only support specific shapes or data layouts. 
-2) Inputs may exceed resource limits for the target hardware.
-Consequently, runtime shape checks are prevalent in operator implementations, especially for NPU operators, which must satisfy hardware constraints such as mandatory memory alignment, tile volume should not exceed certain memory buffer size, etc.
-These checks often locate in the beginning of tiling functions, and the error reporting path usually returns an error status code and bypasses the rest of the function, called \kw{early return path}.
+(1) Some high-performance algorithms only support specific shapes or data layouts; 
+(2) Inputs may exceed resource limits for the target hardware.
+Consequently, runtime shape checks are prevalent in operator implementations, especially for NPU operators, which must satisfy hardware constraints such as mandatory memory alignment and tile volume limits.
+These checks often locate at the beginning of tiling functions, and the error reporting path usually returns an error status code and bypasses the rest of the function---we call such paths \textbf{early-exit paths}.
 
 \begin{figure}[H]
     \centering
     \hfill
     \begin{minipage}{0.5\textwidth}
-    \begin{lstlisting}[language=C++, caption={Early return path due to dynamic shape check.}, label={lst:early_return_code}, frame=single]
+    \begin{lstlisting}[language=C++, caption={Early-exit path due to dynamic shape check.}, label={lst:early_return_code}, frame=single]
 const status SUCCESS = 0, ERROR = -1;
 status check(int s) {
     if(s % 32 != 0)
@@ -98,7 +96,7 @@ status tiling(int s, int& t) {
 }
     \end{lstlisting}
     \end{minipage}
-\hfill
+    \hfill
     \begin{minipage}{0.4\textwidth}
     \includegraphics[width=\textwidth]{figures/motivation/dynamic-shape-check-demo.png}
     \caption{Data flow and control flow of the function \kw{tiling} in \autoref{lst:early_return_code}.}
@@ -107,92 +105,39 @@ status tiling(int s, int& t) {
 \end{figure}
 
 As shown in \autoref{lst:early_return_code}, the function \kw{tiling} contains a dynamic shape check in the called function \kw{check}.
-If the input shape parameter \kw{s} is not aligned to 32 (i.e., \kw{s} \% 32 $\neq$ 0), the function \kw{check} returns an error code, leading to an early return in \kw{tiling} that bypasses the assignment of the output parameter \kw{t}.
-% [Modification: Explicitly stating the initial value assumption]
+If the input shape parameter \kw{s} is not aligned to 32 (i.e., \kw{s} \% 32 $\neq$ 0), the function \kw{check} returns an error code, leading to an early exit in \kw{tiling} that bypasses the assignment of the output parameter \kw{t}.
 Assuming the initial value of \kw{t} is 0 passed from the caller, the actual trouble arises when we try to deduce the constant value of \kw{t} using constant propagation at block 3.
 As shown in \autoref{fig:dynamic_shape_check_demo}, there are two possible paths to reach block 3:
-1) The valid path is from block 2 where \kw{s} is a multiple of 32, and \kw{t} is assigned the constant value 32.
-2) The early return path is from block 1 where \kw{s} is not aligned, and \kw{t} remains its initial value 0.
+\begin{enumerate}
+    \item The \textit{valid path} is from block 2 where \kw{s} is a multiple of 32, and \kw{t} is assigned the constant value 32.
+    \item The \textit{early-exit path} is from block 1 where \kw{s} is not aligned, and \kw{t} remains its initial value 0.
+\end{enumerate}
 Consequently, at block 3, the value of \kw{t} is a merge of 0 and 32, resulting in a non-constant value (often denoted as \textit{Top} in lattice theory).
 Although symbolic execution techniques may explore paths and deduce values under symbolic guards, they suffer from path explosion and are computationally expensive, making them impractical for our task.
 
-% [Modification: Correcting "Unreachable" to "Irrelevant for valid inputs/Data flow analysis"]
-The key insight is that the control flow edge from Block 1 to 3 represents an error handling routine triggered by invalid inputs.
-Under the assumption that the optimized kernel is intended for valid workloads, and following the API contract that output parameters are undefined upon failure, the data flow values from this early return path can be safely ignored.
+\textbf{Insight: Pruning Early-Exit Edges via Return-Value Flow Analysis.}
+The key insight is that the control-flow edge from Block 1 to 3 represents an error handling routine triggered by invalid inputs.
+Under the assumption that the optimized kernel is intended for valid workloads, and following the API contract that output parameters are undefined upon failure, the data-flow values from this early-exit path can be safely ignored.
 By excluding this path from data-flow analysis, we can deduce that \kw{t} is consistently 32 at block 3 for all successful executions.
 
-Determining which control flow edges belong to error handling paths through static program analysis is non-trivial in general, as distinguishing error reporting paths from normal conditional branches relies on semantic information typically absent in low-level intermediate representations. 
-Fortunately, dynamic shape operator programs follow certain patterns that can be exploited.
-First, these programs commonly use compile-time known status codes to indicate success or failure of dynamic checks.
-For example, the SUCCESS code is always 0, and the ERROR code is always -1 in all the built-in operator libraries. 
-Second, the usage of these status codes follows a consistent pattern:
-1) A function performing dynamic shape checks will return a status code to indicate success or failure to its caller.
-2) The caller checks the callee's status; if the comparison indicates failure, the return value or ERROR code will be returned immediately.
+Determining which control-flow edges belong to error handling paths through static program analysis is non-trivial in general, as distinguishing error reporting paths from normal conditional branches relies on semantic information typically absent in low-level intermediate representations. 
+Fortunately, dynamic shape operator programs follow certain patterns that can be exploited:
+\begin{enumerate}
+    \item These programs commonly use compile-time known status codes to indicate success or failure of dynamic checks. For example, the SUCCESS code is always 0, and the ERROR code is always -1 in all the built-in operator libraries. 
+    \item The usage of these status codes follows a consistent pattern: (a) A function performing dynamic shape checks returns a status code to indicate success or failure to its caller; (b) The caller checks the callee's status, and if the comparison indicates failure, the return value or ERROR code is returned immediately.
+\end{enumerate}
 
-Based on the above observations, we identify early return paths by leveraging the explicit return of error status codes.
+Based on the above observations, we identify early-exit paths by leveraging the explicit return of error status codes.
 In general, we identify paths that consistently lead to a function return of an ERROR code. 
-Once identified, we mark these paths as Early-Return and modify the constant propagation pass to selectively merge incoming values only from non-error paths.
+Once identified, we mark these paths as early-exit edges and modify the constant propagation pass to selectively merge incoming values only from non-error paths.
 This strategy ensures that the constant propagation is not polluted by the uninitialized or default values from error handling logic, while preserving correctness for valid program executions.
 
-% Based on the above observations, we have designed an early return path identification algorithm to identify unreachable early return paths caused by dynamic shape checks.
-% In general, for a given function that performs dynamic shape checks, we first extract all possible check failure branches, then we analyze if on all the paths from a check failure branch to the function's exit block, the return codes are all ERRORs.
-% If so, we mark these paths as early return paths that can be ignored during constant propagation.
+\subsection{Opportunity: High Ratio of Deterministic Schedule Parameters}
+\label{sec:motivation:opportunity}
 
-% Due to the coorectness requirement, we only ignore early return paths when we are sure that they are unreachable given valid inputs.
-% This is a conservative strategy that may miss some optimization opportunities, but it guarantees the correctness of the optimized program.
+To quantify the optimization opportunity, we analyze the relationship between \initialconsts and kernel schedule parameters in production operator libraries.
+Our analysis reveals that given \initialconsts (model-specific attributes such as hidden size, head number, and algorithmic variants), over \textbf{90\%} of the kernel schedule parameters become deterministic.
 
-
-
-% \subsection{The Challenge of Pointer Uncertainty}
-
-% Constant propagation (CP) is critically hindered by \textit{unknown pointers}, where a \texttt{store} operation may poison all potentially-aliased memory locations, losing many constant values.
-% There are 
-
-% While existing alias analysis (e.g., TBAA in LLVM) can mitigate this by restricting side-effects to a specific field, this is insufficient for two patterns prevalent in operator host code. 
-% These patterns create pointer uncertainty so severe that it defeats even advanced conservative analysis.
-
-% \begin{figure}[h]
-% \centering
-% \begin{minipage}{.48\textwidth}
-% \lstset{style=cppsimple, title=(a) External Function}
-% \begin{lstlisting}
-% extern int getEnvData();
-% void my_kernel(int param);
-
-% void host_func_1(...) {
-%   int val = getEnvData();
-%   my_kernel(val); 
-% }
-% \end{lstlisting}
-% \end{minipage}
-% \hfill
-% \begin{minipage}{.48\textwidth}
-% \lstset{style=cppsimple, title=(b) Dynamic STL Container}
-% \begin{lstlisting}
-% #include <vector>
-% void my_kernel(int param);
-
-% void host_func_2(int shape) {
-%   std::vector<int> v;
-%   v.push_back(10);
-%   if (shape > 0)
-%     v.push_back(shape);
-%   my_kernel(v[0]);
-% }
-% \end{lstlisting}
-% \end{minipage}
-% \caption{Patterns creating unanalyzable uncertainty. (a) The opaque call \texttt{getEnvData()} forces \texttt{val} to become \texttt{UNKNOWN}. (b) The dynamic \texttt{push\_back(shape)} implies a potential \texttt{realloc}, forcing a conservative analysis to poison the known constant \texttt{v[0]}.}
-% \label{fig:opaque_code}
-% \end{figure}
-
-% The first challenge is \textbf{external "black-box" functions} (Fig. \ref{fig:opaque_code}a). Operator code frequently links against opaque runtime APIs whose IR is unavailable. Traditional inter-procedural analysis (IPA) attempts to solve this via Link-Time Optimization (LTO) or manually-crafted function summaries \cite{SomeLTOAnalysisPaper, SomeFunctionSummaryPaper}. These methods are inapplicable in our domain: LTO is impossible against pre-compiled runtime APIs, and summaries for proprietary vendor libraries are unavailable. Thus, a sound analysis must conservatively assume arbitrary side effects (e.g., data escape), invalidating all constants.
-
-% The second challenge is \textbf{dynamic STL containers} (Fig. \ref{fig:opaque_code}b). Although the source code for STL is visible, its behavior is data-dependent. To precisely analyze the heap, advanced compilers may employ complex, high-cost techniques like shape analysis \cite{SomeShapeAnalysisPaper} or symbolic execution. These methods are computationally prohibitive for our domain and still default to conservative assumptions when faced with dynamic, shape-dependent control flow. The standard conservative approach must assume that a \texttt{push\_back} implies a potential \texttt{realloc}, invalidating all element pointers and forcing the analyzer to poison all existing constants (like \texttt{v[0]}) to \texttt{UNKNOWN}.
-
-% To overcome the failure of conservative methods, we leverage two domain-specific insights:
-% \begin{enumerate}
-%     \item \textbf{Insight 1 (External Funcs):} Manual analysis reveals external calls are overwhelmingly benign (e.g., \texttt{readonly}, \texttt{nocapture}), typically fetching read-only data.
-%     \item \textbf{Insight 2 (STL Containers):} Container element counts, while dynamic, are practically bounded (e.g., < 100) in operator code.
-% \end{enumerate}
-
-% These insights motivate our "speculative" framework. We analyze code *as if* these problems do not exist: external functions are assumed benign, and containers are modeled via a \textbf{bounded static abstraction} (e.g., \texttt{std::vector} as a \texttt{T[256]} array). Our analysis is \textit{not} conservative; if the bound is exceeded, it continues to propagate constants optimistically. We delegate correctness entirely to a runtime \textbf{guard} that verifies constants before executing a specialized kernel, unifying both challenges under a "speculate-then-verify" model.
+This high ratio stems from the design pattern of operator libraries: schedule parameters (tiling sizes, loop bounds, pipeline stages) are typically computed based on input tensor shapes and operator attributes through deterministic calculations.
+While input tensor shapes may contain dynamic dimensions (e.g., batch size, sequence length), the model-specific attributes are fixed at compile time and remain invariant throughout the serving phase.
+This observation motivates our approach of leveraging \initialconsts as the contextual information to perform whole-program constant propagation, enabling static resolution of the vast majority of schedule parameters before execution.

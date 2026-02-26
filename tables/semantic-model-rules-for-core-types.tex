@@ -1,35 +1,35 @@
 \begin{table}[htbp]
   \centering
-  \caption{Semantic modeling rules for update abstract state of the C++ calling context. 
+  \caption{Context update rules for Graph IR parameter types.
   \textbf{Definitions:} $\text{alloc}(\texttt{T})$ allocates a memory block sized for C++ type \texttt{T}.
-  $\text{Process}(\tau, v, \ell)$ is an auxiliary semantic function that recursively populates the store at memory location $\ell$ with metadata $v$ (without allocating the base storage for $\ell$).}
+  $\text{Process}(\tau, v, \ell)$ recursively populates the store at location $\ell$ with value $v$ of type $\tau$.}
   \label{tab:semantic-rules}
   
   % 定义粗横线，使用 noalign 避免 booktabs 的间距问题
   \newcommand{\thickhline}{\noalign{\hrule}}
   
-  \renewcommand{\arraystretch}{1.6} 
+  \renewcommand{\arraystretch}{1.6}
   \small
   
   \begin{tabular}{m{0.16\textwidth}|m{0.22\textwidth}|>{\raggedright\arraybackslash}m{0.25\textwidth}|>{\raggedright\arraybackslash}m{0.28\textwidth}}
     \thickhline
-    \textbf{Metadata} ($\mathcal{M}$) & \textbf{C++ Definition} & \textbf{"LLVM IR" Environment Update} & \textbf{Store Update} \\
+    \textbf{Parameter Type} ($\tau$) & \textbf{C++ Definition} & \textbf{Environment Update} & \textbf{Store Update} \\
     \hline  % <--- 这里把 \midrule 改成了 \hline，竖线就能连上了
     
     % Row 1: Scalar
-    $\textsc{Scalar}(c)$ & 
+    \texttt{Scalar} \newline (value $c$) &
     {\ttfamily int64\_t $c$; \newline double $c$;} &
-    $v \mapsto \alpha(c)$ & 
+    $v \mapsto \alpha(c)$ &
     None \\ \hline
     
     % Row 2: String
-    $\textsc{String}(s)$ & 
+    \texttt{String} \newline (value $s$) &
     {\ttfamily struct str\_view \{ \newline \hspace*{1.1em} size\_t len; \newline \hspace*{1.1em} char* data; \newline \} $s$;} &
     $\begin{aligned}
       & \ell = \text{alloc}(\texttt{str\_view}) \\
       & \ell_{buf} = \text{alloc}(\texttt{char}[\text{len}(s)]) \\
       & v \mapsto \langle\ell, 0\rangle
-    \end{aligned}$ & 
+    \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{len}} \rangle \mapsto \text{len}(s) \\
       & \langle \ell, \delta_{\texttt{data}} \rangle \mapsto \langle\ell_{buf}, 0\rangle \\
@@ -38,13 +38,13 @@
     \\ \hline
     
     % Row 3: Tensor
-    $\textsc{Tensor}(\vec{d})$ \newline $\vec{d}:=[d_1 \dots d_k]$ & 
+    \texttt{Tensor} \newline (shape $\vec{d}=[d_1 \dots d_k]$) &
     {\ttfamily struct Tensor \{ \newline \hspace*{1.1em} int* sizes; \newline \hspace*{1.1em} int ndim; \newline \} vec\_d;} &
     $\begin{aligned}
       & \ell = \text{alloc}(\texttt{Tensor}) \\
       & \ell_{sz} = \text{alloc}(\texttt{int}[k]) \\
       & v \mapsto \langle\ell, 0\rangle
-    \end{aligned}$ & 
+    \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{ndim}} \rangle \mapsto k \\
       & \langle \ell, \delta_{\texttt{sizes}} \rangle \mapsto \langle\ell_{sz}, 0\rangle \\
@@ -52,14 +52,14 @@
     \end{aligned}$
     \\ \hline
     
-    % Row 4: Array
-    $\textsc{Array}\langle\tau\rangle(\vec{e})$ \newline $\vec{e}:=[e_1 \dots e_n]$ & 
+    % Row 4: List
+    $\texttt{List}\langle\tau\rangle$ \newline (elements $\vec{e}=[e_1 \dots e_n]$) &
     {\ttfamily struct List<T> \{ \newline \hspace*{1.1em} size\_t size; \newline \hspace*{1.1em} T* data; \newline \} v;} &
     $\begin{aligned}
       & \ell = \text{alloc}(\texttt{List}\langle\tau\rangle) \\
       & \ell_{buf} = \text{alloc}(\tau[n]) \\
       & v \mapsto \langle\ell, 0\rangle
-    \end{aligned}$ & 
+    \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{size}} \rangle \mapsto n \\
       & \langle \ell, \delta_{\texttt{data}}\rangle \mapsto \langle\ell_{buf}, 0\rangle \\
@@ -68,14 +68,14 @@
     \\ \hline
     
     % Row 5: Optional
-    $\textsc{Optional}\langle\tau\rangle(u)$ & 
+    $\texttt{Optional}\langle\tau\rangle$ \newline (value $u$) &
     {\ttfamily struct optional<T> \{ \newline \hspace*{1.1em} bool has\_val; \newline \hspace*{1.1em} T* val; \newline \} v;} &
     $\begin{aligned}
       & \ell = \text{alloc}(\texttt{optional}\langle\tau\rangle) \\
       & \text{if } u \neq \text{None}: \\
       & \quad \ell_{obj} = \text{alloc}(\tau) \\
       & v \mapsto \langle\ell, 0\rangle
-    \end{aligned}$ & 
+    \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{has\_val}} \rangle \mapsto (u \neq \text{None}) \\
       & \text{if } u \neq \text{None}: \\

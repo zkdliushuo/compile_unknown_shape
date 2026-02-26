@@ -3,11 +3,11 @@
 
 \input{figures/sys-design/mysys-workflow}
 
-We propose \mysys, a highly accurate constant propagation framework that infers constant parameter values of kernels from DL frameworks.
-The workflow of \mysys is shown as \autoref{fig:overall_workflow}.
-\mysys takes the DL model's specific constant information as input.
-It first generates the calling context for each operator invocation (\S\ref{sec:design:context_construction}).
-Next, \mysys identifies all the early-exit paths (\S\ref{sec:design:early-return}) and performs context-sensitive inter-procedural constant propagation along normal paths (\S\ref{sec:design:propagation}).
+We present \mysys, a precise constant propagation framework that infers constant parameter values of kernels from DL frameworks.
+The workflow of \mysys is illustrated in \autoref{fig:overall_workflow}.
+\mysys takes the DL model's specific constant information (i.e., \initialconsts) as input.
+It first generates the calling context for each operator invocation through cross-language context reconstruction (\S\ref{sec:design:context_construction}).
+Next, \mysys identifies all early-exit edges introduced by dynamic shape checks (\S\ref{sec:design:early-return}) and performs context-sensitive inter-procedural constant propagation along valid execution paths (\S\ref{sec:design:propagation}).
 At the end of the analysis, the derived constant schedule parameters of the kernel function are used to perform kernel specialization, generating specialized kernel binaries or eliminating redundant kernel instantiations (\S\ref{sec:design:specialization}).
 
 \begin{table}[htbp]
@@ -64,7 +64,7 @@ We distinguish between SSA values and memory locations:
 \textit{Abstract Values and Lattice.}
 The analysis tracks the state of variables using \kw{Specialized Values} ($sv \in \mathcal{SV}$). The domain $\mathcal{SV}$ forms a lattice comprising the following elements:
 \begin{itemize}
-    \item \kw{Top ($\top$) and Bottom ($\bot$):} $\top$ represents an \textit{undefined} or \textit{uninitialized} state, while $\bot$ represents a generic \textit{variable} state where the value cannot be statically determined.
+    \item \kw{Top ($\top$) and Bottom ($\bot$):} $\top$ represents an \textit{undefined} or \textit{uninitialized} state (the lattice top, indicating no information), while $\bot$ represents a generic \textit{variable} state where the value cannot be statically determined (the lattice bottom, indicating over-approximation).
     \item \kw{Concrete Constants ($c$):} These represent precise, known values. This category includes integers ($\in \mathbb{Z}$), floating-point numbers ($\in \mathbb{R}$), and \kw{Function Objects} ($f \in \mathcal{F}$), which represent references to functions targeted by direct or indirect calls.
     \item \kw{Abstract Pointers ($p$):} Defined structurally as $\langle b, \hat{\delta} \rangle$. A pointer $p$ represents an address computed by adding an \kw{Abstract Offset} $\hat{\delta}$ to a base object $b$. Here, $\hat{\delta} \in \mathbb{Z} \cup \{\bot\}$ allows the analysis to track precise offsets when possible, or degrade to $\bot$ if the offset is variable (e.g., a runtime index).
 \end{itemize}
@@ -121,7 +121,7 @@ Starting with an empty context $\mathbb{C}_{0}$ \ding{176}, \mysys{} iterates th
 \begin{equation}
 \mathbb{C}_{init} = \mathcal{R}_{\mathcal{M}_n} \circ \dots \circ \mathcal{R}_{\mathcal{M}_1} \circ \mathcal{R}_{\mathcal{M}_0} (\mathbb{C}_0)
 \end{equation}
-For each metadata item $\mathcal{M}_i$, we apply a semantic modeling rule $\mathcal{R}_{\mathcal{M}_i}$ listed in \autoref{tab:semantic-rules} to transform the high-level metadata into the low-level memory representation by update abstract state $\mathbb{C}_i$.
+For each metadata item $\mathcal{M}_i$, we apply a semantic modeling rule $\mathcal{R}_{\mathcal{M}_i}$ listed in \autoref{tab:semantic-rules} to transform the high-level metadata into the low-level memory representation by updating the abstract state $\mathbb{C}_i$.
 
 \subsubsection{Update Rules for Metadata}\label{sec:design:rules}
 
@@ -202,12 +202,12 @@ The identification of early-exit edges relies on analyzing the \textit{condition
 \subsubsection{Conditional Return-Value Flow Graph Construction}
 
 Our method constructs a \textit{Conditional Return-Value Flow Graph} (CRVFG) to precisely capture the relationship between shape checker conditions and early-exit paths.
-The CRVFG is built \textit{on-demand} and \textit{intra-procedurally}, with two key characteristics that ensure efficiency:
+The CRVFG is constructed \textit{on-demand} and \textit{intra-procedurally}, featuring two key characteristics that ensure efficiency:
 
 \begin{enumerate}
     \item \textbf{On-Demand Construction:} We construct the value flow graph only for functions that explicitly contain shape checkers, rather than for all functions in the program. This selective construction avoids the overhead of analyzing functions irrelevant to shape checking.
     
-    \item \textbf{Return-Value Focus:} We exclusively track the value flow of return values. In SSA-form IR, return values of functions containing shape checkers are typically top-level variables (indicating whether shape checks succeeded), rarely involving implicit value flows through memory objects. Consequently, the resulting value flow graph is remarkably small and efficient to analyze.
+    \item \textbf{Return-Value Focus:} We exclusively track the value flow of return values. In SSA-form IR, return values of functions containing shape checkers are typically top-level variables (indicating whether shape checks succeeded), rarely involving implicit value flows through memory objects. Consequently, the resulting value flow graph is compact and efficient to analyze.
 \end{enumerate}
 
 \autoref{fig:conditional-value-flow} illustrates the CRVFG for the \texttt{set\_t} function.
@@ -223,7 +223,7 @@ $$
     \text{isError}(v, \varphi) = 
     \begin{cases}
         \text{true} & \text{if } \varphi \Rightarrow (v \notin \mathcal{S}) \lor \varphi \Rightarrow (v \in \mathcal{E}) \\
-        \text{false} & \text{if } \varphi \Rightarrow (v \in \mathcal{S}) \\
+        \text{false} & \text{if } \varphi \Rightarrow (v \in \mathcal{S}) \lor \varphi \Rightarrow (v \notin \mathcal{E}) \\
         \text{unknown} & \text{otherwise}
     \end{cases}
 $$
@@ -232,15 +232,15 @@ In practice, conditional guards for shape checkers often test for inequality aga
 
 \subsubsection{Early-Exit Edge Identification Algorithm}
 
-Based on the CRVFG and the error status determination, we propose an early-exit edge identification algorithm to locate all control-flow edges that lead to early exits. The algorithm takes a function $F$ containing shape checkers, along with the predefined success and error status code sets $\mathcal{S}$ and $\mathcal{E}$. The process begins by obtaining the return instruction and its specific return value $v_{ret}$ via $\texttt{GetReturnInst}(F)$ and $\texttt{GetReturnValue}(inst)$. We then construct the Conditional Return-Value Flow Graph by calling $\texttt{BuildCRVFG}(F, v_{ret})$, which traces the value definitions backwards to yield a set of conditional value-flow edges. For each edge, we extract the associated condition predicate $\varphi$ ($\texttt{GetCondition}(edge)$) and the value $v$ flowing along it ($\texttt{GetValue}(edge)$). Applying the $\texttt{isError}(v, \varphi)$ logic, we evaluate whether this data flow represents an error return path. If confirmed, we trace back to the source basic block $B_{src}$ ($\texttt{GetSourceBlock}(edge)$) and locate the precise conditional branch instruction matching $\varphi$ ($\texttt{FindBranchWithCondition}(B_{src}, \varphi)$). Finally, we determine the branch's successor block $B_{dst}$ taken when $\varphi$ evaluates to true ($\texttt{GetSuccessor}(br, \varphi)$) and formally mark the control-flow transition from $B_{src}$ to $B_{dst}$ as an early-exit edge ($\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$).
+Based on the CRVFG and the error status determination, we propose an early-exit edge identification algorithm to locate all control-flow edges that lead to early exits. The algorithm takes as input a function $F$ containing shape checkers, along with the predefined success and error status code sets $\mathcal{S}$ and $\mathcal{E}$, and outputs the set of early-exit edges. The process begins by obtaining the return instruction and its specific return value $v_{ret}$ via $\texttt{GetReturnInst}(F)$ and $\texttt{GetReturnValue}(inst)$. We then construct the Conditional Return-Value Flow Graph by calling $\texttt{BuildCRVFG}(F, v_{ret})$, which traces the value definitions backwards to yield a set of conditional value-flow edges. For each edge, we extract the associated condition predicate $\varphi$ ($\texttt{GetCondition}(edge)$) and the value $v$ flowing along it ($\texttt{GetValue}(edge)$). Applying the $\texttt{isError}(v, \varphi)$ logic, we evaluate whether this data flow represents an error return path. If confirmed, we trace back to the source basic block $B_{src}$ ($\texttt{GetSourceBlock}(edge)$) and locate the precise conditional branch instruction matching $\varphi$ ($\texttt{FindBranchWithCondition}(B_{src}, \varphi)$). Finally, we determine the branch's successor block $B_{dst}$ taken when $\varphi$ evaluates to true ($\texttt{GetSuccessor}(br, \varphi)$) and formally mark the control-flow transition from $B_{src}$ to $B_{dst}$ as an early-exit edge ($\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$).
 
 For the \texttt{set\_t} function shown in \autoref{fig:set_t_cfg}, the CRVFG in \autoref{fig:conditional-value-flow} reveals that when condition $\varphi_1 = (\%1 = \text{true})$ holds, the return value $\%0 \in \mathcal{E}$ (error set). Therefore, the edge from BB0 to BB1 (the error path where $\%1$ is true) is marked as an early-exit edge. This edge corresponds to the branch where the condition $\texttt{icmp ne \%0, 0}$ evaluates to true, indicating that the shape check failed.
 
 
 \subsection{Inter-Procedural Information Propagation for Host-Side Programs}\label{sec:design:propagation}
 
-Our primary objective is to optimize the performance of device kernel functions and eliminate those kernels not called at runtime.
-To this end, \mysys employs a unified inter-procedural analysis framework integrating pointer analysis, function object propagation, and scalar constant propagation for the host-side programs.
+Our primary objective is to optimize the performance of device kernel functions and eliminate kernels that are provably unreachable at runtime.
+To this end, \mysys employs a unified inter-procedural analysis framework integrating pointer analysis, function object propagation, and scalar constant propagation for host-side programs.
 \mysys propagates precise semantic information up to the kernel launch sites.
 Operating on the CFG, the analysis maintains a symbolic environment $\mathbb{E}$ and a flow-sensitive memory store $\mathbb{S}$.
 We detail the handling of key program constructs below.
@@ -276,7 +276,7 @@ The merging applies standard lattice operations.
 Crucially, this step integrates with the optimization described in \cref{sec:design:early-return}.
 Any predecessor edge marked as an \texttt{early-exit} path, or determined to be unreachable by the branch analysis, is treated as \texttt{Inactive}.
 Consequently, the memory states and values from these inactive blocks are excluded entirely from the merge operation.
-This prevents the pollution of the analysis state by imprecise or error-handling logic, significantly improving the precision of the propagated information at join points.
+This prevents the pollution of the analysis state by imprecise or error-handling logic, substantially improving the precision of the propagated information at join points.
 
 \subsection{Kernel Specialization and Library Pruning} \label{sec:design:specialization}
 
@@ -287,6 +287,6 @@ Then \mysys employs a sequence of optimization passes, specifically \texttt{IPSC
 These passes exploit the newly introduced constants to fold computations and simplify control structures, generating a highly optimized kernel binary.
 
 For manually specialized libraries, \mysys reduces code size by leveraging path liveness information from the host analysis.
-During constant propagation, we identify \texttt{Dead Paths}, i.e., execution branches where guard conditions are evaluated to be false based on deterministic constants.
+During constant propagation, we identify \texttt{Dead Paths}, i.e., execution branches where guard conditions evaluate to false based on deterministic constants.
 If a specific template function instance is invoked only on these dead paths, \mysys determines it is unreachable at runtime and removes the instance entirely.
 This selective pruning ensures that only potentially active operator instances are retained in the final binary.

@@ -7,40 +7,42 @@
         minimum height=1cm,
         minimum width=2.8cm,
         inner sep=10pt,
-        font=\ttfamily\normalsize,
+        font=\ttfamily\large,
         align=center
     },
     edge_label/.style={
-        font=\ttfamily\normalsize,
+        font=\ttfamily\large,
         midway
+    },
+    cond_edge/.style={
+        ->,
+        thick,
+        dashed,
+        draw=blue!70!black
+    },
+    data_edge/.style={
+        ->,
+        thick,
+        draw=black
     },
     >=stealth
 ]
 
-    % 顶层节点 (Top level)
-    \node[bb] (check) at (-1.8, 3.2) {\%0 = call @check(\%sq, \%sk)};
-    \node[bb, minimum width=1.4cm] (dots) at (2.8, 3.2) {...};
+    % 顶层节点：值定义
+    \node[bb] (check) at (-2.5, 4.5) {{\color{green!50!black}\%0} = call @check(...) };
+    \node[bb, minimum width=1cm] (zero) at (2.5, 4.5) {\textbf{0}};
 
-    % 中层节点 (拆分后的赋值节点)
-    \node[bb, minimum width=2.4cm] (ve) at (-1.8, 0.5) {\%ret = \%0};
-    \node[bb, minimum width=2.8cm] (vok) at (2.8, 0.5) {\%ret = \textbf{0}};
+    % 中层节点：条件赋值
+    \node[bb, minimum width=2.4cm] (ve) at (-2.5, 1.5) {{\color{green!50!black}\%ret} = {\color{green!50!black}\%0}};
+    \node[bb, minimum width=2.4cm] (vok) at (2.5, 1.5) {{\color{green!50!black}\%ret} = \textbf{0}};
 
-    % 底层返回节点 (Bottom level)
-    \node[bb, minimum width=3.2cm] (ret) at (0.5, -1.8) {\textbf{return} \%ret};
+    % 底层返回节点
+    \node[bb, minimum width=3.2cm] (ret) at (0, -1.5) {\textbf{return} {\color{green!50!black}\%ret}};
 
-    % 连线
-    \draw[->, thick] (check.south) -- (ve.north);
-    \draw[->, thick] (dots.south) -- (vok.north);
-    \draw[->, thick] (ve.south) -- (ret.north);
-    \draw[->, thick] (vok.south) -- (ret.north);
-
-    % 条件分支文本标签 (放在箭头左侧)
-    \node[font=\ttfamily\normalsize, align=left, anchor=east] at (-2.0, 1.85) {
-        $\phi_1$ = \\
-        (\%0 $\neq$ \textbf{0})
-    };
-    \node[font=\ttfamily\normalsize, align=left, anchor=west] at (3.0, 1.85) {
-        $\phi_2$ = ...
-    };
+    % 数据流边 (实线)
+    \draw[data_edge] (check.south) -- node[left, font=\ttfamily\normalsize, pos=0.5] {{\color{green!50!black}$\varphi_1$}: ({\color{green!50!black}$\%0$} $\neq$ \textbf{0})} (ve.north);
+    \draw[data_edge] (zero.south) -- node[right, font=\ttfamily\normalsize, pos=0.5] {$\neg\varphi_1$} (vok.north);
+    \draw[data_edge] (ve.south) -- (ret.north west);
+    \draw[data_edge] (vok.south) -- (ret.north east);
 
 \end{tikzpicture}

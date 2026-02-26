@@ -133,13 +133,13 @@
 % compared to the baseline compiler for Ascend, \mysys achieves 1.06$\times$ speedup on average and up to 1.17$\times$ speedup on specific operators, 1.03$\times$ speedup on large language models(LLMs) inference speed.
 % Besides, \mysys shows potential on operator libraries slimming by using inferred invariants for GPUs, reducing the binary size of FlashInfer by over 96\%.
 
-Deep learning (DL) frameworks rely heavily on operator libraries to support diverse model architectures and dynamic input shapes. To maintain flexibility, these libraries employ generic kernels with numerous runtime parameters for optimal scheduling. 
-However, relying on runtime resolution for these parameters hurts performance, whereas statically enumerating them for efficiency leads to severe code bloat, creating a fundamental trade-off between performance degradation and severe code bloat. 
-A promising solution is to specialize kernels by propagating model-specific constants from the framework to the compiler. 
-However, this approach faces two challenges: (1) Cross-layer semantic loss, where constant information in the high-level Python DSL fails to propagate to device-native C++ compilers, and (2) Control flow obstruction, where extensive validity checks on dynamic dimensions generate massive execution paths handling invalid shapes, thereby impeding the precision and efficiency of constant propagation.
+Deep learning (DL) frameworks rely heavily on operator libraries to support diverse model architectures and dynamic input shapes. To maintain flexibility, these libraries employ generic kernels with numerous runtime parameters for optimal scheduling.
+However, relying on runtime resolution for these parameters hurts performance, whereas statically enumerating them for efficiency leads to severe code bloat, creating a fundamental dilemma: accepting performance degradation with generic kernels or suffering severe code bloat through exhaustive specialization.
+A promising solution is to specialize kernels by propagating model-specific constants from the framework to the compiler.
+However, this approach faces two challenges: (1) Cross-language semantic gap, where constant information in the high-level Python DSL fails to propagate to device-native C++ compilers, and (2) Control flow obstruction, where extensive validity checks on dynamic dimensions generate massive execution paths handling invalid shapes, thereby impeding the precision and efficiency of constant propagation.
 
-We present \mysys, the first framework designed to automate kernel specialization in cross-language and dynamic-shape scenarios. To bridge the semantic gap, \mysys employs program synthesis to generate partial evaluation programs directly from the Graph IR. To handle control flow, it utilizes pattern matching to identify shape checks and prune invalid execution paths, ensuring that constants propagate efficiently along legal paths. 
-We implement \mysys on Ascend NPUs and Nvidia GPUs.
+We present \mysys, the first framework designed to automate kernel specialization in cross-language and dynamic-shape scenarios. To bridge the semantic gap, \mysys employs program synthesis to generate partial evaluation programs directly from the Graph IR. To handle control flow, it utilizes pattern matching to identify shape checks and prune invalid execution paths, ensuring that constants propagate efficiently along legal paths.
+We implement \mysys on Ascend NPUs and NVIDIA GPUs.
 Evaluations on state-of-the-art libraries (CANN and FlashInfer) demonstrate its effectiveness: \mysys achieves an average 1.06$\times$ speedup (up to 1.17$\times$) on Ascend operators and 1.03$\times$ speedup on LLM inference. Furthermore, it reduces the binary size of FlashInfer by over 96\% on GPUs, demonstrating significant potential for library slimming.
 \end{abstract}
 

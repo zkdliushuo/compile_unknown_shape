@@ -1,9 +1,9 @@
-\section{Motivation and Challenges}
+\section{Background and Motivation}
 \label{sec:motivation}
 
 In this section, we use the Flash Attention (FA) operator from PyTorch's operator library as a running example to illustrate our motivation and the challenges of constant specialization.
 We first introduce the FA operator definition.
-Given query, key, and value tensors $Q \in \mathbb{R}^{B_q \times h \times S_q \times d_k}$, $K \in \mathbb{R}^{B_k \times h \times S_k \times d_k}$, $V \in \mathbb{R}^{B_v \times h \times S_v \times d_v}$, and an optional mask $M$, Flash Attention computes:
+Given query, key, and value tensors $Q \in \mathbb{R}^{B_q \times h \times S_q \times d_k}$, $K \in \mathbb{R}^{B_k \times h \times S_k \times d_k}$, $V \in \mathbb{R}^{B_v \times h \times S_v \times d_v}$, and an optional mask $M$, Flash Attention can be denoted simply as:
 \begin{equation}
     \text{Attention}(Q, K, V, M) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}} + M\right) V
     \label{eq:flash_attention}
@@ -27,16 +27,16 @@ Next, we analyze the challenges and present our design insights (\S\ref{sec:moti
 \subsection{Motivation of Automatic Kernel Specialization}
 \label{sec:motivation:auto-spec}
 
-This section elucidates the opportunity for kernel specialization by tracing the flow of constant values across the software stack and demonstrates the necessity of this approach by analyzing the bottlenecks inherent in generic kernels on a specific hardware platform, the Ascend~\cite{liao2019davinci}, a kind of widely employed AI accelerators.
+This section elucidates the opportunity for kernel specialization by tracing the flow of constant values across the software stack. It further demonstrates the necessity of this approach by analyzing the bottlenecks inherent in generic kernels on Ascend~\cite{liao2019davinci}, a widely employed AI accelerator.
 
 \subsubsection{Cross-Layer Constant Value Flow}
 \label{sec:motivation:flow}
 
 The \textbf{\textit{partial dynamics}} characteristic of DL models implies that while input tensors vary, there are many \initialconsts.
 \autoref{fig:motivating-example} illustrates how these constants propagate through the software stack.
-When a Python-level operator (e.g., \texttt{torch.fa}) is invoked, arguments flow through the FFI layer to the Host C++ library.
+When a Python-level operator (e.g., \texttt{torch.fa}) is invoked, arguments flow through the FFI layer to the host C++ library.
 While some parameters are runtime-dependent (e.g., batch size), others are derived from the fixed model configuration (e.g., number of attention heads $h=40$).
-Subsequently, within the Host C++ runtime, the software pipeline depth (i.e., \texttt{stages}) is computed based on $h$ to configure the memory access latency hiding inside the kernel \texttt{kernel\_fa}.
+Subsequently, within the host C++ runtime, the software pipeline depth (i.e., \texttt{stages}) is computed based on $h$ to configure the memory access latency hiding inside the kernel \texttt{kernel\_fa}.
 
 This observation suggests an opportunity: by statically tracking \initialconsts from the Python front-end down to the kernel launch, we can identify runtime invariants that are currently treated as variables.
 For generic kernels, this enables aggressive specialization of the device code.
@@ -48,13 +48,13 @@ This facilitates the pruning of unreachable code paths for a specific model, mit
 
 \textit{Bottleneck Analysis for Generic Kernels.}
 Operator libraries for Ascend still have to adopt generic kernels, mainly due to their complex schedule strategies and the great number of schedule parameters.
-In this design, almost all schedule parameters are passed as runtime arguments from the Host.
+In this design, almost all schedule parameters are passed as runtime arguments from the host.
 Since the compiler treats these parameters as variables, it cannot perform aggressive optimizations like constant folding.
 To understand the impact of this design, we examine the execution flow on Ascend, a DL accelerator based on SIMD execution model, as shown in \autoref{fig:fa_on_ascend}.
 
 On Ascend, the Cube and Vector units execute the primary tensor operations (e.g., MatMul on Cube and Softmax on Vector), while the architecture provides sophisticated programmable memory hierarchies.
 The kernel must explicitly manage the chunk size and data layout at every level, as well as the data movement and layout transformations between these levels.
-Besides, the Scalar unit acts as the central control unit, responsible for scalar data processing, instruction dispatch, and handling control flows (such data paths are indicated by red dashed lines, for simplicity we only display some of them).
+Besides, the Scalar unit acts as the central control unit, responsible for scalar data processing, instruction dispatch, and handling control flows (such data paths are indicated by red dashed lines; for simplicity, only some are shown).
 For example, the kernel moves a tile of the tensor $Q_{GM}$ from the global memory (GM) to the L1 memory unit at a time, denoted as $Q_{L1}$.
 The Scalar unit is responsible for calculating the starting address of the data movement based on the input shapes, layout strides, tile factors on all dimensions, and pipeline depths.
 
@@ -73,7 +73,7 @@ The Scalar unit is responsible for calculating the starting address of the data 
 
 In generic kernels, the Scalar unit may be over-occupied.
 Since the Scalar unit typically possesses much lower computing power than a general-purpose host CPU, excessive scalar calculations related to schedule parameters can overload the unit.
-Worst, too many scalar intermediates may cause register spill since there are only 32 general-purpose registers.
+Worse yet, excessive scalar intermediates may cause register spill, as there are only 32 general-purpose registers.
 As a result, the powerful Cube and Vector units will stall to await instruction dispatch or scalar operands.
 Furthermore, generic kernels often involve complex control flows (e.g., branching to handle different operator variants), which exerts heavy pressure on the instruction cache (I-Cache).
 Frequent instruction jumps in such complex logic inevitably lead to I-Cache misses and pipeline flushes.
@@ -82,7 +82,7 @@ Consequently, instruction scheduling is confined to the scope of a single iterat
 
 We further study this impact by profiling key operators from the \textbf{Qwen2-1.5B} model on the Ascend NPU.
 \autoref{fig:perf_stats} presents the ratio of scalar instructions and I-Cache miss rates.
-The data reveals that LLMs' operators exhibit a high proportion of scalar instructions and suffer from considerably high I-Cache miss rates.
+The data reveals that operators in LLMs exhibit a high proportion of scalar instructions and suffer from high I-Cache miss rates.
 
 \textit{Code Bloat in Manually Specialized Libraries.}
 High-performance GPU libraries like FlashInfer~\cite{ye2025flashinfer} rely on C++ template metaprogramming to enable aggressive compiler optimizations.
@@ -113,12 +113,12 @@ This pre-instantiation strategy, while manageable on GPUs, is ill-suited for Asc
 \subsubsection{Why Is Automatic Kernel Specialization Beneficial?}
 
 Our analysis of kernel parameters in \autoref{fig:param_stats}, which breaks down the schedule parameters of representative kernels into variable and invariable categories, reveals a critical insight: the overwhelming majority of kernel parameters are runtime invariants.
-By globally propagating \initialconsts to resolve most schedule parameters at compile time, there are twofold benefits.
+By globally propagating \initialconsts to resolve most schedule parameters at compile time, this approach yields two key benefits.
 First, for operator libraries adopting generic kernels, this enables the generation of model-specific specialized kernels. 
 The compiler can perform aggressive constant folding on these parameters, drastically reducing scalar instruction overhead and simplifying control flow to minimize I-Cache misses.
 Second, this approach effectively addresses code bloat in manually specialized libraries.
 In such libraries, the host runtime calculates schedule parameters to dispatch specific pre-compiled kernel instantiations.
-Once these parameters are statically derived via constant propagation, the unreachable kernel dispatch path becomes deterministic.
+Once these parameters are statically derived via constant propagation, the kernel dispatch path becomes deterministic, enabling identification of unreachable paths.
 This allows us to identify kernel instantiations called at the unreachable paths, enabling the precise pruning of unused binaries to retain only the minimal code set required for the specific model deployment.
 
 \subsection{Challenges and Design Insights}
@@ -150,7 +150,7 @@ Our methodology is grounded in two key observations:
 \begin{enumerate}
     \item \textbf{Finite and Stable Core Types:} Data types used for cross-language interaction in DL systems are highly convergent and stable (\texttt{Tensor}, \texttt{Array}, etc.). 
     This stability enables us to perform comprehensive and precise semantic modeling of these core types.
-    \item \textbf{Extract Constant Information from Graph IR:} The DL system compiles DL models and represents models using Graph IR (e.g. ATen IR).
+    \item \textbf{Extract Constant Information from Graph IR:} DL systems compile models and represent them using Graph IR (e.g. ATen IR).
     The instructions in the Graph IR contain precise information regarding operator input parameters. 
     By leveraging this information, we can directly extract the semantic values of parameters, bypassing the need for expensive or imprecise analysis of Python source code.
 \end{enumerate}
@@ -173,7 +173,7 @@ By bridging the language boundary through type system modeling, we achieve high-
   ]
 const status SUCCESS = 0;
 const status ERROR = -1;
-status check(int s1, s2) {
+status check(int s1, int s2) {
   if(s1 != s2)
     return ERROR;
   return SUCCESS;
@@ -214,46 +214,46 @@ status set_t(int sq, int sk, int* t) {
     ]
         % BB0: Entry
         \node[bb] (BB0) at (0, 0) {
-            \textbf{BB0:}\\
-            \%0 = call @check(\%sq, \%sk)\\
-            \%1 = icmp ne \%0, 0
+          \textbf{BB0:}\\
+          {\color{green!50!black}\%0} = call @check({\color{green!50!black}\%sq}, {\color{green!50!black}\%sk})\\
+          {\color{green!50!black}\%1} = icmp ne {\color{green!50!black}\%0}, 0
         };
         
         % BB1: Error path
-        \node[bb, fill=red!10] (BB1) at (-2.2, -1.8) {
-            \textbf{BB1:}\\
-            call @print(...)
+        \node[bb] (BB1) at (-2.2, -1.8) {
+          \textbf{BB1:}\\
+          call @print(...)
         };
         
         % BB2: Normal path
-        \node[bb, fill=green!10] (BB2) at (2.2, -1.8) {
-            \textbf{BB2:}\\
-            store 32, \%t
+        \node[bb] (BB2) at (2.2, -1.8) {
+          \textbf{BB2:}\\
+          store 32, {\color{green!50!black}\%t}
         };
         
         % BB3: Exit
         \node[bb] (BB3) at (0, -4) {
-            \textbf{BB3:}\\
-            \%2 = phi [\%0, \%BB1], [0, \%BB2]\\
-            ret \%2
+          \textbf{BB3:}\\
+          {\color{green!50!black}\%2} = phi [{\color{green!50!black}\%0}, {\color{green!50!black}\%BB1}], [0, {\color{green!50!black}\%BB2}]\\
+          ret {\color{green!50!black}\%2}
         };
         
         % Edges
         \draw[->, thick] (BB0.south) -- (BB1.north)
-            node[edge_label, left, pos=0.6] {$\%1$ (true)};
+          node[edge_label, left, pos=0.6] {{\color{green!50!black}$\%1$} (true)};
         \draw[->, thick] (BB0.south) -- (BB2.north)
-            node[edge_label, right, pos=0.6] {$\neg\%1$ (false)};
+          node[edge_label, right, pos=0.6] {$\neg${\color{green!50!black}$\%1$} (false)};
         \draw[->, thick] (BB1.south) -- (BB3.north);
         \draw[->, thick] (BB2.south) -- (BB3.north);
         
         % State annotations at convergence point
         \node[font=\ttfamily\fontsize{8pt}{9pt}\selectfont, align=center] at (-2.3, -2.8) {
-            $*(\%t) = 0$\\
-            {\color{red}Error Path}
+          $*({\color{green!50!black}\%t}) = 0$\\
+          {\color{red}Error Path}
         };
         \node[font=\ttfamily\fontsize{8pt}{9pt}\selectfont, align=center] at (2.3, -2.8) {
-            $*(\%t) = 32$\\
-            {\color{green!50!black}Normal Path}
+          $*({\color{green!50!black}\%t}) = 32$\\
+          {\color{green!50!black}Normal Path}
         };
     \end{tikzpicture}
     }
