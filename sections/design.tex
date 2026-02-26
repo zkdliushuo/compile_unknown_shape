@@ -81,6 +81,8 @@ The program state and inter-procedural context are captured by the following map
 \subsection{Calling Context Generation for C++}\label{sec:design:context_construction}
 
 \autoref{fig:context_workflow} illustrates the overall workflow of context generation in \mysys{}.
+The context metadata $\Phi$ extracted from the Graph IR represents the \textit{logical call state} from the Graph IR perspective, while the initial calling context $\mathbb{C}_{init}$ captures the \textit{physical execution state} from the C++ perspective.
+The goal of this section is to define the semantic mapping from the former to the latter.
 The design bridges the gap between the high-level Graph IR and the low-level C++ execution state through two phases:
 (1) \textbf{Extraction} (\ding{172}--\ding{174}), which parses the IR node to generate structured metadata; and
 (2) \textbf{Construction} (\ding{175}--\ding{178}), which applies semantic rules to this metadata to reconstruct the C++ memory state.
@@ -123,6 +125,18 @@ Starting with an empty context $\mathbb{C}_{0}$ \ding{176}, \mysys{} iterates th
 \end{equation}
 For each metadata item $\mathcal{M}_i$, we apply a semantic modeling rule $\mathcal{R}_{\mathcal{M}_i}$ listed in \autoref{tab:semantic-rules} to transform the high-level metadata into the low-level memory representation by updating the abstract state $\mathbb{C}_i$.
 
+\begin{example}
+Consider a simplified case where the metadata contains a single \texttt{Tensor} parameter named \texttt{query} with shape $[s_1, 40]$ (where $s_1$ is symbolic and $40$ is concrete).
+After applying the update rule, the resulting context contains:
+\begin{align*}
+  \mathbb{E} &= \{ \texttt{query} \mapsto \langle\ell, 0\rangle \} \\
+  \mathbb{S} &= \{ \langle\ell, \delta_{\texttt{sizes}}\rangle \mapsto \langle\ell_{sz}, 0\rangle,\;
+                \langle\ell_{sz}, 0\rangle \mapsto \bot,\;
+                \langle\ell_{sz}, \text{sz}_{\texttt{int}}\rangle \mapsto 40 \}
+\end{align*}
+Here, the environment maps \texttt{query} to a pointer at base $\ell$, and the store captures the internal structure: the \texttt{sizes} field points to array $\ell_{sz}$, whose first element is $\bot$ (symbolic dimension $s_1$) and second element is the concrete value $40$.
+\end{example}
+
 \subsubsection{Update Rules for Metadata}\label{sec:design:rules}
 
 We define a set of field-sensitive update rules in \autoref{tab:semantic-rules} to handle the mapping from $\mathcal{M}$ to the C++ memory model.
@@ -134,8 +148,21 @@ We first define a helper function $\alpha(x)$ to unify concrete and symbolic val
     \bot & \text{if } x \text{ is a symbolic expression}
   \end{cases}
 \end{equation}
+Here, we use $\bot$ to denote \textit{unknown-but-consistent} values for symbolic dimensions---the value is fixed at runtime but cannot be statically determined during compilation.
 
 \input{tables/semantic-model-rules-for-core-types}
+
+The recursive helper function $\text{Process}(\tau, v, \ell)$, referenced in \autoref{tab:semantic-rules}, populates the store at location $\ell$ with value $v$ of type $\tau$.
+We illustrate its definition for the \texttt{Tensor} type as follows:
+\begin{align*}
+  &\textbf{Process}(\texttt{Tensor}, [d_1, \dots, d_k], \ell): \\
+  &\quad \ell_{sz} = \text{alloc}(\texttt{int}[k]) \\
+  &\quad \mathbb{S}[\langle\ell, \delta_{\texttt{sizes}}\rangle] = \langle\ell_{sz}, 0\rangle \\
+  &\quad \mathbb{S}[\langle\ell, \delta_{\texttt{ndim}}\rangle] = k \\
+  &\quad \textbf{for } i = 1 \textbf{ to } k \textbf{ do} \\
+  &\quad\quad \mathbb{S}[\langle\ell_{sz}, (i{-}1) \cdot \text{sz}_{\texttt{int}}\rangle] = \alpha(d_i)
+\end{align*}
+This function recursively allocates memory for internal fields and initializes the store with the appropriate abstract values.
 
 \noindent\textbf{Field-Sensitive Reconstruction.}
 The core challenge in this translation is the \textit{deep reconstruction} of composite types.

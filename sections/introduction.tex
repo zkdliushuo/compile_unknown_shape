@@ -5,7 +5,8 @@ To achieve universal applicability, these libraries must handle \dynamics arisin
 To accommodate such dynamics, operator libraries typically adopt a generic implementation strategy: they calculate \textit{schedule parameters} (configuration values such as tiling sizes and loop bounds) at runtime on the host side and pass them to the kernel function as variable arguments.
 However, this generic design comes at a cost.
 From the perspective of the underlying device native compiler, these critical configuration values appear as unknown variables rather than compile-time constants.
-This ambiguity effectively disables aggressive compiler optimizations that rely on static information, such as constant folding, loop unrolling, and precise register allocation. Consequently, this often leads to suboptimal register usage, limiting the performance potential of the generated binary.
+This ambiguity effectively disables aggressive compiler optimizations that rely on static information, such as constant folding, loop unrolling, and register allocation optimization.
+Consequently, this often leads to suboptimal performance.
 In this context, specializing kernels by replacing input schedule parameters with constants at compile time is generally beneficial, as it can enhance subsequent compiler optimizations.
 As the complexity of operators~\cite{dao2024flashattention2,ye2025flashinfer} continues to increase and programmable units~\cite{liao2019davinci,jouppi2023tpu} within hardware become increasingly diverse, the number of schedule parameters of kernels explodes, further necessitating kernel specialization.
 
