@@ -3,12 +3,9 @@
 
 \input{figures/sys-design/mysys-workflow}
 
-We present \mysys, a precise constant propagation framework that infers constant parameter values of kernels from DL frameworks.
-The workflow of \mysys is illustrated in \autoref{fig:overall_workflow}.
-\mysys takes the DL model's specific constant information (i.e., \initialconsts) as input.
-It first generates the calling context for each operator invocation through cross-language context reconstruction (\S\ref{sec:design:context_construction}).
-Next, \mysys identifies all early-exit edges introduced by dynamic shape checks (\S\ref{sec:design:early-return}) and performs context-sensitive inter-procedural constant propagation along valid execution paths (\S\ref{sec:design:propagation}).
-At the end of the analysis, the derived constant schedule parameters of the kernel function are used to perform kernel specialization, generating specialized kernel binaries or eliminating redundant kernel instantiations (\S\ref{sec:design:specialization}).
+\autoref{fig:overall_workflow} illustrates the workflow of \mysys.
+The framework takes the traced Graph IR containing operator invocation information with \initialconsts as input, and proceeds through four stages: \textbf{Context Generation} (\S\ref{sec:design:context_construction}), \textbf{Early-Exit Identification} (\S\ref{sec:design:early-return}), \textbf{Constant Propagation} (\S\ref{sec:design:propagation}), and \textbf{Kernel Specialization} (\S\ref{sec:design:specialization}).
+We detail each stage in the following subsections.
 
 \begin{table}[htbp]
   \centering
@@ -51,13 +48,34 @@ At the end of the analysis, the derived constant schedule parameters of the kern
 
 \subsection{Definitions}\label{sec:design:definitions}
 
-\autoref{fig:abstract-domain} summarizes the abstract domains. \textit{Memory Model:} \kw{Top-level variables} ($v \in \mathcal{V}$) correspond to LLVM virtual registers; \kw{Base objects} ($b \in \mathcal{B}$) represent abstract base addresses of memory blocks; \kw{Memory locations} ($o \in \mathcal{O}$) are pairs $\langle b, \delta \rangle$ with byte offset $\delta$.
+To formally describe the analysis of \mysys, we first define the abstract domains and notations used in our framework, as summarized in \autoref{fig:abstract-domain}.
 
-\textit{Abstract Values:} The domain $\mathcal{SV}$ forms a lattice: \kw{Top} ($\top$) represents undefined/uninitialized states; \kw{Bottom} ($\bot$) represents variable states where values cannot be statically determined; \kw{Concrete Constants} ($c$) include integers, floats, and \kw{Function Objects} ($f \in \mathcal{F}$); \kw{Abstract Pointers} ($p := \langle b, \hat{\delta} \rangle$) represent addresses with abstract offsets.
+\textit{Memory Model and Variables.}
+We distinguish between SSA values and memory locations:
+\begin{itemize}
+    \item \kw{Top-level variables} ($v \in \mathcal{V}$) correspond to virtual registers in the LLVM IR.
+    \item \kw{Base objects} ($b \in \mathcal{B}$) represent the abstract base addresses of memory blocks created at allocation sites (e.g., \texttt{alloca} instructions, global variables, or heap allocations).
+    \item \kw{Memory locations} ($o \in \mathcal{O}$) represent specific fields within allocated objects. A location is defined as a pair $\langle b, \delta \rangle$, where $\delta \in \mathbb{Z}$ denotes a concrete byte offset relative to the base address $b$.
+\end{itemize}
 
-\textit{Context:} The \kw{Environment} $\mathbb{E}: \mathcal{V} \mapsto \mathcal{SV}$ maps registers to abstract values; the \kw{Store} $\mathbb{S}: \mathcal{O} \mapsto \mathcal{SV}$ maps memory locations to values; the \kw{Calling Context} $\mathbb{C} := (\mathbb{E}, \mathbb{S})$ encapsulates the analysis state at function entry.
+\textit{Abstract Values and Lattice.}
+The analysis tracks the state of variables using \kw{Specialized Values} ($sv \in \mathcal{SV}$). The domain $\mathcal{SV}$ forms a lattice comprising the following elements:
+\begin{itemize}
+    \item \kw{Top ($\top$) and Bottom ($\bot$):} $\top$ represents an \textit{undefined} or \textit{uninitialized} state (the lattice top, indicating no information), while $\bot$ represents a generic \textit{variable} state where the value cannot be statically determined (the lattice bottom, indicating over-approximation).
+    \item \kw{Concrete Constants ($c$):} These represent precise, known values. This category includes integers ($\in \mathbb{Z}$), floating-point numbers ($\in \mathbb{R}$), and \kw{Function Objects} ($f \in \mathcal{F}$), which represent references to functions targeted by direct or indirect calls.
+    \item \kw{Abstract Pointers ($p$):} Defined structurally as $\langle b, \hat{\delta} \rangle$. A pointer $p$ represents an address computed by adding an \kw{Abstract Offset} $\hat{\delta}$ to a base object $b$. Here, $\hat{\delta} \in \mathbb{Z} \cup \{\bot\}$ allows the analysis to track precise offsets when possible, or degrade to $\bot$ if the offset is variable (e.g., a runtime index).
+\end{itemize}
+
+\textit{Context and State.}
+The program state and inter-procedural context are captured by the following mappings:
+\begin{itemize}
+    \item The \kw{Environment} $\mathbb{E}: \mathcal{V} \mapsto \mathcal{SV}$ maps top-level virtual registers to their abstract values.
+    \item The \kw{Store} $\mathbb{S}: \mathcal{O} \mapsto \mathcal{SV}$ maps memory locations to the values stored therein. By mapping from pairs of $\langle b, \delta \rangle$, the store naturally supports field-sensitive tracking of structure fields and array elements.
+    \item The \kw{Calling Context}~$\mathbb{C} := (\mathbb{E}, \mathbb{S})$ encapsulates the analysis state (environment and store) at the entry basic block of the current function. This context is determined by the caller and propagates constraints across function boundaries during inter-procedural analysis.
+\end{itemize}
 
 \input{figures/sys-design/context-generation-workflow}
+
 \subsection{Calling Context Generation for C++}\label{sec:design:context_construction}
 
 \autoref{fig:context_workflow} illustrates the overall workflow of context generation in \mysys{}.

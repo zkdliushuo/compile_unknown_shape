@@ -45,21 +45,21 @@
         % Node 1: Traced Graph IR
         % 增加 every node/.style={...} 阻断父节点的尺寸继承，防止图形变异
         \node[doc] (N1) at (0, 0) {
-            Traced Graph IR\\[6pt] 
+            Traced Graph IR\\[6pt]
             DAG: \tikz[baseline=-0.5ex, >=latex, every node/.style={minimum width=0pt, minimum height=0pt, inner sep=1pt}]{
-                \node[circle, draw, thick, myblue, minimum size=10pt] at (0,0) (c1) {};
-                \node[rectangle, draw, thick, myblue, rounded corners=1pt, minimum size=10pt, font=\scriptsize] at (0.9,0) (fa) {FA};
-                \node[circle, draw, thick, myblue, minimum size=10pt] at (1.8,0) (c2) {};
-                \draw[->, thick, myblue] (c1)--(fa); 
+                \node[circle, draw, thick, myblue, minimum size=14pt] at (0,0) (c1) {};
+                \node[rectangle, draw, thick, myblue, rounded corners=1pt, minimum size=14pt, font=\small] at (1.1,0) (fa) {FA};
+                \node[circle, draw, thick, myblue, minimum size=14pt] at (2.2,0) (c2) {};
+                \draw[->, thick, myblue] (c1)--(fa);
                 \draw[->, thick, myblue] (fa)--(c2);
             }
         };
 
-        % Node 2: Program Synthesis
-        \node[box] (N2) at (4.8, 0) {Program\\Synthesis\\[2pt](\S 3.2)};
+        % Node 2: Context Generation
+        \node[box] (N2) at (5.6, 0) {Calling Context\\Generation\\[2pt](\S 3.2)};
 
         % Node 3: Calling Context
-        \node[doc] (N3) at (9.4, 0) {Calling Context\\of LLVM IR\\Programs};
+        \node[doc] (N3) at (10.2, 0) {Calling Context\\of LLVM IR\\Programs};
 
         % ====================
         % 第二排节点 (Row 2)
@@ -68,31 +68,31 @@
         % Node 4: C++ Implementation of Op
         \node[doc] (N4) at (0, -3.2) {
             C++ Implementation of Op\\[6pt]
-            \tikz[baseline=-0.5ex, every node/.style={minimum width=0pt, minimum height=0pt}]{\node[draw, thick, gray!80!black, fill=gray!5, font=\small, inner sep=4pt] {Built-in Shape Checkers};}
+            \tikz[baseline=-0.5ex, every node/.style={minimum width=0pt, minimum height=0pt}]{\node[draw, thick, gray!80!black, fill=gray!5, font=\normalsize, inner sep=6pt] {Built-in Shape Checkers};}
         };
 
         % Node 5: Early-Exit Identification
-        \node[box] (N5) at (4.8, -3.2) {Early-Exit\\Identification\\[2pt](\S 3.3)};
+        \node[box] (N5) at (5.6, -3.2) {Early-Exit\\Identification\\[2pt](\S 3.3)};
 
         % Node 6: Early-Exit Edges
-        \node[doc] (N6) at (9.4, -3.2) {Early-Exit\\Edges};
+        \node[doc] (N6) at (10.2, -3.2) {Early-Exit\\Edges};
 
         % ====================
         % 右侧节点 (Right Side Nodes)
         % ====================
         
-        % Node 7: Constant Folding
-        \node[box] (N7) at (14.0, -1.6) {Constant\\Folding\\[2pt](\S 3.4)};
+        % Node 7: Constant Propagation
+        \node[box, minimum width=2.8cm] (N7) at (14.8, -1.6) {Constant\\Propagation\\[2pt](\S 3.4)};
 
-        % Node 8: Specialization
-        \node[box] (N8) at (18.6, -1.6) {Specialization\\[2pt](\S 3.5)};
+        % Node 8: Kernel Specialization
+        \node[box, minimum width=2.8cm] (N8) at (19.2, -1.6) {Kernel\\Specialization\\[2pt](\S 3.5)};
 
         % Node 9a & 9b: Code Bloat vs Performance (Two Dashed Circles)
-        \node[circle, draw, thick, dashed, minimum size=1.4cm, align=center, inner sep=2pt] (N9a) at (17.2, -3.3) {
+        \node[circle, draw, thick, dashed, minimum size=1.4cm, align=center, inner sep=2pt] (N9a) at (17.8, -3.3) {
             \small Code Bloat
         };
-        \node at (18.6, -3.3) {\textit{vs}};
-        \node[circle, draw, thick, dashed, minimum size=1.4cm, align=center, inner sep=2pt] (N9b) at (20.0, -3.3) {
+        \node at (19.2, -3.3) {\textit{vs}};
+        \node[circle, draw, thick, dashed, minimum size=1.4cm, align=center, inner sep=2pt] (N9b) at (20.6, -3.3) {
             \small Performance
         };
 
@@ -106,14 +106,14 @@
 
         % 下层直线 N1 -> N4 -> N5 -> N6
         \draw[->] (N1) -- node[right, font=\itshape] {bind} (N4);
-        \draw[->] (N4) -- (N5);
+        \draw[->] (N4) -- node[below, font=\itshape] {LLVM IR} (N5);
         \draw[->] (N5) -- (N6);
 
         % 右侧最后阶段连线 N7 -> N8
         \draw[->] (N7) -- (N8);
 
         % 复杂的总线汇集 (Bus merge to N7)
-        \coordinate (merge_point) at (11.8, -1.6);           % 汇集点X坐标
+        \coordinate (merge_point) at (12.6, -1.6);           % 汇集点X坐标
         
         % 从 N3 延伸出来向下汇集的线
         \draw (N3.east) -| (merge_point);
@@ -122,13 +122,13 @@
         % 从汇集点直通 N7 的主轴线 (带箭头)
         \draw[->] (merge_point) -- (N7.west);
         
-        % 从 N4 (C++ impls of Op) 到 N7 (Constant Folding) 的连线
-        \draw[->] (N4.east) -- ++(0.55,0) |- node[pos=0.25, above, font=\itshape] {LLVM IR} (N7);
+        % 从 N4 (C++ impls of Op) 到 N7 (Constant Propagation) 的连线
+        \draw[->] (N4.east) -- ++(0.55,0) |- (N7);
 
     \end{tikzpicture}
     }
     \caption{The overall workflow of \mysys.}
-    \Description{Flow diagram showing the TilingInfer workflow from Graph IR through Program Synthesis, Early-Exit Identification, Constant Folding, to Specialization.}
+    \Description{Flow diagram showing the workflow from Graph IR through Context Generation, Early-Exit Identification, Constant Propagation, to Kernel Specialization.}
     \label{fig:overall_workflow}
     \vspace{-10pt}
 \end{figure}

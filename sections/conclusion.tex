@@ -1,28 +1,11 @@
-\section{Conclusion}
+\section{Limitations and Conclusion}
 \label{sec:concl}
 
 We present \mysys, a static analysis framework that enables precise constant propagation across language boundaries for kernel specialization in deep learning operator libraries.
-The key insight is that model-specific attributes (\initialconsts) determine the vast majority of kernel schedule parameters, enabling static resolution before execution.
-To realize this potential, \mysys introduces two novel techniques: (1) cross-language context reconstruction through domain-aware semantic modeling to bridge the Python/C++ semantic gap, and (2) conditional return-value flow analysis to identify and prune early-exit edges from dynamic shape checks.
-These techniques enable context-sensitive inter-procedural constant propagation that achieves near-optimal precision.
+Experimental results demonstrate its effectiveness: on Ascend NPU, \mysys achieves an average speedup of \textbf{1.06$\times$} (up to \textbf{1.17$\times$}) for individual operators and \textbf{3\%} end-to-end inference speedup for LLMs; on GPU, \mysys reduces the binary size of the FlashInfer library by \textbf{96.2\%}, effectively addressing the code bloat problem.
 
-Experimental results demonstrate the effectiveness of \mysys across different hardware platforms.
-On Ascend NPU, \mysys achieves an average speedup of \textbf{1.06$\times$} (up to \textbf{1.17$\times$}) for individual operators and \textbf{3\%} end-to-end inference speedup for LLMs.
-On GPU, \mysys reduces the binary size of the FlashInfer library by \textbf{96.2\%}, effectively addressing the code bloat problem in manually specialized libraries.
-These results demonstrate that \mysys provides a practical solution for optimizing dynamic tensor programs across diverse DSA architectures.
-
-\section{Limitations}
-\label{sec:limitations}
-
-\textit{First}, the performance benefits of kernel specialization with \mysys vary across different kernel types and hardware platforms.
-On Ascend, \mysys is most effective for lightweight kernels invoked with high frequency, where reducing dispatch and setup overhead yields the greatest impact.
-On GPUs, however, we evaluated further specialization on top of existing manual specialization, finding that such enhancement yields little performance improvement.
-This is because GPUs are equipped with sufficient general-purpose registers and more powerful scalar computation capacity, and existing baseline operator libraries have already been well-optimized by hand.
-
-\textit{Second}, the current prototype of \mysys is based on PyTorch.
-Although the core types of metadata for other frameworks are similar to those in \autoref{tab:semantic-rules}, the C++ definitions differ.
-Applying \mysys to other DL frameworks such as TensorFlow requires constructing update rules for TensorFlow's specific data types.
-
-\textit{Third}, our current work focuses on optimizing device kernel functions, although \mysys can also be used to specialize Host-side programs.
-Such optimization is more complex than kernel specialization since Host-side programs involve more intricate control flows and external function calls.
-Early evaluations of Host specialization for specific operators have shown promising results, and we leave comprehensive Host program specialization for future work.
+\textbf{Limitations.}
+First, the performance benefits vary across kernel types and hardware platforms.
+\mysys is most effective for lightweight kernels with high invocation frequency on Ascend, while on GPUs, further specialization on top of existing manual optimization yields limited improvement due to sufficient general-purpose registers and well-optimized baseline libraries.
+Second, the current prototype is based on PyTorch; applying \mysys to other frameworks like TensorFlow requires constructing update rules for their specific data types.
+Third, while \mysys can potentially specialize Host-side programs, such optimization involves more complex control flows and external function calls, which we leave for future work.

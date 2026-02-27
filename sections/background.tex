@@ -1,19 +1,16 @@
 \section{Background and Motivation}
 \label{sec:motivation}
 
-In this section, we use the Flash Attention (FA) operator from PyTorch's operator library as a running example to illustrate our motivation and the challenges of constant specialization.
-We first introduce the FA operator definition.
-Given query, key, and value tensors $Q \in \mathbb{R}^{B_q \times h \times S_q \times d_k}$, $K \in \mathbb{R}^{B_k \times h \times S_k \times d_k}$, $V \in \mathbb{R}^{B_v \times h \times S_v \times d_v}$, and an optional mask $M$, Flash Attention can be denoted simply as:
+In this section, we use a simplified Flash Attention (FA) operator as an example.
+Given query, key, and value tensors $Q \in \mathbb{R}^{B \times h_q \times S_q \times d_k}$, $K, V \in \mathbb{R}^{B \times h_{kv} \times S_{kv} \times d_k}$, and an optional mask $M$, the attention operation is defined as:
 \begin{equation}
     \text{Attention}(Q, K, V, M) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}} + M\right) V
     \label{eq:flash_attention}
 \end{equation}
-This operator imposes strict constraints on shape dimensions: batch sizes must match ($B_q = B_k = B_v$), the number of attention heads $h$ must be consistent across $Q$, $K$, and $V$, sequence lengths for $K$ and $V$ must be equal ($S_k = S_v$), and head dimensions must satisfy $d_k = d_v$.
-Modern FA implementations support diverse configurations: varying numbers of attention heads ($h \in \{8, 16, 32, 40, \ldots\}$), head dimensions ($d_k \in \{64, 128, 256\}$), mask types (none, causal, sliding window), attention variants (GQA, MLA), and position encodings (RoPE, ALiBi).
-These configuration parameters are typically fixed for a given model but vary across different models, making them ideal candidates for compile-time specialization.
-
-In this section, we first illustrate the opportunity for constant propagation across the DL software stack (\S\ref{sec:motivation:auto-spec}).
-Next, we analyze the challenges and present our design insights (\S\ref{sec:motivation:challenges}).
+where $B$ is the batch size, $h_q$ is the number of query heads, $h_{kv}$ is the number of key-value heads, $S_q$ and $S_{kv}$ are sequence lengths, and $d_k$ is the head dimension.
+The operator imposes strict shape constraints: for example, batch sizes must match across $Q$, $K$, and $V$, the number of query heads must be divisible by the number of key-value heads ($h_q \mod h_{kv} = 0$), and sequence lengths of $K$ and $V$ must be equal.
+Typical configurations include $h_q \in \{8, 16, 32, 40, \ldots\}$, $d_k \in \{64, 128, 256\}$, various mask types (none, causal, sliding window), attention variants (MHA, GQA, MLA), and position encodings (RoPE, ALiBi).
+These parameters are fixed per model but vary across models, making them ideal for compile-time specialization.
 
 \begin{figure}[ht]
     \centering
@@ -35,8 +32,10 @@ This section elucidates the opportunity for kernel specialization by tracing the
 The \textbf{\textit{partial dynamics}} characteristic of DL models implies that while input tensors vary, there are many \initialconsts.
 \autoref{fig:motivating-example} illustrates how these constants propagate through the software stack.
 When a Python-level operator (e.g., \texttt{torch.fa}) is invoked, arguments flow through the FFI layer to the host C++ library.
-While some parameters are runtime-dependent (e.g., batch size), others are derived from the fixed model configuration (e.g., number of attention heads $h=40$).
-Subsequently, within the host C++ runtime, the software pipeline depth (i.e., \texttt{stages}) is computed based on $h$ to configure the memory access latency hiding inside the kernel \texttt{kernel\_fa}.
+While some parameters are runtime-dependent (e.g., batch size \texttt{\%B} and sequence length of query \texttt{\%S}), others are derived from the fixed model configuration (e.g., number of query heads $h=40$).
+As shown in the figure, within the host C++ runtime, the software pipeline depth \texttt{stages} is computed as \texttt{stages = (h > 32) ? 2 : 1}.
+Crucially, since \texttt{stages} depends \textit{solely} on $h$, a constant derived from the model configuration, its value can be statically determined at compile time through constant propagation.
+By propagating $h=40$ from the Python front-end to the host C++ compiler, the expression \texttt{(h > 32) ? 2 : 1} can be evaluated to yield \texttt{stages = 2}, enabling the compiler to specialize the generic kernel \texttt{kernel\_fa} into a concrete variant \texttt{kernel\_fa2}, where the suffix denotes the specialized \texttt{stages} value.
 
 This observation suggests an opportunity: by statically tracking \initialconsts from the Python front-end down to the kernel launch, we can identify runtime invariants that are currently treated as variables.
 For generic kernels, this enables aggressive specialization of the device code.
@@ -46,17 +45,19 @@ This facilitates the pruning of unreachable code paths for a specific model, mit
 \subsubsection{Disadvantages of Generic Kernels and Manually Specialized Libraries}
 \label{sec:motivation:disadvantages}
 
-\textit{Bottleneck Analysis for Generic Kernels.}
-Operator libraries for Ascend still have to adopt generic kernels, mainly due to their complex schedule strategies and the great number of schedule parameters.
+\paragraph*{Bottleneck Analysis for Generic Kernels.}
+Some operator libraries implement their kernels in the form of generic kernels, such as the built-in operator library of Ascend CANN.
+These kernels are not specialized mainly due to their complex schedule strategies and the great number of schedule parameters.
 In this design, almost all schedule parameters are passed as runtime arguments from the host.
 Since the compiler treats these parameters as variables, it cannot perform aggressive optimizations like constant folding.
 To understand the impact of this design, we examine the execution flow on Ascend, a DL accelerator based on SIMD execution model, as shown in \autoref{fig:fa_on_ascend}.
 
-On Ascend, the Cube and Vector units execute the primary tensor operations (e.g., MatMul on Cube and Softmax on Vector), while the architecture provides sophisticated programmable memory hierarchies.
+Ascend is a DL accelerator based on SIMD execution model, featuring diverse compute and storage units for handling different types of tensor computations and data movement operations.
+Specifically, the Cube and Vector units execute the primary tensor operations (e.g., MatMul on Cube and Softmax on Vector), while the architecture provides sophisticated programmable memory hierarchies.
 The kernel must explicitly manage the chunk size and data layout at every level, as well as the data movement and layout transformations between these levels.
 Besides, the Scalar unit acts as the central control unit, responsible for scalar data processing, instruction dispatch, and handling control flows (such data paths are indicated by red dashed lines; for simplicity, only some are shown).
 For example, the kernel moves a tile of the tensor $Q_{GM}$ from the global memory (GM) to the L1 memory unit at a time, denoted as $Q_{L1}$.
-The Scalar unit is responsible for calculating the starting address of the data movement based on the input shapes, layout strides, tile factors on all dimensions, and pipeline depths.
+During this data movement, the Scalar unit is responsible for calculating the starting memory address of tile $Q_{GM}$, implementing loop iterations, and loading or storing necessary scalar data (including schedule parameters and partial scalar intermediate results) from the global memory or the Unified Buffer (UB).
 
 \begin{figure}[htbp]
   \centering
@@ -80,11 +81,11 @@ Frequent instruction jumps in such complex logic inevitably lead to I-Cache miss
 Finally, when loop bounds remain unknown at compile time, the compiler struggles to perform loop unrolling. 
 Consequently, instruction scheduling is confined to the scope of a single iteration, preventing the effective overlapping of memory access and computation.
 
-We further study this impact by profiling key operators from the \textbf{Qwen2-1.5B} model on the Ascend NPU.
-\autoref{fig:perf_stats} presents the ratio of scalar instructions and I-Cache miss rates.
-The data reveals that operators in LLMs exhibit a high proportion of scalar instructions and suffer from high I-Cache miss rates.
+We further study this impact by profiling key operators from the \textbf{Qwen2.5-1.5B} model on the Ascend NPU.
+\autoref{fig:perf_stats} presents the Scalar unit occupancy (the proportion of active cycles during kernel execution) and I-Cache miss rates.
+The data reveals that the Scalar unit is active for 78\% to 91\% of total cycles, while I-Cache miss rates range from 3.1\% to 16.4\%.
 
-\textit{Code Bloat in Manually Specialized Libraries.}
+\paragraph*{Code Bloat in Manually Specialized Libraries.}
 High-performance GPU libraries like FlashInfer~\cite{ye2025flashinfer} rely on C++ template metaprogramming to enable aggressive compiler optimizations.
 To avoid runtime JIT overhead, these libraries pre-instantiate kernels for the Cartesian product of all template parameters.
 As described in \autoref{eq:flash_attention}, FA's configuration space includes head dimensions ($d_k \in \{64, 128, 256\}$), mask types, GQA sizes, and position encodings.
@@ -112,7 +113,8 @@ This pre-instantiation strategy, while manageable on GPUs, is ill-suited for Asc
 
 \subsubsection{Why Is Automatic Kernel Specialization Beneficial?}
 
-\autoref{fig:param_stats} reveals that the overwhelming majority of kernel parameters are runtime invariants.
+We further analyze the schedule parameters of key operators from the \textbf{Qwen2.5-1.5B} model, classifying them into \textit{invariable parameters} (constants derived from model configuration) and \textit{variable parameters} (runtime-dependent values such as batch size and sequence length).
+\autoref{fig:param_stats} reveals that the overwhelming majority of kernel parameters are invariable.
 Propagating \initialconsts to resolve schedule parameters at compile time yields two benefits: (1) for generic kernels, it enables model-specific specialization with aggressive constant folding, reducing scalar overhead and I-Cache misses; (2) for manually specialized libraries, it makes kernel dispatch paths deterministic, enabling precise pruning of unused binaries.
 
 \subsection{Challenges and Design Insights}
@@ -122,20 +124,22 @@ Achieving automatic kernel specialization requires analyzing the value flow from
 
 \subsubsection{Challenge 1: The cross-language semantic gap.}
 
-Achieving high-precision, context-sensitive cross-language analysis fundamentally relies on the accurate reconstruction of the calling context for C++ operators. 
-Modern DL systems extensively leverage FFI mechanisms (e.g., Pybind11~\cite{pybind11}, CPython C API~\cite{pythoncapi}) to invoke underlying C++ operators, whose input parameters (e.g., Tensors) are typically instantiated and initialized on the Python side. 
-However, the FFI layer is replete with complex \textit{glue code}, involving implicit type conversions, dynamic dispatch mechanisms, and reference counting, which creates a significant semantic gap between Python and C++. 
-This poses a severe challenge for traditional source-based cross-language analysis methods.
+Achieving automatic kernel specialization requires reconstructing the calling context for C++ operator functions, i.e., determining the tensor shapes and operator attribute values.
+As shown in \autoref{fig:motivating-example}, these values are instantiated on the Python side and passed through the FFI layer to C++.
+However, reconstructing this cross-language value flow faces significant challenges.
 
-Existing cross-language analysis works~\cite{kan2024taint4javac,Monat2021PythonC} primarily rely on abstract interpretation techniques to address general multi-language interoperability issues (e.g., Python-C, Java-C). 
-Nevertheless, these methods face significant challenges when applied to DL systems due to two main limitations:
-(1) \textbf{Lack of Domain Awareness:} Existing tools typically model generic FFI APIs as black boxes, failing to comprehend the complex \textit{domain-specific objects} within DL systems, particularly the deep heap memory layouts and internal indirect reference relationships.
-(2) \textbf{Efficiency and Precision Bottlenecks:} Performing full interpretation of dynamic language source code is inefficient and struggles to accurately deduce the side effects of complex C++ internal heap allocations from the Python side.
+Existing cross-language analysis methods~\cite{kan2024taint4javac,Monat2021PythonC} typically employ abstract interpretation at the FFI API level, modeling each cross-language call as state transitions in an abstract domain.
+While general-purpose, this approach is ill-suited for DL systems for two reasons.
+First, the FFI layer contains substantial \textit{glue code} for type conversions, dynamic dispatch, and reference counting, operations that are essential for language interoperability but irrelevant to the constant values we aim to extract.
+Analyzing this glue code is both computationally expensive and unnecessary for our goal.
+Second, the Python-side Graph Executor, which orchestrates operator invocations based on Graph IR, comprises complex logic spanning thousands of lines of code.
+Performing full abstract interpretation over this codebase is prohibitively expensive.
+These factors render traditional approaches impractical for reconstructing operator calling contexts in DL systems.
 
 \textit{Insight: Semantic modeling of core data types in DL systems.}
-Instead of the traditional paradigm of analyzing FFI control flows, we propose a cross-language semantic modeling approach grounded in two observations:
+Instead of analyzing FFI glue code and Python source code, we propose a cross-language semantic modeling approach grounded in two observations:
 (1) \textbf{Finite and Stable Core Types:} Data types used for cross-language interaction in DL systems are highly convergent and stable (\texttt{Tensor}, \texttt{Array}, etc.), enabling comprehensive and precise semantic modeling.
-(2) \textbf{Extract Constant Information from Graph IR:} DL systems compile models and represent them using Graph IR (e.g. ATen IR), which contains precise information regarding operator input parameters, enabling direct extraction of semantic values without analyzing Python source code.
+(2) \textbf{Extract Constant Information from Graph IR:} DL systems compile models and represent them using Graph IR (e.g., ATen IR), which contains precise information regarding operator input parameters, enabling direct extraction of semantic values without analyzing Python source code. Specifically, model-specific constants are captured as exact values from tracing, while dynamic dimensions are represented as symbolic variables.
 Building on these insights, we directly map computation graph node information to the abstract states of C++ entry functions, achieving high-precision reconstruction of C++ contexts while avoiding the overhead of analyzing complex FFI glue code.
 
 
@@ -247,14 +251,26 @@ status set_t(int sq, int sk, int* t) {
 
 \subsubsection{Challenge 2: Shape Checkers Leading to Early-Exit Paths}
 
-Operator libraries enforce constraints (memory alignment, dimension equality) through runtime shape checkers.
-FA requires matching batch sizes ($B_q = B_k = B_v$) and sequence lengths ($S_k = S_v$); violations trigger early exits with error codes.
+Operator libraries enforce shape constraints through runtime shape checkers to ensure memory safety and computational correctness.
+As defined in \autoref{eq:flash_attention}, the Flash Attention operator imposes one constraint that the sequence lengths of $K$ and $V$ must be equal ($S_k = S_v$).
+Violations of these constraints trigger early exits with error codes.
 
-\autoref{lst:early_return_code} shows how shape checkers impede optimization.
-Function \texttt{set\_t} verifies if sequence lengths match; since dimensions are dynamic, the compiler cannot guarantee the check passes.
-Standard path-insensitive analysis merges data flows from success (\texttt{t=32}) and early-exit paths, ``polluting'' the value of \texttt{t} at the exit block (\autoref{fig:set_t_cfg}).
-While symbolic execution~\cite{Cadar2008KLEEUnassistedAutomatic,Yao2024FalconFusedApproach} can distinguish paths, it is prohibitively expensive due to path explosion.
+\autoref{lst:early_return_code} illustrates this pattern with a simplified example.
+The function \texttt{check} verifies whether two sequence lengths (denoted as \texttt{s1} and \texttt{s2}) match, returning \texttt{SUCCESS} (0) if they are equal or \texttt{ERROR} (-1) otherwise.
+The function \texttt{set\_t} uses this checker to validate the sequence lengths before computing the tiling parameter \texttt{t=32}.
+Since these dimensions are dynamic at compile time, the compiler cannot determine whether the check will succeed or fail.
+
+\autoref{fig:set_t_cfg} shows the corresponding CFG.
+The entry block \textbf{BB0} calls \texttt{@check} and branches based on the result: the true branch leads to \textbf{BB1} (error path), while the false branch leads to \textbf{BB2} (normal path) where \texttt{t=32} is defined.
+Both paths converge at \textbf{BB3}.
+At this merging site, standard path-insensitive analysis cannot determine whether the definition of \texttt{t} originates from \textbf{BB2} or is undefined from \textbf{BB1}, resulting in a polluted abstract state $\{t \in \{0, 32\}\}$ that prevents constant propagation.
 
 \textit{Insight: Conditional Return-Value Flow.}
-If we can infer from guard conditions whether return values belong to SUCCESS or ERROR status codes, we can identify early-exit vs. normal paths.
-We construct a \textit{conditional value flow graph} for return values, explicitly representing conditional expressions and their corresponding return values, enabling early-exit path identification.
+The key to identifying early-exit paths lies in analyzing the relationship between path guards and the semantic meaning of return values.
+Since shape checkers assign different constant values to the return variable on different execution paths (e.g., \texttt{SUCCESS} on the normal path and \texttt{ERROR} on the error path), we can determine whether a path is an early-exit by examining whether the path guard implies an error return value.
+Specifically, we maintain path-sensitive guards and propagate them through the control flow.
+If a path guard implies that the return value equals an error code, the path is identified as an early-exit path; otherwise, it is conservatively treated as a normal path.
+During constant propagation, value states from confirmed early-exit paths are prevented from propagating to merge points, thereby avoiding state pollution.
+In \autoref{fig:set_t_cfg}, the branch condition at \textbf{BB0} is $\%1 = (\%0 \neq 0)$, where $\%0$ is the return value of \texttt{@check}.
+When the guard $\%1 = \texttt{true}$ holds, we have $\%0 \neq 0$, which implies $\%0 \neq \texttt{SUCCESS}$; hence the return value represents an error, and the path $\textbf{BB0} \rightarrow \textbf{BB1} \rightarrow \textbf{BB3}$ guarded by $\%1$ is an early-exit path.
+Conversely, when the guard $\neg\%1$ holds, we have $\%0 = 0 = \texttt{SUCCESS}$; hence the return value represents success, and the path $\textbf{BB0} \rightarrow \textbf{BB2} \rightarrow \textbf{BB3}$ guarded by $\neg\%1$ is a normal path.
