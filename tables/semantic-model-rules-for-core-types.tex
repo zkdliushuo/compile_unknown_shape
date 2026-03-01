@@ -1,8 +1,9 @@
 \begin{table}[htbp]
   \centering
-  \caption{Context update rules for Graph IR parameter types.
+  \caption{Context update rules for metadata types.
   \textbf{Definitions:} $\text{alloc}(\texttt{T})$ allocates a memory block sized for C++ type \texttt{T}.
-  $\text{Process}(\tau, v, \ell)$ recursively populates the store at location $\ell$ with value $v$ of type $\tau$.}
+  $\text{Process}(\mathit{type}, v, \ell)$ recursively populates the store at location $\ell$ with value $v$ of type $\mathit{type}$.
+  $\alpha(x)$ returns $x$ if concrete, or $\bot$ if symbolic.}
   \label{tab:semantic-rules}
   
   % 定义粗横线，使用 noalign 避免 booktabs 的间距问题
@@ -11,35 +12,35 @@
   \renewcommand{\arraystretch}{1.6}
   \small
   
-  \begin{tabular}{m{0.16\textwidth}|m{0.22\textwidth}|>{\raggedright\arraybackslash}m{0.25\textwidth}|>{\raggedright\arraybackslash}m{0.28\textwidth}}
+  \begin{tabular}{m{0.14\textwidth}|m{0.20\textwidth}|>{\raggedright\arraybackslash}m{0.26\textwidth}|>{\raggedright\arraybackslash}m{0.30\textwidth}}
     \thickhline
-    \textbf{Parameter Type} ($\tau$) & \textbf{C++ Definition} & \textbf{Environment Update} & \textbf{Store Update} \\
-    \hline  % <--- 这里把 \midrule 改成了 \hline，竖线就能连上了
+    \textbf{Metadata Type} ($\phi$) & \textbf{C++ Layout} & \textbf{Environment Update} & \textbf{Store Update} \\
+    \hline
     
     % Row 1: Scalar
-    \texttt{Scalar} \newline (value $c$) &
+    $\textsc{Scalar}(c)$ &
     {\ttfamily int64\_t $c$; \newline double $c$;} &
     $v \mapsto \alpha(c)$ &
     None \\ \hline
     
     % Row 2: String
-    \texttt{String} \newline (value $s$) &
-    {\ttfamily struct str\_view \{ \newline \hspace*{1.1em} size\_t len; \newline \hspace*{1.1em} char* data; \newline \} $s$;} &
+    $\textsc{String}(s)$ &
+    {\ttfamily struct \{ \newline \hspace*{0.8em} size\_t len; \newline \hspace*{0.8em} char* data; \newline \}} &
     $\begin{aligned}
       & \ell = \text{alloc}(\texttt{str\_view}) \\
-      & \ell_{buf} = \text{alloc}(\texttt{char}[\text{len}(s)]) \\
+      & \ell_{buf} = \text{alloc}(\texttt{char}[|s|]) \\
       & v \mapsto \langle\ell, 0\rangle
     \end{aligned}$ &
     $\begin{aligned}
-      & \langle \ell, \delta_{\texttt{len}} \rangle \mapsto \text{len}(s) \\
+      & \langle \ell, \delta_{\texttt{len}} \rangle \mapsto |s| \\
       & \langle \ell, \delta_{\texttt{data}} \rangle \mapsto \langle\ell_{buf}, 0\rangle \\
       & \forall i.\; \langle \ell_{buf}, i \rangle \mapsto s[i]
     \end{aligned}$
     \\ \hline
     
     % Row 3: Tensor
-    \texttt{Tensor} \newline (shape $\vec{d}=[d_1 \dots d_k]$) &
-    {\ttfamily struct Tensor \{ \newline \hspace*{1.1em} int* sizes; \newline \hspace*{1.1em} int ndim; \newline \} vec\_d;} &
+    $\textsc{Tensor}(\vec{d})$ \newline $\vec{d}=[d_1 \dots d_k]$ &
+    {\ttfamily struct \{ \newline \hspace*{0.8em} int* sizes; \newline \hspace*{0.8em} int ndim; \newline \}} &
     $\begin{aligned}
       & \ell = \text{alloc}(\texttt{Tensor}) \\
       & \ell_{sz} = \text{alloc}(\texttt{int}[k]) \\
@@ -53,37 +54,37 @@
     \\ \hline
     
     % Row 4: List
-    $\texttt{List}\langle\tau\rangle$ \newline (elements $\vec{e}=[e_1 \dots e_n]$) &
-    {\ttfamily struct List<T> \{ \newline \hspace*{1.1em} size\_t size; \newline \hspace*{1.1em} T* data; \newline \} v;} &
+    $\textsc{List}\langle\mathit{type}\rangle(\vec{e})$ \newline $\vec{e}=[e_1 \dots e_n]$ &
+    {\ttfamily struct \{ \newline \hspace*{0.8em} size\_t size; \newline \hspace*{0.8em} T* data; \newline \}} &
     $\begin{aligned}
-      & \ell = \text{alloc}(\texttt{List}\langle\tau\rangle) \\
-      & \ell_{buf} = \text{alloc}(\tau[n]) \\
+      & \ell = \text{alloc}(\texttt{List}\langle\mathit{type}\rangle) \\
+      & \ell_{buf} = \text{alloc}(\mathit{type}[n]) \\
       & v \mapsto \langle\ell, 0\rangle
     \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{size}} \rangle \mapsto n \\
       & \langle \ell, \delta_{\texttt{data}}\rangle \mapsto \langle\ell_{buf}, 0\rangle \\
-      & \forall i. \; \text{Process}(\tau, e_i, \langle \ell_{buf}, i \cdot \text{sz}_{\tau} \rangle)
+      & \forall i. \; \text{Process}(\mathit{type}, e_i, \langle \ell_{buf}, i \cdot \text{sz}_{\mathit{type}} \rangle)
     \end{aligned}$
     \\ \hline
     
     % Row 5: Optional
-    $\texttt{Optional}\langle\tau\rangle$ \newline (value $u$) &
-    {\ttfamily struct optional<T> \{ \newline \hspace*{1.1em} bool has\_val; \newline \hspace*{1.1em} T* val; \newline \} v;} &
+    $\textsc{Optional}\langle\mathit{type}\rangle(u)$ &
+    {\ttfamily struct \{ \newline \hspace*{0.8em} bool has\_val; \newline \hspace*{0.8em} T* val; \newline \}} &
     $\begin{aligned}
-      & \ell = \text{alloc}(\texttt{optional}\langle\tau\rangle) \\
+      & \ell = \text{alloc}(\texttt{Optional}\langle\mathit{type}\rangle) \\
       & \text{if } u \neq \text{None}: \\
-      & \quad \ell_{obj} = \text{alloc}(\tau) \\
+      & \quad \ell_{obj} = \text{alloc}(\mathit{type}) \\
       & v \mapsto \langle\ell, 0\rangle
     \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{has\_val}} \rangle \mapsto (u \neq \text{None}) \\
       & \text{if } u \neq \text{None}: \\
       & \quad \langle \ell, \delta_{\texttt{val}} \rangle \mapsto \langle\ell_{obj}, 0\rangle \\
-      & \quad \text{Process}(\tau, u, \langle \ell_{obj}, 0 \rangle)
+      & \quad \text{Process}(\mathit{type}, u, \langle \ell_{obj}, 0 \rangle)
     \end{aligned}$
     \\
-    \thickhline % <--- 这里把 \bottomrule 改成了 \thickhline
+    \thickhline
   \end{tabular}
   \vspace{-10pt}
 \end{table}

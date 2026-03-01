@@ -1,77 +1,81 @@
 \begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
-    node distance=0.4cm and 0.6cm, % Compressed distance
-    font=\scriptsize, % Smaller font for compression
-    % Styles
-    process/.style={
+    >=latex,
+    thick,
+    font=\sffamily\small,
+    % 定义带折角的文档样式 (Document node style for data)
+    doc/.style={
         rectangle, 
-        draw=blue!60!black, 
-        fill=blue!5, 
-        rounded corners, 
-        minimum height=0.8cm, 
-        text width=1.5cm, 
+        minimum width=2.2cm, 
+        minimum height=1.2cm,
         align=center, 
-        thick,
-        drop shadow
+        inner sep=4pt,
+        path picture={
+            \draw[thick]
+                (path picture bounding box.north west) --
+                (path picture bounding box.north east) --
+                ([yshift=0.25cm]path picture bounding box.south east) coordinate (SE1) --
+                ([xshift=-0.25cm]path picture bounding box.south east) coordinate (SE2) --
+                (path picture bounding box.south west) -- cycle;
+            \draw[thick]
+                (SE1) --
+                ([xshift=-0.25cm, yshift=0.25cm]path picture bounding box.south east) --
+                (SE2);
+        }
     },
-    data/.style={
-        trapezium, 
-        trapezium left angle=75, 
-        trapezium right angle=105, 
-        draw=orange!60!black, 
-        fill=orange!10, 
-        minimum height=0.6cm, 
-        text width=1.8cm, 
-        align=center,
-        inner sep=2pt
+    % 定义标准矩形样式 (Standard box style for process)
+    box/.style={
+        rectangle, draw, thick, 
+        minimum width=2.2cm, 
+        minimum height=1.2cm,
+        align=center, 
+        inner sep=4pt
     },
+    % 规则框样式
     rulebox/.style={
-        rectangle, 
-        draw=red!60!black, 
-        fill=red!5, 
-        dashed, 
+        rectangle, draw, thick, 
+        dashed,
+        minimum width=1.8cm, 
+        minimum height=0.9cm,
         align=center, 
-        minimum width=1.5cm, 
-        inner sep=2pt
-    },
-    arrow/.style={-{Stealth}, thick, draw=gray!80},
-    labeltext/.style={font=\tiny\itshape, color=gray!80}
+        inner sep=3pt
+    }
 ]
 
-    % 1. Input Data
-    \node (input) [data] {{\small\ding{172}} Graph IR of $Op$ \\ in$\rightarrow$out};
+    % 1. Input Data (doc style)
+    \node[doc] (input) at (0, 0) {{\small\ding{172}} Graph IR\\Node $N$};
 
-    % 2. Process: Extract Metadata
-    \node (extract) [process, right=of input] {{\small\ding{173}} Metadata Extraction};
+    % 2. Process: Extract Metadata (box style)
+    \node[box] (extract) at (3.2, 0) {{\small\ding{173}} Extract\\Metadata};
 
-    % 3. Intermediate Data: Metadata Phi
-    \node (metadata) [data, right=of extract] {{\small\ding{174}} Metadata $\Phi_{Op}$\\$=[\mathcal{M}_0, \dots, \mathcal{M}_n]$};
+    % 3. Intermediate Data: Metadata Phi (doc style)
+    \node[doc, minimum width=2.6cm] (metadata) at (6.6, 0) {{\small\ding{174}} Metadata $\Phi$\\$=[\phi_0, \dots, \phi_n]$};
 
-    % 4. Process: Update Context
-    \node (update) [process, right=of metadata, text width=2.4cm] {{\small\ding{175}} Update Context\\$\mathbb{C}_{i+1}=\mathcal{R}_{\mathcal{M}_i}(\mathbb{C}_{i})$};
+    % 4. Process: Update Context (box style)
+    \node[box, minimum width=2.8cm] (update) at (10.2, 0) {{\small\ding{175}} Update Context\\$\mathbb{C}_{i+1}{=}\mathcal{R}_{\phi_i}(\mathbb{C}_{i})$};
 
-    % Side Inputs for Update Process (Vertical placement to save width)
-    \node (empty_ctx) [data, above=of update, yshift=-0.2cm] {{\small\ding{176}} Empty Context $\mathbb{C}_0$};
+    % Side Inputs for Update Process (both above)
+    \node[doc, minimum width=2.2cm, minimum height=0.9cm] (empty_ctx) at (8.6, 1.5) {{\small\ding{176}} Empty $\mathbb{C}_0$};
     
-    \node (rules) [rulebox, below=of update, yshift=0.2cm] {{\small\ding{177}} Rules $\mathcal{R}$\\(\textsc{Tensor}, etc.)};
+    \node[rulebox, minimum width=2.2cm] (rules) at (11.8, 1.5) {{\small\ding{177}} Rules $\mathcal{R}$};
 
-    % 5. Final Output
-    \node (output) [data, right=of update, fill=gray!10, draw=gray!60] {{\small\ding{178}} Output:\\ Call Context $\mathbb{C}_{init}$};
+    % 5. Final Output (doc style)
+    \node[doc, minimum width=2.2cm] (output) at (13.8, 0) {{\small\ding{178}} Initial $\mathbb{C}_{init}$};
 
     % Edges
-    \draw[arrow] (input) -- (extract);
-    \draw[arrow] (extract) -- (metadata);
-    \draw[arrow] (metadata) -- (update);
-    \draw[arrow] (update) -- (output);
+    \draw[->] (input) -- (extract);
+    \draw[->] (extract) -- (metadata);
+    \draw[->] (metadata) -- (update);
+    \draw[->] (update) -- (output);
     
     % Side connections
-    \draw[arrow] (empty_ctx) -- (update);
-    \draw[arrow] (rules) -- (update);
+    \draw[->] (empty_ctx) -- (update);
+    \draw[->] (rules) -- (update);
 
 \end{tikzpicture}
-\caption{Workflow of Context Generation. \ding{172}-\ding{174} Extraction phase; \ding{175}-\ding{178} Context construction phase.}
-\Description{Flow diagram showing the context generation process from Graph IR through Metadata Extraction to Call Context.}
+\caption{Workflow of Context Generation. \ding{172}-\ding{174}: Extraction phase; \ding{175}-\ding{178}: Context construction phase.}
+\Description{Flow diagram showing the context generation process from Graph IR Node through Metadata Extraction to Call Context.}
 \label{fig:context_workflow}
 \vspace{-15pt}
 \end{figure}
