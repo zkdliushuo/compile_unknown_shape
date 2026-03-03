@@ -1,9 +1,10 @@
 \begin{table}[htbp]
   \centering
-  \caption{Context update rules for metadata types.
-  \textbf{Definitions:} $\text{alloc}(\texttt{T})$ allocates a memory block sized for C++ type \texttt{T}.
-  $\text{Process}(\mathit{type}, v, \ell)$ recursively populates the store at location $\ell$ with value $v$ of type $\mathit{type}$.
-  $\alpha(x)$ returns $x$ if concrete, or $\bot$ if symbolic.}
+  \caption{Context update rules for parameter types. C++ implementations are simplified to show only shape-related members.
+  \textbf{Definitions:} $\ell$ denotes a base object. $\delta_{\texttt{field}}$ is the byte offset of a structure field. $\text{sz}_{\texttt{T}}$ is the size of type \texttt{T} in bytes.
+  $\text{alloc}(\texttt{T})$ allocates a memory block sized for C++ type \texttt{T} and returns its base object.
+  $\text{Process}(\phi_1, v, \ell)$ recursively populates the store at location $\ell$ with value $v$ of type $\phi_1$.
+  $\alpha(x)$ returns $x$ if $x$ is concrete, or $\bot$ if symbolic.}
   \label{tab:semantic-rules}
   
   % 定义粗横线，使用 noalign 避免 booktabs 的间距问题
@@ -12,9 +13,9 @@
   \renewcommand{\arraystretch}{1.6}
   \small
   
-  \begin{tabular}{m{0.14\textwidth}|m{0.20\textwidth}|>{\raggedright\arraybackslash}m{0.26\textwidth}|>{\raggedright\arraybackslash}m{0.30\textwidth}}
+  \begin{tabular}{m{0.20\textwidth}|m{0.26\textwidth}|>{\raggedright\arraybackslash}m{0.20\textwidth}|>{\raggedright\arraybackslash}m{0.26\textwidth}}
     \thickhline
-    \textbf{Metadata Type} ($\phi$) & \textbf{C++ Layout} & \textbf{Environment Update} & \textbf{Store Update} \\
+    \textbf{Parameter Type} ($\phi$) & \textbf{C++ Implementations} & \textbf{Environment Update} & \textbf{Store Update} \\
     \hline
     
     % Row 1: Scalar
@@ -54,34 +55,34 @@
     \\ \hline
     
     % Row 4: List
-    $\textsc{List}\langle\mathit{type}\rangle(\vec{e})$ \newline $\vec{e}=[e_1 \dots e_n]$ &
+    $\textsc{List}\langle\phi_1\rangle(\vec{e})$ \newline $\vec{e}=[e_1 \dots e_n]$ &
     {\ttfamily struct \{ \newline \hspace*{0.8em} size\_t size; \newline \hspace*{0.8em} T* data; \newline \}} &
     $\begin{aligned}
-      & \ell = \text{alloc}(\texttt{List}\langle\mathit{type}\rangle) \\
-      & \ell_{buf} = \text{alloc}(\mathit{type}[n]) \\
+      & \ell = \text{alloc}(\texttt{List}\langle\phi_1\rangle) \\
+      & \ell_{buf} = \text{alloc}(\phi_1[n]) \\
       & v \mapsto \langle\ell, 0\rangle
     \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{size}} \rangle \mapsto n \\
       & \langle \ell, \delta_{\texttt{data}}\rangle \mapsto \langle\ell_{buf}, 0\rangle \\
-      & \forall i. \; \text{Process}(\mathit{type}, e_i, \langle \ell_{buf}, i \cdot \text{sz}_{\mathit{type}} \rangle)
+      & \forall i. \; \text{Process}(\phi_1, e_i, \langle \ell_{buf}, i \cdot \text{sz}_{\phi_1} \rangle)
     \end{aligned}$
     \\ \hline
     
     % Row 5: Optional
-    $\textsc{Optional}\langle\mathit{type}\rangle(u)$ &
+    $\textsc{Optional}\langle\phi_1\rangle(u)$ &
     {\ttfamily struct \{ \newline \hspace*{0.8em} bool has\_val; \newline \hspace*{0.8em} T* val; \newline \}} &
     $\begin{aligned}
-      & \ell = \text{alloc}(\texttt{Optional}\langle\mathit{type}\rangle) \\
+      & \ell = \text{alloc}(\texttt{Optional}\langle\phi_1\rangle) \\
       & \text{if } u \neq \text{None}: \\
-      & \quad \ell_{obj} = \text{alloc}(\mathit{type}) \\
+      & \quad \ell_{obj} = \text{alloc}(\phi_1) \\
       & v \mapsto \langle\ell, 0\rangle
     \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{has\_val}} \rangle \mapsto (u \neq \text{None}) \\
       & \text{if } u \neq \text{None}: \\
       & \quad \langle \ell, \delta_{\texttt{val}} \rangle \mapsto \langle\ell_{obj}, 0\rangle \\
-      & \quad \text{Process}(\mathit{type}, u, \langle \ell_{obj}, 0 \rangle)
+      & \quad \text{Process}(\phi_1, u, \langle \ell_{obj}, 0 \rangle)
     \end{aligned}$
     \\
     \thickhline

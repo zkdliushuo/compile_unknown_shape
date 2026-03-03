@@ -1,48 +1,82 @@
 \begin{tikzpicture}[
     bb/.style={
         rectangle,
-        rounded corners=5pt,
+        rounded corners=2pt,
         draw=black,
         thick,
-        minimum height=1cm,
-        minimum width=2.8cm,
-        inner sep=10pt,
-        font=\ttfamily\large,
+        minimum height=0.5cm,
+        minimum width=2cm,
+        inner sep=2pt,
+        font=\ttfamily\small,
         align=center
     },
     edge_label/.style={
-        font=\ttfamily\large,
+        font=\ttfamily\scriptsize,
         midway
-    },
-    cond_edge/.style={
-        ->,
-        thick,
-        dashed,
-        draw=blue!70!black
     },
     data_edge/.style={
         ->,
         thick,
         draw=black
     },
+    func_frame/.style={
+        draw=gray!60,
+        rounded corners=4pt,
+        thick,
+        inner sep=8pt
+    },
+    func_title/.style={
+        font=\bfseries\small,
+        fill=blue!15,
+        rounded corners=2pt,
+        inner sep=3pt,
+        text=blue!70!black
+    },
     >=stealth
 ]
 
-    % 顶层节点：值定义
-    \node[bb] (check) at (-2.5, 4.5) {{\color{green!50!black}\%0} = call @check(...) };
-    \node[bb, minimum width=1cm] (zero) at (2.5, 4.5) {\textbf{0}};
+    % ====== 上半部分: check 函数的 CRVFG ======
+    % 顶层节点：常量值 - 两个节点宽度相同以确保居中
+    \node[bb, minimum width=3.2cm] (neg_one) at (-1.6, 2) {\textbf{-1}};
+    \node[bb, minimum width=2.2cm] (zero_check) at (1.6, 2) {\textbf{0}};
 
-    % 中层节点：条件赋值
-    \node[bb, minimum width=2.4cm] (ve) at (-2.5, 1.5) {{\color{green!50!black}\%ret} = {\color{green!50!black}\%0}};
-    \node[bb, minimum width=2.4cm] (vok) at (2.5, 1.5) {{\color{green!50!black}\%ret} = \textbf{0}};
+    % 中层节点：返回值赋值 - 两个节点宽度相同以确保居中
+    \node[bb, minimum width=2.2cm] (verr) at (-1.6, 1) {{\color{green!50!black}\%ret} = \textbf{-1}};
+    \node[bb, minimum width=2.2cm] (vok_check) at (1.6, 1) {{\color{green!50!black}\%ret} = \textbf{0}};
 
     % 底层返回节点
-    \node[bb, minimum width=3.2cm] (ret) at (0, -1.5) {\textbf{return} {\color{green!50!black}\%ret}};
+    \node[bb, minimum width=2.6cm] (ret_check) at (0, 0) {\textbf{return} {\color{green!50!black}\%ret}};
 
     % 数据流边 (实线)
-    \draw[data_edge] (check.south) -- node[left, font=\ttfamily\normalsize, pos=0.5] {{\color{green!50!black}$\varphi_1$}: ({\color{green!50!black}$\%0$} $\neq$ \textbf{0})} (ve.north);
-    \draw[data_edge] (zero.south) -- node[right, font=\ttfamily\normalsize, pos=0.5] {$\neg\varphi_1$} (vok.north);
+    \draw[data_edge] (neg_one.south) -- node[left, font=\ttfamily\scriptsize, pos=0.4, align=right] {{\color{green!50!black}$\varphi_0$}{=\scriptsize $(\texttt{s1} \neq \texttt{s2})$}} (verr.north);
+    \draw[data_edge] (zero_check.south) -- node[right, font=\ttfamily\scriptsize, pos=0.4, align=left] {$\neg\varphi_0$} (vok_check.north);
+    \draw[data_edge] (verr.south) -- (ret_check.north west);
+    \draw[data_edge] (vok_check.south) -- (ret_check.north east);
+    
+    % check 函数的边框和标题（左下角）
+    \node[func_frame, fit=(neg_one) (zero_check) (verr) (vok_check) (ret_check)] (check_frame) {};
+    \node[func_title, anchor=south west] at ([yshift=-0.5pt]check_frame.south west) {\texttt{check}};
+
+    % ====== 下半部分: set_t 函数的 CRVFG ======
+    % 顶层节点：值定义 - 与 check 函数的顶层节点宽度相同
+    \node[bb, minimum width=3.2cm] (check) at (-1.6, -1.3) {{\color{green!50!black}\%0} = call @check(...) };
+    \node[bb, minimum width=2.2cm] (zero) at (1.6, -1.3) {\textbf{0}};
+
+    % 中层节点：条件赋值 - 与 check 函数的中层节点宽度相同
+    \node[bb, minimum width=2.2cm] (ve) at (-1.6, -2.3) {{\color{green!50!black}\%ret} = {\color{green!50!black}\%0}};
+    \node[bb, minimum width=2.2cm] (vok) at (1.6, -2.3) {{\color{green!50!black}\%ret} = \textbf{0}};
+
+    % 底层返回节点
+    \node[bb, minimum width=2.6cm] (ret) at (0, -3.3) {\textbf{return} {\color{green!50!black}\%ret}};
+
+    % 数据流边 (实线)
+    \draw[data_edge] (check.south) -- node[left, font=\ttfamily\scriptsize, pos=0.4, align=right] {{\color{green!50!black}$\varphi_1$}{=\scriptsize $(\%0 \neq 0)$}} (ve.north);
+    \draw[data_edge] (zero.south) -- node[right, font=\ttfamily\scriptsize, pos=0.4, align=left] {$\neg\varphi_1$} (vok.north);
     \draw[data_edge] (ve.south) -- (ret.north west);
     \draw[data_edge] (vok.south) -- (ret.north east);
+    
+    % set_t 函数的边框和标题（左下角）
+    \node[func_frame, fit=(check) (zero) (ve) (vok) (ret)] (set_t_frame) {};
+    \node[func_title, anchor=south west] at (set_t_frame.south west) {\texttt{set\_t}};
 
 \end{tikzpicture}

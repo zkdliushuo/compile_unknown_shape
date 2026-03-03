@@ -27,7 +27,7 @@ torch.add(a, b, c) # Invokes C++ implementation
 \begin{minipage}{0.5\textwidth}
 \begin{lstlisting}[language=C++, caption={C++ Implementation of the operator \kw{add}}, label={lst:cpp_view}, frame=tlrb]
 struct TensorImpl {
-  ... // Other metadata
+  ... // Other fields
   SmallVector<int64_t, 5> sizes_;
 };
 void add(Tensor& A, Tensor& B, Tensor& C) {

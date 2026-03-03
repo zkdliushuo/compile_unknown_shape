@@ -46,11 +46,11 @@
     % 1. Input Data (doc style)
     \node[doc] (input) at (0, 0) {{\small\ding{172}} Graph IR\\Node $N$};
 
-    % 2. Process: Extract Metadata (box style)
-    \node[box] (extract) at (3.2, 0) {{\small\ding{173}} Extract\\Metadata};
+    % 2. Process: Extract Parameter Types (box style)
+    \node[box] (extract) at (3.2, 0) {{\small\ding{173}} Extract\\Param Types};
 
-    % 3. Intermediate Data: Metadata Phi (doc style)
-    \node[doc, minimum width=2.6cm] (metadata) at (6.6, 0) {{\small\ding{174}} Metadata $\Phi$\\$=[\phi_0, \dots, \phi_n]$};
+    % 3. Intermediate Data: Parameter Type Sequence Phi (doc style)
+    \node[doc, minimum width=2.6cm] (param_types) at (6.6, 0) {{\small\ding{174}} Param Types $\Phi$\\$=[\phi_0, \dots, \phi_n]$};
 
     % 4. Process: Update Context (box style)
     \node[box, minimum width=2.8cm] (update) at (10.2, 0) {{\small\ding{175}} Update Context\\$\mathbb{C}_{i+1}{=}\mathcal{R}_{\phi_i}(\mathbb{C}_{i})$};
@@ -65,8 +65,8 @@
 
     % Edges
     \draw[->] (input) -- (extract);
-    \draw[->] (extract) -- (metadata);
-    \draw[->] (metadata) -- (update);
+    \draw[->] (extract) -- (param_types);
+    \draw[->] (param_types) -- (update);
     \draw[->] (update) -- (output);
     
     % Side connections
@@ -75,7 +75,7 @@
 
 \end{tikzpicture}
 \caption{Workflow of Context Generation. \ding{172}-\ding{174}: Extraction phase; \ding{175}-\ding{178}: Context construction phase.}
-\Description{Flow diagram showing the context generation process from Graph IR Node through Metadata Extraction to Call Context.}
+\Description{Flow diagram showing the context generation process from Graph IR Node through Parameter Type Extraction to Call Context.}
 \label{fig:context_workflow}
 \vspace{-15pt}
 \end{figure}

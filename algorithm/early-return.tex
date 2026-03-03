@@ -8,23 +8,24 @@
     \SetKwFunction{GetReturnValue}{GetReturnValue}
     \SetKwFunction{BuildCRVFG}{BuildCRVFG}
     \SetKwFunction{GetCondition}{GetCondition}
-    \SetKwFunction{GetValue}{GetValue}
+    \SetKwFunction{GetSourceValue}{GetSourceValue}
     \SetKwFunction{GetSourceBlock}{GetSourceBlock}
     \SetKwFunction{FindBranchWithCondition}{FindBranchWithCondition}
     \SetKwFunction{GetSuccessor}{GetSuccessor}
     \SetKwFunction{IsError}{IsError}
     \SetKwFunction{IsCall}{IsCall}
+    \SetKwFunction{GetCalleesInCondition}{GetCalleesInCondition}
     \SetKwProg{Fn}{Function}{:}{}
     
     \Fn{\RunOnFunction{$F,\;\mathcal{E},\;\mathcal{S}$}}{
         $inst_{ret} \gets$ \GetReturnInst{$F$}\;
         $v_{ret} \gets$ \GetReturnValue{$inst_{ret}$}\;
-        $E \gets$ \BuildCRVFG{$F, v_{ret}$}\;
+        $P \gets$ \BuildCRVFG{$F, v_{ret}$}\;
         
-        \ForEach{edge $e \in E$}{
-            $\varphi \gets$ \GetCondition{$e$}\;
-            $v \gets$ \GetValue{$e$}\;
-            $B_{src} \gets$ \GetSourceBlock{$e$}\;
+        \ForEach{path $p \in P$}{
+            $\varphi \gets$ \GetCondition{$p$}\;
+            $v \gets$ \GetSourceValue{$p$}\;
+            $B_{src} \gets$ \GetSourceBlock{$p$}\;
             
             \uIf{\IsError{$v, \varphi, \mathcal{E}, \mathcal{S}$}}{
                 $br \gets$ \FindBranchWithCondition{$B_{src}, \varphi$}\;
@@ -36,6 +37,11 @@
             \uElseIf{\IsCall{$v$}}{
                 \RunOnFunction{callee of $v$, $\mathcal{E},\ \mathcal{S}$}\;
             }
+        }
+        \tcp{Recursively analyze callees referenced in conditions}
+        $C_{\varphi} \gets$ \GetCalleesInCondition{$P$}\;
+        \ForEach{callee $f \in C_{\varphi}$}{
+            \RunOnFunction{$f$, $\mathcal{E},\ \mathcal{S}$}\;
         }
     }
 \end{algorithm}

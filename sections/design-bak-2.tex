@@ -97,8 +97,8 @@ The offline phase (top of \autoref{fig:context_construction}) builds a comprehen
 We employ a \textbf{static analysis} component (implemented based on Clang) to scan the library source code.
 This module produces two key outputs:
 \begin{itemize}
-  \item \textbf{C++ Operator Metadata}: It locates Python–C/C++ bindings (e.g., mapping Python’s \texttt{add} to its C++ implementation) and records the corresponding function signatures.
-  \item \textbf{Memory Layout of C++ Types}: It recursively parses the AST to recover concrete memory layouts. 
+  \item \textbf{C++ Operator Interface}: It locates Python–C/C++ bindings (e.g., mapping Python's \texttt{add} to its C++ implementation) and records the corresponding function signatures.
+  \item \textbf{Memory Layout of C++ Types}: It recursively parses the AST to recover concrete memory layouts.
   For example, for the \texttt{Tensor} type, it infers a pointer to \texttt{TensorImpl}, which in turn contains nested structures such as \texttt{sizes} (within \texttt{std::vector<int>}).
 \end{itemize}
 

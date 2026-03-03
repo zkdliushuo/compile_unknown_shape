@@ -1,4 +1,4 @@
-\section{System Design of \mysys}
+ \section{System Design of \mysys}
 \label{sec:design}
 
 \input{figures/sys-design/mysys-workflow}
@@ -71,7 +71,7 @@ The program state and inter-procedural context are captured by the following map
 \begin{itemize}
     \item The \kw{Environment} $\mathbb{E}: \mathcal{V} \mapsto \mathcal{SV}$ maps top-level virtual registers to their abstract values.
     \item The \kw{Store} $\mathbb{S}: \mathcal{O} \mapsto \mathcal{SV}$ maps memory locations to the values stored therein. By mapping from pairs of $\langle b, \delta \rangle$, the store naturally supports field-sensitive tracking of structure fields and array elements.
-    \item The \kw{Calling Context}~$\mathbb{C} := (\mathbb{E}, \mathbb{S})$ encapsulates the analysis state (environment and store) at the entry basic block of the current function. This context is determined by the caller and propagates constraints across function boundaries during inter-procedural analysis.
+    \item The \kw{Calling Context}~$\mathbb{C} := (\mathbb{E}, \mathbb{S})$ encapsulates the analysis state (environment and store) at the entry basic block of the current function. This context is determined by the caller and propagates constraints across functions during inter-procedural analysis.
 \end{itemize}
 
 \input{figures/sys-design/context-generation-workflow}
@@ -81,20 +81,19 @@ The program state and inter-procedural context are captured by the following map
 \autoref{fig:context_workflow} illustrates the overall workflow of context generation in \mysys{}.
 The process takes a Graph IR node $N$ representing an operator invocation as input, and produces the initial calling context $\mathbb{C}_{init}$ for the corresponding C++ entry function.
 This process bridges the semantic gap between the high-level Graph IR and the low-level C++ execution state through two phases:
-(1) \textbf{Extraction} (\ding{172}--\ding{174}), which parses the IR node $N$ to generate structured metadata $\Phi$; and
+(1) \textbf{Extraction} (\ding{172}--\ding{174}), which parses the IR node $N$ to extract the parameter type information $\Phi$; and
 (2) \textbf{Construction} (\ding{175}--\ding{178}), which applies semantic rules to transform the empty context $\mathbb{C}_0$ into the initial calling context $\mathbb{C}_{init}$.
 
-\subsubsection{Graph IR Node and Metadata Extraction}\label{sec:design:extract}
+\subsubsection{Graph IR Node and Parameter Type Extraction}\label{sec:design:extract}
 
-The Graph IR is a functional intermediate representation based on the ATen operator set, organized as a directed acyclic graph where each node represents a logical ATen operator invocation.
+The Graph IR is a functional intermediate representation based on the ATen operator set, organized as a directed acyclic graph (DAG) where each node represents a logical ATen operator invocation.
 We formally define a Graph IR node as:
 \begin{equation}
   N = (\texttt{op}, \mathit{In}, \mathit{Out}, \sigma)
 \end{equation}
-where \texttt{op} is the ATen operator identifier (e.g., \texttt{aten.fa}, \texttt{aten.linear}), $\mathit{In} = [x_1, \dots, x_m]$ is the ordered input list, $\mathit{Out} = [y_1, \dots, y_k]$ is the ordered output list, and $\sigma$ is the shape environment.
+where \texttt{op} is the ATen operator identifier (e.g., \texttt{aten.fa}), $\mathit{In} = [x_1, \dots, x_m]$ is the ordered input list, $\mathit{Out} = [y_1, \dots, y_k]$ is the ordered output list, and $\sigma$ is the shape environment.
 Each input $x_i$ is either a tensor (produced by another node) or an attribute (e.g., integer, float, arrays).
-The type of each input and output is directly represented by the corresponding metadata item $\phi_i$ in the context metadata $\Phi$, which is derived from the operator signature.
-The shape environment $\sigma$ maps each tensor value $v$ to its type and shape information:
+The shape environment $\sigma$ maps each tensor $v$ to its type and shape information:
 \begin{equation}
   \sigma(v) = (\texttt{dtype}(v), \texttt{shape}(v))
 \end{equation}
@@ -102,63 +101,65 @@ where $\texttt{shape}(v) = [d_1, \dots, d_r]$ is a dimension list with each $d_i
 This design enables the Graph IR to capture dynamic shape information symbolically.
 
 ATen operators have strictly defined signatures that specify the types of inputs and outputs.
-Each parameter type is directly mapped to a metadata variant $\phi$ (e.g., \textsc{Tensor}, \textsc{Scalar}, \textsc{List}, \textsc{Optional}) without introducing a separate type variable.
-
-\mysys{} extracts \ding{173} the \textit{context metadata} $\Phi$ \ding{174} by aligning the Graph IR node's arguments with the operator's formal parameters.
-For each parameter in the signature, if an explicit argument is provided, \mysys{} captures its value or shape information as a metadata item $\phi_i$ according to the parameter's type; if the argument is omitted and a default value exists, the default is used.
-
-The context metadata $\Phi = [\phi_0, \phi_1, \dots, \phi_n]$ is a sequence where each $\phi_i$ is a tagged union capturing the type and value information:
+To capture the type and value information of each parameter, we define the \textit{parameter type descriptor} $\phi$ as a tagged union:
 \begin{equation}
-  \phi ::= \textsc{Scalar}(c) \mid \textsc{String}(s) \mid \textsc{Tensor}(\vec{d}) \mid \textsc{List}\langle\mathit{type}\rangle(\vec{e}) \mid \textsc{Optional}\langle\mathit{type}\rangle(v)
+  \phi ::= \textsc{Scalar}(c) \mid \textsc{String}(s) \mid \textsc{Tensor}(\vec{d}) \mid \textsc{List}\langle\phi_1\rangle(\vec{e}) \mid \textsc{Optional}\langle\phi_1\rangle(v)
 \end{equation}
-Each metadata variant corresponds to the semantic meaning in the C++ operator interface:
+Each parameter type constructor corresponds to the semantic meaning in the C++ operator interface:
 \begin{itemize}
     \item $\textsc{Scalar}(c)$: Represents a scalar parameter of type \textsc{Int} or \textsc{Float}, where $c$ is the concrete value.
     \item $\textsc{String}(s)$: Represents a string parameter, where $s$ is the string content.
     \item $\textsc{Tensor}(\vec{d})$: Represents a tensor parameter, where $\vec{d} = [d_1, \dots, d_k]$ is the dimension list with each $d_i$ being either a concrete constant or a symbolic expression.
-    \item $\textsc{List}\langle\mathit{type}\rangle(\vec{e})$: Represents a list parameter of element type $\mathit{type}$, where $\vec{e}$ is the sequence of elements.
-    \item $\textsc{Optional}\langle\mathit{type}\rangle(v)$: Represents an optional parameter, where $v$ is either \texttt{Some}$(\cdot)$ containing a value or \texttt{None}.
+    \item $\textsc{List}\langle\phi_1\rangle(\vec{e})$: Represents a list parameter of element type $\phi_1$, where $\vec{e}$ is the sequence of elements.
+    \item $\textsc{Optional}\langle\phi_1\rangle(v)$: Represents an optional parameter, where $v$ is either a concrete value of type $\phi_1$ (present) or the special value $\text{None}$ (absent).
 \end{itemize}
 
-\begin{example}
-Consider the \texttt{aten.fa} operator with the following C++ signature:
-\begin{center}
-\texttt{aten.fa(Tensor input, int stride, float[] scales, bool? bias) -> Tensor}
-\end{center}
-The Graph IR node $N = (\texttt{aten.fa}, \mathit{In}, \mathit{Out}, \sigma)$ where $\mathit{In}$ contains four arguments: a tensor of shape $[32, 64]$, an integer $2$, a list of floats $[1.0, 2.0]$, and an omitted optional bias (default \texttt{None}).
-The extracted metadata $\Phi$ is:
-\begin{align*}
-  \Phi = [&\textsc{Tensor}([32, 64]), \textsc{Scalar}(2), \\
-         &\textsc{List}\langle\textsc{Float}\rangle([1.0, 2.0]), \textsc{Optional}\langle\textsc{Bool}\rangle(\text{None})]
-\end{align*}
-Each metadata item $\phi_i$ directly captures the type and value of the corresponding input, illustrating how the $\phi$ notation eliminates the need for a separate type variable.
-The output $\mathit{Out}$ is a single tensor, whose type is implicitly \textsc{Tensor} and shape is derived from the operator semantics.
-\end{example}
+\mysys{} organizes the parameter type descriptors of a Graph IR node into a \textit{parameter type sequence} $\Phi = [\phi_0, \phi_1, \dots, \phi_n]$.
+The extraction process \ding{173}--\ding{174} aligns the Graph IR node's arguments with the operator's formal parameters: for each parameter in the signature, if an explicit argument is provided, \mysys{} captures its value or shape information as a parameter type descriptor $\phi_i$; if the argument is omitted and a default value exists, the default is used.
+This parameter type sequence serves as the input for the subsequent Context Construction phase.
 
 \input{tables/semantic-model-rules-for-core-types}
 
-\subsubsection{Context Construction from Metadata}\label{sec:design:update}
+\begin{example}
+Consider the \texttt{aten.fa} operator implementing the Flash Attention computation defined in \autoref{eq:flash_attention}:
+\begin{center}
+\texttt{aten.fa(Tensor q, Tensor k, Tensor v, int[]? lens, int? mask\_type) -> Tensor}
+\end{center}
+The Graph IR node $N = (\texttt{aten.fa}, \mathit{In}, \mathit{Out}, \sigma)$ where $\mathit{In}$ contains: query tensor $q$ of shape $[B, 40, S, 64]$ (with symbolic $B$, $S$ and concrete $h_q=40$, $d_k=64$), key tensor $k$ and value tensor $v$ both of shape $[B, 40, S, 64]$ (concrete $h_{kv}=40$), an optional sequence lengths array, and an omitted optional mask type (default \texttt{None}).
+The extracted parameter type sequence $\Phi$ is:
+\begin{align*}
+  \Phi = [&\textsc{Tensor}([B, 40, S, 64]), \textsc{Tensor}([B, 40, S, 64]), \\
+         &\textsc{Tensor}([B, 40, S, 64]), \textsc{Optional}\langle\textsc{List}\langle\textsc{Scalar}\rangle\rangle(\text{None}), \\
+         &\textsc{Optional}\langle\textsc{Scalar}\rangle(\text{None})]
+\end{align*}
+Each parameter type descriptor $\phi_i$ directly captures the type and value of the corresponding $i$-th input.
+For tensor parameters, the dimension list captures both concrete constants (e.g., $40$, $64$) derived from the model configuration and symbolic expressions (e.g., $B$, $S$) representing runtime-determined dimensions.
+\end{example}
 
-The goal of the construction phase is to synthesize the initial C++ calling context $\mathbb{C}_{init} = (\mathbb{E}, \mathbb{S})$ from the metadata $\Phi$.
-Starting with an empty context $\mathbb{C}_{0}$ \ding{176}, \mysys{} iterates through each metadata item $\phi_i$ and sequentially updates \ding{175} the abstract state:
+\subsubsection{Context Construction from Parameter Types}\label{sec:design:update}
+
+The goal of the construction phase is to synthesize the initial C++ calling context $\mathbb{C}_{init} = (\mathbb{E}, \mathbb{S})$ from the parameter type sequence $\Phi$.
+Starting with an empty context $\mathbb{C}_{0}$ \ding{176}, \mysys{} iterates through each parameter type descriptor $\phi_i$ and sequentially updates \ding{175} the abstract state:
 \begin{equation}
   \mathbb{C}_{init} = \mathcal{R}_{\phi_n} \circ \dots \circ \mathcal{R}_{\phi_1} \circ \mathcal{R}_{\phi_0} (\mathbb{C}_0)
 \end{equation}
-For each metadata item $\phi_i$, we apply a semantic modeling rule $\mathcal{R}_{\phi_i}$ \ding{177} to transform the high-level metadata into the low-level memory representation.
+For each parameter type descriptor $\phi_i$, we apply a semantic modeling rule $\mathcal{R}_{\phi_i}$ \ding{177} to transform the high-level parameter type into the low-level memory representation.
 
-\subsubsection{Update Rules for Metadata Types}\label{sec:design:rules}
+\subsubsection{Update Rules for Parameter Types}\label{sec:design:rules}
 
-\autoref{tab:semantic-rules} presents the update rules for each metadata type.
-For \textsc{Scalar} and \textsc{String} types, the rule directly stores the value in the environment.
+\autoref{tab:semantic-rules} presents the update rules for each parameter type.
+For \textsc{Scalar} types, the rule directly stores the value in the environment.
 For composite types like \textsc{Tensor} and \textsc{List}, the rules perform \textit{deep reconstruction}: allocating base objects for internal structures and linking them via pointers in the store.
-We use a helper function $\alpha(x)$ that returns $x$ if $x$ is a concrete constant, or $\bot$ if $x$ is a symbolic expression, where $\bot$ denotes \textit{unknown-but-consistent} values fixed at runtime but not statically determinable.
+We use a helper function $\alpha(x)$ that returns $x$ if $x$ is a concrete constant, or $\bot$ if $x$ is a symbolic expression.
+We use $\ell \in \mathcal{B}$ to denote a base object returned by allocation operations.
 
-The recursive helper function $\text{Process}(\mathit{type}, v, \ell)$ populates the store at location $\ell$ with value $v$ of type $\mathit{type}$.
-For example, the \textsc{Tensor} rule is defined as:
+The recursive helper function $\text{Process}(\phi_1, v, \ell)$ populates the store at location $\ell$ with value $v$ of type $\phi_1$.
+Here, $\delta_{\texttt{field}}$ denotes the byte offset of a structure field, and $\text{sz}_{\texttt{T}}$ denotes the size of type \texttt{T} in bytes.
+For example, the $\textbf{Process}(\texttt{Tensor}, [d_1, \dots, d_k], \ell)$ is defined as:
 \begin{align*}
-  &\textbf{Process}(\texttt{Tensor}, [d_1, \dots, d_k], \ell): \\
   &\quad \ell_{sz} = \text{alloc}(\texttt{int}[k]) \\
-  &\quad \mathbb{S}[\langle\ell, \delta_{\texttt{sizes}}\rangle] = \langle\ell_{sz}, 0\rangle;\; \mathbb{S}[\langle\ell, \delta_{\texttt{ndim}}\rangle] = k \\
+  &\quad \mathbb{S}[\langle\ell, \delta_{\texttt{sizes}}\rangle] = \langle\ell_{sz}, 0\rangle \\ 
+  &\quad \mathbb{S}[\langle\ell, \delta_{\texttt{ndim}}\rangle] = k \\
   &\quad \textbf{for } i = 1 \textbf{ to } k \textbf{ do } \mathbb{S}[\langle\ell_{sz}, (i{-}1) \cdot \text{sz}_{\texttt{int}}\rangle] = \alpha(d_i)
 \end{align*}
 
@@ -174,157 +175,147 @@ The environment maps \texttt{query} to a pointer, and the store captures the int
 
 \noindent\textbf{Completeness.}
 The rules cover all five core parameter types (Scalar, String, Tensor, List, Optional) in the PyTorch operator interface.
-Recursive rules enable complex compositions like $\textsc{Optional}\langle\textsc{List}\rangle$, ensuring the approach is generic across standard operator schemas.
+Recursive rules enable complex compositions like $\textsc{Optional}\langle\textsc{List}\langle\phi_1\rangle\rangle$, ensuring the approach is generic across standard operator schemas.
 % Note: The recursive nature of the Process function allows handling of nested types,
 % e.g., $\textsc{List}\langle\textsc{Tensor}\rangle$ or $\textsc{Optional}\langle\textsc{List}\langle\textsc{Scalar}\rangle\rangle$,
 % by recursively applying the appropriate rules for each element.
 
 
+\begin{center}
+  \begin{minipage}[b]{0.48\linewidth}
+    \centering
+    \resizebox{\linewidth}{!}{%
+    \input{figures/sys-design/conditional-value-flow}
+    }
+    \captionof{figure}{Return-Value Flow Graphs for \texttt{check} and \texttt{set\_t} functions. For \texttt{check}: direct error return when $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$ holds, the return value is $-1 \in \mathcal{E}$. For \texttt{set\_t}: propagated error when $\varphi_1 = (\%0 \neq 0)$ holds, the error code from \texttt{check} flows to the return.}
+    \label{fig:conditional-value-flow}
+  \end{minipage}%
+  \hfill
+  \begin{minipage}[b]{0.48\linewidth}
+    \centering
+    \vspace{2pt}
+    \hrule
+    \vspace{2pt}
+    \captionof{algorithm}{\textbf{Early-Exit Edge Identification}}
+    \label{algo:early-exit-identification}
+    \vspace{-9pt}
+    \hrule
+    \vspace{2pt}
+    \begin{algorithmic}[1]
+      \Require Function $F$, Success set $\mathcal{S}$, Error set $\mathcal{E}$
+      \Ensure Set of early-exit edges $E_{exit}$
+      \State $E_{exit} \gets \emptyset$
+      \State $inst \gets \texttt{GetReturnInst}(F)$
+      \State $v_{ret} \gets \texttt{GetReturnValue}(inst)$
+      \State $P_{flow} \gets \texttt{BuildCRVFG}(F, v_{ret})$
+      \ForAll{$path \in P_{flow}$}
+        \State $\varphi \gets \texttt{GetCondition}(path)$
+        \State $v \gets \texttt{GetSourceValue}(path)$
+        \If{$\text{isError}(v, \varphi)$}
+          \State $\varphi_{key} \gets \texttt{GetKeyClause}(\varphi)$
+          \State $B_{src} \gets \texttt{GetBasicBlock}(\varphi_{key})$
+          \State $B_{dst} \gets \texttt{GetSuccessor}(B_{src}, \varphi_{key})$
+          \State $\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$
+          \State $E_{exit} \gets E_{exit} \cup \{B_{src} \rightarrow B_{dst}\}$
+        \EndIf
+      \EndFor
+      \State \Return $E_{exit}$
+    \end{algorithmic}
+    \vspace{2pt}
+    \hrule
+  \end{minipage}
+\end{center}
+
 \subsection{Identify Early Exit Edge}\label{sec:design:early-return}
 
 Production operator libraries manage execution status through compile-time constant integer status codes.
-We define two sets: $\mathcal{S}$ (success codes, e.g., $\{0\}$) and $\mathcal{E}$ (error codes, e.g., $\{-1\}$).
-The early-exit edge identification process consists of three steps: (1) constructing a Conditional Return-Value Flow Graph (CRVFG) to capture the relationship between shape checker conditions and return values; (2) determining error states through constant comparison; and (3) mapping identified error conditions to control-flow edges.
-
-\begin{figure}[ht]
-  \centering
-  \begin{minipage}[c]{0.45\textwidth}
-    \centering
-    \resizebox{\textwidth}{!}{%
-    \input{figures/sys-design/conditional-value-flow}
-    }
-    \caption{Conditional Return-Value Flow Graph (CRVFG) for the \texttt{set\_t} function. Solid edges represent data flow; dashed edges represent conditional guards.}
-    \Description{Diagram showing the conditional value flow graph with IR variables for return values.}
-    \label{fig:conditional-value-flow}
-    \vspace{-10pt}
-  \end{minipage}
-  \hfill
-  \begin{minipage}[c]{0.5\textwidth}
-    \centering
-    \begin{algorithm}[H]
-      \caption{Early-Exit Edge Identification}
-      \label{algo:early-exit-identification}
-      \begin{algorithmic}[1]
-        \Require Function $F$, Success set $\mathcal{S}$, Error set $\mathcal{E}$
-        \Ensure Set of early-exit edges $E_{exit}$
-        \State $E_{exit} \gets \emptyset$
-        \State $inst \gets \texttt{GetReturnInst}(F)$
-        \State $v_{ret} \gets \texttt{GetReturnValue}(inst)$
-        \State $E_{flow} \gets \texttt{BuildCRVFG}(F, v_{ret})$
-        \ForAll{$edge \in E_{flow}$}
-          \State $\varphi \gets \texttt{GetCondition}(edge)$
-          \State $v \gets \texttt{GetValue}(edge)$
-          \If{$\text{isError}(v, \varphi)$}
-            \State $B_{src} \gets \texttt{GetSourceBlock}(edge)$
-            \State $br \gets \texttt{FindBranchWithCondition}(B_{src}, \varphi)$
-            \State $B_{dst} \gets \texttt{GetSuccessor}(br, \varphi)$
-            \State $\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$
-            \State $E_{exit} \gets E_{exit} \cup \{B_{src} \rightarrow B_{dst}\}$
-          \EndIf
-        \EndFor
-        \State \Return $E_{exit}$
-      \end{algorithmic}
-    \end{algorithm}
-  \end{minipage}
-  \vspace{-10pt}
-\end{figure}
+Based on the status code definitions in the operator library, we manually extract two sets as inputs to our identification algorithm: $\mathcal{S}$ (success codes, e.g., $\{0\}$) and $\mathcal{E}$ (error codes, e.g., $\{-1\}$).
+The early-exit edge identification process consists of three steps: (1) constructing a Conditional Return-Value Flow Graph (CRVFG) to capture the relationship between shape checker conditions and return values; (2) determining whether each return value under its governing condition belongs to error states; and (3) mapping identified error conditions to control-flow edges.
 
 \subsubsection{Conditional Return-Value Flow Graph Construction}\label{sec:design:crvfg}
 
 The first step constructs a \textit{Conditional Return-Value Flow Graph} (CRVFG) to capture the relationship between shape checker conditions and return values.
 The CRVFG is a directed graph $G = (V, E)$ where:
 \begin{itemize}
-    \item Each node $v \in V$ represents a definition of the return value (e.g., a \texttt{phi} node or a constant assignment).
-    \item Each edge $e = (v_s, v_d, \varphi) \in E$ represents a data-flow dependency from $v_s$ to $v_d$, guarded by condition $\varphi$.
+    \item Each node $v \in V$ represents a definition or a \texttt{return} instruction. In LLVM IR, definitions include \texttt{phi}, \texttt{store}, \texttt{load}, \texttt{call}, and other value-producing instructions.
+    \item Each edge $e = (v_s, v_d) \in E$ represents a data-flow dependency from $v_s$ to $v_d$.
 \end{itemize}
 
-The CRVFG is constructed \textit{on-demand} and \textit{intra-procedurally}:
-\begin{enumerate}
-    \item \textbf{On-Demand:} We construct the graph only for functions containing shape checkers, avoiding overhead for irrelevant functions.
-    \item \textbf{Return-Value Focus:} We exclusively track the value flow of return values, which in SSA-form IR are top-level variables, yielding compact graphs.
-\end{enumerate}
+The CRVFG is constructed \textit{on-demand} starting from the return instruction, tracing backward through data-flow dependencies exclusively for the return value.
+During construction, \texttt{phi} instructions are split into multiple nodes according to the guard conditions on incoming CFG edges.
+For a \texttt{phi} node with $n$ incoming operands, we create $n$ separate nodes, each associated with the condition guarding the corresponding control-flow path.
 
-\autoref{fig:conditional-value-flow} illustrates the CRVFG for the \texttt{set\_t} function.
-The graph captures the conditional predicate $\varphi_1 = (\%1 = \text{true})$, where $\%1 = \texttt{icmp ne \%0, 0}$, that guards the error return path.
-This establishes the data-flow relationship between the shape check condition and the error return value $\%0$.
+\autoref{fig:conditional-value-flow} illustrates the CRVFGs for both the \texttt{check} and \texttt{set\_t} functions in \autoref{lst:early_return_code}.
+In \texttt{check}, the condition $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$ guards the path where the return value is $-1 \in \mathcal{E}$, directly identifying an error return path.
+In \texttt{set\_t}, the condition $\varphi_1 = (\%0 \neq 0)$ guards the path where the error code from \texttt{check} flows to the return.
+The CRVFG thus characterizes the conditions guarding each value-flow path, enabling us to determine which paths lead to error states.
 
 \subsubsection{Error Status Determination}\label{sec:design:error-determination}
 
 The second step determines whether a return value indicates an error state under a given condition.
-A key advantage of our approach is that this determination requires only simple constant comparison, without invoking an SMT solver.
 
-For a return value $v$ and its governing condition $\varphi$, we define:
+Operator shape checkers fall into two categories based on the source of their return values:
+(1) \textit{Direct-constant-return checkers} (e.g., the \texttt{check} function) that directly return a constant value (typically an error code) when validation fails; and
+(2) \textit{Variable-return checkers} (e.g., the \texttt{set\_t} function) that return a variable, typically the return value of another function call.
+
+For a value-flow path with return value $v$ and governing condition $\varphi$, we determine it is an error path if and only if:
 \begin{equation}
-    \text{isError}(v, \varphi) = 
+    \text{isError}(v, \varphi) =
     \begin{cases}
         \text{true} & \text{if } \varphi \Rightarrow (v \notin \mathcal{S}) \lor \varphi \Rightarrow (v \in \mathcal{E}) \\
-        \text{false} & \text{if } \varphi \Rightarrow (v \in \mathcal{S}) \lor \varphi \Rightarrow (v \notin \mathcal{E}) \\
-        \text{unknown} & \text{otherwise}
+        \text{false} & \text{otherwise}
     \end{cases}
 \end{equation}
+Intuitively, this means an error path is identified when the condition $\varphi$ implies that the return value $v$ is either not a success code or is an error code.
 
-In practice, shape checker conditions typically test for inequality against success codes (e.g., $v \neq 0$).
-Thus, proving $v \notin \mathcal{S}$ is sufficient to identify an error path.
-This reduces to straightforward set membership tests against $\mathcal{S}$ and $\mathcal{E}$, bypassing complex constraint solving.
+For \textit{Direct-constant-return checkers}, determining whether $\varphi \Rightarrow (v \notin \mathcal{S})$ or $\varphi \Rightarrow (v \in \mathcal{E})$ is straightforward: since $v$ is a constant, we directly test whether $v \notin \mathcal{S}$ or $v \in \mathcal{E}$ holds.
+For \textit{Variable-return checkers}, the condition $\varphi$ only involves comparisons against constants (e.g., $v = -1$ or $v \neq 0$), where the constants are typically error codes or success codes.
+To determine whether $\varphi \Rightarrow (v \notin \mathcal{S})$ or $\varphi \Rightarrow (v \in \mathcal{E})$, we directly compute the possible value set of the return value variable from the condition $\varphi$, and then test whether all possible values are not in $\mathcal{S}$ or belong to $\mathcal{E}$.
+Both cases involve only set membership operations computable in $O(1)$ time.
+
+\autoref{fig:conditional-value-flow} illustrates this determination process.
+For the \texttt{check} function, under condition $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$, the return value is the constant $-1$.
+Since $-1 \in \mathcal{E}$, we directly have $v \in \mathcal{E}$, and thus $\text{isError}(-1, \varphi_0) = \text{true}$.
+For the \texttt{set\_t} function, under condition $\varphi_1 = (\%0 \neq 0)$, the return value is $\%0$ (the return value of \texttt{check}).
+From $\varphi_1$, we infer that the possible values of $\%0$ are $\mathbb{Z} \setminus \{0\}$.
+Since $\mathcal{S} = \{0\}$, all possible values are not in $\mathcal{S}$, so $\text{isError}(\%0, \varphi_1) = \text{true}$.
 
 \subsubsection{Early-Exit Edge Identification on CFG}\label{sec:design:edge-identification}
 
-The third step maps identified error conditions to control-flow edges in the CFG.
-\autoref{algo:early-exit-identification} presents the algorithm:
+The third step maps identified error conditions to control-flow edges in the CFG, as presented in \autoref{algo:early-exit-identification}.
+For each value-flow path in the CRVFG, where a path represents a complete flow from a source (either a call instruction or a constant) to the return instruction, the algorithm extracts the guard condition $\varphi$ (conjunction of conditions along the path) and the source value $v$, then invokes $\text{isError}(v, \varphi)$ to determine whether this path leads to an error return.
+If an error path is identified, the algorithm extracts the key clause $\varphi_{key}$ from $\varphi$ via $\texttt{GetKeyClause}$, which returns the rightmost sub-clause (e.g., $\varphi = (b_1 = b_2) \land (\texttt{s1} \neq \texttt{s2})$ yields $\varphi_{key} = (\texttt{s1} \neq \texttt{s2})$), since the rightmost clause determines the error status under short-circuit evaluation semantics.
+The algorithm then obtains the basic block $B_{src}$ containing $\varphi_{key}$ via $\texttt{GetBasicBlock}(\varphi_{key})$ and the successor block $B_{dst}$ via $\texttt{GetSuccessor}(B_{src}, \varphi_{key})$, marking the CFG edge $B_{src} \rightarrow B_{dst}$ as early-exit.
+
+\subsubsection{Inter-Procedural Recursion}\label{sec:design:inter-procedural-recursion}
+
+When a function containing shape checkers has its return value derived from a callee function, inter-procedural recursion is required to propagate error status information across functions.
+Our algorithm identifies two scenarios that trigger recursive analysis of callee functions:
 \begin{enumerate}
-    \item Obtain the return instruction and extract the return value $v_{ret}$.
-    \item Construct the CRVFG by tracing data-flow of $v_{ret}$.
-    \item For each edge in the CRVFG, extract the condition $\varphi$ and value $v$.
-    \item If $\text{isError}(v, \varphi)$ is true, locate the corresponding branch instruction in the CFG and mark the control-flow edge as early-exit.
+    \item If the source value $v$ of a value-flow path is the return value of a call instruction, the callee function is recursively analyzed.
+    \item If a clause in the guard condition $\varphi$ checks whether the return value of a call instruction belongs to $\mathcal{E}$ or $\mathcal{S}$ (e.g., $\varphi = (\%0 \neq 0)$ where $\%0$ is a call return), the callee function is recursively analyzed.
+    This scenario corresponds to common status propagation patterns in production code (e.g., \texttt{if (x == ERROR) return ERROR}) where \texttt{x} is return value of one callee function.
 \end{enumerate}
-
-\begin{example}
-For the \texttt{set\_t} function, the CRVFG in \autoref{fig:conditional-value-flow} reveals that when $\varphi_1 = (\%1 = \text{true})$ holds, the return value $\%0 \in \mathcal{E}$.
-Therefore, the CFG edge from BB0 to BB1 (where $\%1$ is true) is marked as an early-exit edge.
-This edge corresponds to the branch where \texttt{icmp ne \%0, 0} evaluates to true, indicating the shape check failed.
-\end{example}
-
 
 \subsection{Inter-Procedural Information Propagation for Host-Side Programs}\label{sec:design:propagation}
 
-Our primary objective is to optimize the performance of device kernel functions and eliminate kernels that are provably unreachable at runtime.
-To this end, \mysys employs a unified inter-procedural analysis framework integrating pointer analysis, function object propagation, and scalar constant propagation for host-side programs.
-\mysys propagates precise semantic information up to the kernel launch sites.
-Operating on the CFG, the analysis maintains a symbolic environment $\mathbb{E}$ and a flow-sensitive memory store $\mathbb{S}$.
-We detail the handling of key program constructs below.
+The propagation stage takes the initial calling context $\mathbb{C}_{init}$ from \S\ref{sec:design:context_construction} and the early-exit edges $E_{exit}$ from \S\ref{sec:design:early-return} as inputs, and propagates constant information through the host-side program to kernel launch sites.
+The analysis maintains a symbolic environment $\mathbb{E}$ and a flow-sensitive memory store $\mathbb{S}$, performing value propagation on value domain as defined in \autoref{sec:design:definitions}.
 
-\textit{Pointer Arithmetic and Alias Analysis}
-We represent a pointer value as a pair $\langle \mathcal{B}, \delta \rangle$. 
-For pointer arithmetic (e.g., \texttt{getelementptr}), we update the offset $\delta$ while preserving the base set $\mathcal{B}$.
-To balance precision and overhead, we bound $|\mathcal{B}| \le 5$, demoting the base to \texttt{Unknown} if this limit is exceeded.
-Function pointers are similarly propagated to support indirect calls.
-To refine alias analysis when bases are unknown, we leverage LLVM's Type-Based Alias Analysis (TBAA) metadata to restrict the scope of potential memory conflicts to type-compatible objects.
+\textit{Initialization.}
+The analysis begins with $\mathbb{C}_{init} = (\mathbb{E}, \mathbb{S})$ constructed from the Graph IR node, which provides concrete values for tensor dimensions and operator parameters.
+These initial constants serve as seeds for propagation: when the analysis encounters a load from a memory location initialized with a concrete value, that value flows into the corresponding virtual register.
 
-\textit{Memory Operations}
-The memory store $\mathbb{S}$ is updated and accessed by three primary instructions.
-Allocation instructions introduce new abstract locations into $\mathbb{S}$, managed with context-sensitive modeling.
-Store instructions update the flow-sensitive store $\mathbb{S}$ local to the current basic block: writing to a pointer with a deterministic base performs a \kw{strong update} (replacement), whereas writing to an unknown base or offset triggers a \kw{weak update} (conservative invalidation/merge).
-Load instructions simply retrieve the current specialization value from $\mathbb{S}$ corresponding to the accessed address.
+\textit{Propagation and Edge Liveness.}
+During forward propagation, conditional branches are analyzed to determine edge liveness.
+If a branch condition evaluates to a constant, the non-taken edge is marked \texttt{Inactive}; otherwise, both branches remain \texttt{Active}.
+At control-flow merge points, the incoming stores from all \texttt{Active} predecessors are combined using standard lattice join operations.
 
-\textit{Context-Sensitive Function Calls}
-We employ a context-sensitive approach akin to abstract interpretation.
-Each call site generates a specialized calling context based on the actual arguments and the current store $\mathbb{S}$.
-The algorithm recursively analyzes the callee, using memoization to cache results for identical contexts.
-Recursion is handled by tracking the call stack and returning $\bot$ upon detecting cycles, ensuring termination.
-
-\textit{Control Flow Processing}
-We adopt a hybrid strategy for loops, prioritizing a \kw{Per-Iteration Analysis} that simulates execution iteration by iteration.
-If loop conditions become non-constant, the analysis falls back to a \kw{Maximal Fixed-Point (MFP)} iteration.
-Within these modes, conditional branches determine edge liveness: if a condition evaluates to a constant, the non-taken edge is marked \texttt{Inactive}; otherwise, both branches are marked \texttt{Active}.
-This liveness information is critical for pruning unreachable paths during propagation.
-
-\textit{Context Merging and Early-Exit Integration}
-At control flow convergence points, we merge the incoming stores $\mathbb{S}$ from all \texttt{Active} predecessors and merge incoming specialization values for \texttt{PHI} instructions.
-The merging applies standard lattice operations.
-Crucially, this step integrates with the optimization described in \cref{sec:design:early-return}.
-Any predecessor edge marked as an \texttt{early-exit} path, or determined to be unreachable by the branch analysis, is treated as \texttt{Inactive}.
-Consequently, the memory states and values from these inactive blocks are excluded entirely from the merge operation.
-This prevents the pollution of the analysis state by imprecise or error-handling logic, substantially improving the precision of the propagated information at join points.
+\textit{Early-Exit Integration.}
+A key precision enhancement comes from integrating early-exit edge information.
+Any CFG edge in $E_{exit}$ is treated as \texttt{Inactive} during context merging.
+This excludes error-handling paths from the analysis state, preventing the pollution of propagated constants by imprecise values from unreachable branches.
+For example, if a shape checker returns an error code when dimensions mismatch, but the initial context guarantees matching dimensions, the error path is pruned and its state does not affect downstream analysis.
 
 \subsection{Kernel Specialization and Library Pruning} \label{sec:design:specialization}
 
@@ -332,7 +323,7 @@ Based on the context derived from the inter-procedural analysis, \mysys performs
 
 For generic kernels, \mysys substitutes the variable inside the kernel with the concrete schedule parameters identified from the analysis on the host-side program.
 Then \mysys employs a sequence of optimization passes, specifically \texttt{IPSCCP}, \texttt{Loop Unrolling}, and \texttt{CFG Simplification}. 
-These passes exploit the newly introduced constants to fold computations and simplify control structures, generating a highly optimized kernel binary.
+These passes exploit the newly introduced constants to fold sclar computations and simplify control structures, generating a highly optimized kernel binary.
 
 For manually specialized libraries, \mysys reduces code size by leveraging path liveness information from the host analysis.
 During constant propagation, we identify \texttt{Dead Paths}, i.e., execution branches where guard conditions evaluate to false based on deterministic constants.
