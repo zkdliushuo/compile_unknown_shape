@@ -1,21 +1,22 @@
 \begin{table}[t]
     \centering
-    \caption{Expanded overview of dynamic shape operator benchmarks.
-    \textbf{Symbols:} $T$: Total tokens, $B$: Batch size, $P$: Page size, $N$: Number of Heads ($N_Q$ query, $N_{KV}$ key/value), $D$: Hidden dim (Model dim), $D_{head}$: Head dim ($D/N_Q$), $C$: Channels, $E$: Experts, $H, W$: Image Height/Width. \textbf{Aux. Input}: Geometric parameters.
-    \textbf{Configurations:} Unless otherwise stated, we fix static dimensions based on representative models: $D=4096, D_{head}=128, N_Q=32, N_{KV}=32$ for Llama2-7B; $E=8$ for Mixture-of-Experts (MoE) layer; $C=512$ for CV (e.g., ResNet-50); and $D=128$ for RecSys. 
+    \caption{Overview of dynamic shape operator benchmarks.
+    \textbf{Symbols:} $T$: Total tokens, $B$: Batch size, $P$: Page size, $M$: Max tokens per request, $N$: KV cache blocks (LLM) / Embedding table size (RecSys), $K$: Number of scatter indices, $h_q$: Number of query heads, $h_{kv}$: Number of key-value heads, $d_k$: Head dimension, $D$: Hidden dimension, $C$: Channels, $E$: Experts, $H, W$: Image Height/Width.
+    \textbf{Static Configurations:} $D=4096, d_k=128, h_q=32, h_{kv}=32$; $E=8$ for MoE; $C=512$ for CV; $D=128$ for RecSys.
+    For symbols not listed in the Dynamic Range column (e.g., $M$, $P$), we use representative values derived from typical configurations.
     \textbf{Note:} Operators labeled \textbf{MM}, \textbf{FFN}, and \textbf{RMS} share identical kernel implementations across Prefill and Decoding phases, differing only in the leading dynamic dimension ($T$ vs. $B$).
-    Besides, \textbf{Conv2d} is executed via \texttt{img2col} + MatMul, hence universially denoted as \textbf{MM}.
-    In the follwing experiments, unless otherwise stated, the average speedup is calculated by randomly sampling 5 shapes from the dynamic range.}
+    \textbf{Conv2d} is executed via \texttt{img2col} + MatMul, also denoted as \textbf{MM}.
+    For simplicity, the \textbf{Input Shape} column only lists the shape of the input tensor with dynamic dimensions.}
     \label{tab:dynamic_operators}
     \resizebox{\textwidth}{!}{%
     \begin{tabular}{lllllll}
     \toprule
-    \textbf{Domain} & \textbf{Phase / Scenario} & \textbf{Operator} & \textbf{Abbr.} & \textbf{Main Layout} & \textbf{Aux. Input} & \textbf{Dynamic Range} \\
+    \textbf{Domain} & \textbf{Phase / Scenario} & \textbf{Operator} & \textbf{Abbr.} & \textbf{Input Shape} & \textbf{Aux. Input} & \textbf{Dynamic Range} \\
     \midrule
     % LLM Domain
-    \multirow{13}{*}{\shortstack{\textbf{LLM}\\\textit{Llama 2}\\\textit{Qwen 2}\\\textit{DeepSeek V3}}} & \multirow{5}{*}{\shortstack[l]{Prefill Phase\\(Ragged Input)}} & 
-    \multirow{2}{*}{FlashAttention} & \multirow{2}{*}{\textbf{P-Attn}} & $Q: [T, N_Q, D_{head}]$ & \multirow{2}{*}{\texttt{Offsets[B+1]}} & $T \in [256, 8k]$ \\
-    & & & & $K,V: [T, N_{KV}, D_{head}]$ & & $B \in [1, 8]$ \\
+    \multirow{13}{*}{\shortstack{\textbf{LLM}\\\textit{Llama 3.2}\\\textit{Qwen 2.5}}} & \multirow{5}{*}{\shortstack[l]{Prefill Phase\\(Ragged Input)}} &
+    \multirow{2}{*}{FlashAttention} & \multirow{2}{*}{\textbf{P-Attn}} & $Q: [T, h_q, d_k]$ & \multirow{2}{*}{\texttt{Offsets[B+1]}} & $T \in [256, 8k]$ \\
+    & & & & $K,V: [T, h_{kv}, d_k]$ & & $B \in [1, 8]$ \\
     \cmidrule{3-7}
     & & FusedFFN & \textbf{FFN} & $[T, D]$ & - & $T \in [256, 8k]$ \\
     \cmidrule{3-7}
@@ -24,9 +25,9 @@
     & & MatMul & \textbf{MM} & $[T, K]$ & - & $T \in [256, 8k]$ \\
     \cmidrule{2-7}
     % Decoding Phase
-    & \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} & 
-    \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q: [B, 1, N_Q, D_{head}]$ & \texttt{BlockTbl[B, M]} & $T \in [256, 8k]$ \\
-    & & & & $K,V: [N, P, N_{KV}, D_{head}]$ & \texttt{Offsets[B+1]} & $B \in [1, 8]$ \\
+    & \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} &
+    \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q: [B, 1, h_q, d_k]$ & \texttt{BlockTbl[B, M]} & $B \in [1, 8]$ \\
+    & & & & $K,V: [N, P, h_{kv}, d_k]$ & \texttt{Offsets[B+1]} & $M \in [256, 8k]$ \\
     \cmidrule{3-7}
     & & FusedFFN & \textbf{FFN} & $[B, D]$ & - & $B \in [1, 8]$ \\
     \cmidrule{3-7}
@@ -37,7 +38,7 @@
     % MoE Layer
     & \multirow{4}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & $[T, E]$ & - & $T \in [256, 8k]$ \\
     \cmidrule{3-7}
-    & & Sinkhorn & \textbf{Sink} & $[T, E]$ & - & $E \in [8, 64]$ \\ 
+    & & Sinkhorn & \textbf{Sink} & $[T, E]$ & - & $T \in [256, 8k]$ \\
     \cmidrule{3-7}
     & & MoeTokenPermute & \textbf{Perm} & $[T, D]$ & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
     \midrule
@@ -56,7 +57,7 @@
     & & BatchNorm & \textbf{BN} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
     \midrule
     % RecSys Domain
-    \textbf{RecSys} & \multirow{2}{*}{\shortstack[l]{Feature Interaction\\(Sparse Update)}} & \multirow{2}{*}{ScatterElements} & \multirow{2}{*}{\textbf{Scat}} & \multirow{2}{*}{$[T, D]$} & \multirow{2}{*}{\texttt{Indices[T]}} & \multirow{2}{*}{$S \in [128, 1024]$} \\
+    \textbf{RecSys} & \multirow{2}{*}{\shortstack[l]{Feature Interaction\\(Sparse Update)}} & \multirow{2}{*}{ScatterElements} & \multirow{2}{*}{\textbf{Scat}} & \multirow{2}{*}{$[N, D]$} & \multirow{2}{*}{\texttt{Indices[K]}} & \multirow{2}{*}{$K \in [128, 1024]$} \\
     \textit{DLRM} & & & & & & \\
     \bottomrule
     \end{tabular}

@@ -17,4 +17,3 @@ While these optimize memory efficiency, they do not address specialization of pr
 PyTorch 2~\cite{ansel2024dynamo} introduces SymInt and ShapeEnv for symbolic shape reasoning.
 TensorRT~\cite{nvidia2021tensorrt} supports dynamic shapes through profile-based optimization.
 However, these frameworks have limited support for specializing third-party AoT libraries (FlashInfer~\cite{ye2025flashinfer}, CANN~\cite{ascend_cannopsadv}).
-\mysys complements these by enabling cross-language invariant propagation, filling the gap between graph-level handling and kernel-level specialization.

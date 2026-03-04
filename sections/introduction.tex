@@ -38,7 +38,7 @@ We construct an automated cross-language and whole-program analysis framework fo
 By introducing mechanisms specific to DL systems, \mysys extends traditional static analysis techniques and consists of four main components:
 (1) \textbf{Cross-Language Context Reconstruction} (\S\ref{sec:design:context_construction}) defines semantic mapping rules from Graph IR parameter types to the typed records in C++ memory, automatically generating partially-evaluated calling contexts without analyzing complex FFI glue code;
 (2) \textbf{Early-Exit Edge Identification} (\S\ref{sec:design:early-return}) tracks the value flow of return values and determines whether a path leads to error status codes based on guard conditions, enabling precise pruning of infeasible edges at control-flow merge points;
-(3) \textbf{Inter-Procedural Constant Propagation} (\S\ref{sec:design:propagation}) performs context-sensitive analysis to propagate constants through complex host-side programs;
+(3) \textbf{Inter-Procedural Constant Propagation} (\S\ref{sec:design:propagation}) performs field-sensitive analysis to propagate constants through complex host-side programs;
 (4) \textbf{Kernel Specialization and Library Pruning} (\S\ref{sec:design:specialization}) performs LLVM IR-level transformations to specialize generic kernels and eliminate redundant template instantiations.
 
 In summary, the main contributions of this paper are as follows:
