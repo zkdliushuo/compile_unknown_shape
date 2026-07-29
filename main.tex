@@ -74,6 +74,9 @@
 \usepackage{dutchcal}
 \usepackage{amsthm}
 \usepackage{threeparttable}
+\usepackage{colortbl}
+\usepackage{enumitem}
+\usepackage{longtable}
 
 % 定义新定理样式：缩进1em，标题斜体，内容正常
 \newtheoremstyle{indenteditalic}
@@ -513,8 +516,38 @@ belowskip=0em  % 控制代码块下方的距离
 \lstnewenvironment{DIFverbatim}{\lstset{style=DIFverbatimstyle}}{} %DIF PREAMBLE
 \lstnewenvironment{DIFverbatim*}{\lstset{style=DIFverbatimstyle,showspaces=true}}{} %DIF PREAMBLE
 %DIF END PREAMBLE EXTENSION ADDED BY LATEXDIFF
+\input{response_letter/response-preamble}
 
 \begin{document}
+\input{response_letter/response-body}
+
+% Start the appended marked manuscript with fresh counters and restore the
+% paper's original hyperlink namespaces.
+\clearpage
+\hypersetup{pageanchor=false}
+\pagenumbering{arabic}
+\setcounter{section}{0}
+\setcounter{subsection}{0}
+\setcounter{subsubsection}{0}
+\setcounter{paragraph}{0}
+\setcounter{figure}{0}
+\setcounter{table}{0}
+\setcounter{equation}{0}
+\setcounter{footnote}{0}
+\makeatletter
+\@ifundefined{c@algorithm}{}{\setcounter{algorithm}{0}}
+\@ifundefined{c@definition}{}{\setcounter{definition}{0}}
+\@ifundefined{c@lstlisting}{}{\setcounter{lstlisting}{0}}
+\global\ACM@linecount\@ne
+\makeatother
+\let\theHsection\PaperHSection
+\let\theHsubsection\PaperHSubsection
+\let\theHsubsubsection\PaperHSubsubsection
+\let\theHfigure\PaperHFigure
+\let\theHtable\PaperHTable
+\let\theHequation\PaperHEquation
+\pagestyle{standardpagestyle}
+\hypersetup{pageanchor=true}
 
 %%
 %% The "title" command has an optional parameter,
@@ -598,7 +631,17 @@ belowskip=0em  % 控制代码块下方的距离
 %%
 %% This command processes the author and affiliation and title
 %% information and builds the first part of the formatted document.
+\let\CombinedDocumentRef\ref
+\def\PaperTotPagesLabel{TotPages}
+\def\ref#1{%
+  \def\CurrentReferenceLabel{#1}%
+  \ifx\CurrentReferenceLabel\PaperTotPagesLabel
+    \PaperTotPagesLink
+  \else
+    \CombinedDocumentRef{#1}%
+  \fi}
 \maketitle
+\let\ref\CombinedDocumentRef
 
 \input{sections/introduction-paragraph-diff}
 \begin{comment}
