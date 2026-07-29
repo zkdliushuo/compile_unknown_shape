@@ -84,16 +84,15 @@
         % Node 7: Constant Propagation
         \node[box, minimum width=2.8cm] (N7) at (14.8, -1.6) {Constant\\Propagation\\[2pt](\S 3.4)};
 
-        % Node 8: Kernel Specialization
-        \node[box, minimum width=2.8cm] (N8) at (19.2, -1.6) {Kernel\\Specialization\\[2pt](\S 3.5)};
+        % Node 8: Backend-specific use
+        \node[box, minimum width=3.4cm] (N8) at (19.2, -1.6) {Backend-Specific\\Application\\[2pt](\S 3.5)};
 
-        % Node 9a & 9b: Code Bloat vs Performance (Two Dashed Circles)
-        \node[circle, draw, thick, dashed, minimum size=1.4cm, align=center, inner sep=2pt] (N9a) at (17.8, -3.3) {
-            \small Code Bloat
+        % Node 9a & 9b: distinct backend outcomes
+        \node[box, dashed, minimum width=3.2cm, minimum height=1.1cm] (N9a) at (17.2, -3.7) {
+            \small NPU Kernel\\[-1pt]\small Specialization
         };
-        \node at (19.2, -3.3) {\textit{vs}};
-        \node[circle, draw, thick, dashed, minimum size=1.4cm, align=center, inner sep=2pt] (N9b) at (20.6, -3.3) {
-            \small Performance
+        \node[box, dashed, minimum width=3.2cm, minimum height=1.1cm] (N9b) at (21.2, -3.7) {
+            \small GPU Library\\[-1pt]\small Pruning
         };
 
         % ====================
@@ -111,6 +110,8 @@
 
         % 右侧最后阶段连线 N7 -> N8
         \draw[->] (N7) -- (N8);
+        \draw[->] (N8.south) -- ++(0,-0.35) -| (N9a.north);
+        \draw[->] (N8.south) -- ++(0,-0.35) -| (N9b.north);
 
         % 复杂的总线汇集 (Bus merge to N7)
         \coordinate (merge_point) at (12.6, -1.6);           % 汇集点X坐标
@@ -128,7 +129,6 @@
     \end{tikzpicture}
     }
     \caption{The overall workflow of \mysys.}
-    \Description{Flow diagram showing the workflow from Graph IR through Context Generation, Early-Exit Identification, Constant Propagation, to Kernel Specialization.}
+    \Description{Flow diagram showing Graph IR context generation, early-exit identification, constant propagation, NPU kernel specialization, and GPU library pruning.}
     \label{fig:overall_workflow}
-    \vspace{-10pt}
 \end{figure}

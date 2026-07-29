@@ -1,0 +1,104 @@
+\section{Introduction}\label{sec:intro}
+
+{\color{red}%
+\DIFdel{%
+DL frameworks and serving systems~}\mbox{\cite{ansel2024dynamo,abadi2016tensorflow,kwon2023vllm,zheng2024sglang}}\hspace{0pt}\DIFdel{ rely heavily on hand-written operator libraries~}\mbox{\cite{nvidia2021cublas,nvidia2017cutlass,ye2025flashinfer,ascend_cannopsadv,dao2024flashattention2,flashmla2025}}\hspace{0pt}\DIFdel{ to ensure efficient operator implementation. To achieve universal applicability, these libraries must handle input dynamics arising from two main sources: (1) Cross-model heterogeneity, involving diverse algorithmic variants (e.g., attention mechanisms~}\mbox{\cite{vaswani2017attention,ainslie2023gqa,shazeer2019fast,beltagy2020longformerlongdocumenttransformer}}\hspace{0pt}\DIFdel{) and varying attributes (e.g., head numbers~}\mbox{\cite{yang2024qwen2technicalreport,touvron2023llama2openfoundation,deepseekai2025deepseekv3technicalreport}}\hspace{0pt}\DIFdel{); and (2) Input shape variability, where dimensions like batch sizes and sequence lengths vary at runtime.
+}
+\par}
+{\color{blue}%
+Deep-learning (DL) frameworks and serving systems~\cite{ansel2024dynamo,abadi2016tensorflow,kwon2023vllm,zheng2024sglang} rely heavily on expert-written operator libraries~\cite{nvidia2021cublas,nvidia2017cutlass,ye2025flashinfer,ascend_cannopsadv,dao2024flashattention2,flashmla2025}. These libraries must cover input dynamics from both cross-model heterogeneity (such as different algorithmic variants~\cite{vaswani2017attention,ainslie2023gqa,shazeer2019fast,beltagy2020longformerlongdocumenttransformer} and architectural attributes~\cite{yang2024qwen2technicalreport,touvron2023llama2openfoundation,deepseekai2025deepseekv3technicalreport}) and runtime variation in dimensions (such as batch size and sequence length). The performance of each resulting operator configuration depends not only on its algorithm but also on its \emph{schedule parameters}, including tile sizes, loop bounds, pipeline stages, and memory layout choices. Different shapes can have different optimal schedules. Consequently, when input shapes are dynamic, the operator implementation must select a high-performance schedule from the runtime shape.
+\par}
+
+{\color{red}%
+\DIFdel{%
+Existing operator libraries adopt different specialization strategies depending on the underlying hardware characteristics, yet both approaches face critical limitations as illustrated in }\autoref{fig:comparison-libraries}\DIFdel{.
+}
+\par}
+{\color{blue}%
+Existing approaches can be classified by how their generated binaries represent schedule parameters. A \emph{schedule-fixed kernel} compiles the key schedule parameters as constants, so each compiled kernel realizes a fixed schedule. A \emph{schedule-generic kernel} retains the schedule parameters as runtime variables, allowing one compiled kernel to realize different schedules for different shapes. The four approaches in \autoref{fig:comparison-libraries} comprise three schedule-fixed approaches (\ding{172}--\ding{174}) and one schedule-generic approach (\ding{175}).
+\par}
+
+\input{figures/intro/kernel-specialization-paths}
+
+{\color{red}%
+\DIFdel{%
+Meanwhile, although AI compilers~}\mbox{\cite{tillet2019triton,chen2018tvm,zheng2022dietcode,shen2021nimble,zheng2023bladedisc}}\hspace{0pt}\DIFdel{ offer an alternative by generating specialized kernels at runtime, they are typically confined to specific high-level IRs (e.g., Triton IR~}\mbox{\cite{tillet2019triton}}\hspace{0pt}\DIFdel{ and Relax~}\mbox{\cite{Lai2023RelaxCA}}\hspace{0pt}\DIFdel{) and incur non-negligible runtime compilation overhead.
+}
+\par}
+{\color{blue}%
+AI compilers produce schedule-fixed kernels through schedule search and code generation. \ding{172}~A static-shape AI compiler takes a concrete shape as input, searches for or autotunes a schedule for that shape, and generates a shape-specific kernel, often through a just-in-time (JIT) compilation path~\cite{chen2018autotvm,zheng2020ansor,tilelang,tillet2019triton}. An unseen shape triggers another round of schedule search and code generation. \ding{173}~A dynamic-shape AI compiler instead searches for schedules over a declared shape range ahead of time. It generates a set of optimized, schedule-fixed kernels together with a dispatcher that maps each runtime shape in the range to an appropriate kernel~\cite{zheng2022dietcode,shen2021nimble,zheng2023bladedisc,Lai2023RelaxCA}.
+\par}
+
+{\color{red}%
+\DIFdel{%
+On GPU platforms, which are highly sensitive to compiler optimizations like loop unrolling, developers usually resort to manual specialization using C++ templates~}\mbox{\cite{nvidia2017cutlass,ye2025flashinfer,dao2024flashattention2}}\hspace{0pt}\DIFdel{ (depicted as \ding{182}). Conversely, on architectures like Ascend~}\mbox{\cite{liao2019davinci}}\hspace{0pt}\DIFdel{ that provide diverse programmable units, the schedule parameters are substantially more numerous. Since manually specializing for such a vast search space is intractable, the vendor libraries (e.g., CANN~}\mbox{\cite{ascend_cannopsadv}}\hspace{0pt}\DIFdel{) on such platforms primarily invoke generic kernels (depicted as \ding{183}), resulting in performance loss due to weakened compiler optimizations.
+}
+\par}
+{\color{blue}%
+Expert-written operator libraries implement the other two approaches. \ding{174}~A schedule-fixed expert-written operator library encodes schedule parameters as C++ template parameters and enumerates their candidate values during ahead-of-time (AOT) compilation~\cite{nvidia2017cutlass,ye2025flashinfer,dao2024flashattention2}. This process produces a set of schedule-fixed kernels, from which an expert-written dispatcher selects a template instance for each runtime shape. \ding{175}~A schedule-generic expert-written operator library instead AOT-compiles a schedule-generic kernel. At runtime, an expert-written host-side scheduler applies heuristic rules to the input shape, computes the schedule parameters, and passes them to the device kernel as runtime arguments.
+\par}
+
+{\color{red}%
+\DIFdel{%
+Given these limitations, we focus on hand-written operator libraries and aim to address the shortcomings of both manual specialization and generic kernel approaches: achieving automatic specialization for generic libraries to recover performance loss, and pruning manually specialized libraries to mitigate combinatorial explosion and code bloat.
+}
+\par}
+{\color{blue}%
+AI compilers such as Triton and TileLang complement expert-written operator libraries but operate on a different compilation path~\cite{tillet2019triton,tilelang}. These code-generation workflows integrate specialization into the multi-level lowering of a high-level operator program. During lowering, the shape and schedule values selected for specialization are materialized and propagated as constants in the intermediate representations. This process generates a new specialized kernel implementation but does not directly specialize the existing C++/LLVM implementation of an expert-written operator library.
+\par}
+
+{\color{red}%
+\DIFdel{%
+To accommodate such dynamics, operator libraries typically adopt a generic implementation strategy: they calculate schedule parameters (configuration values such as tiling sizes and loop bounds) at runtime on the host side and pass them to the kernel function as variable arguments. However, this generic design comes at a cost. From the perspective of the underlying device native compiler, these critical configuration values appear as unknown variables rather than compile-time constants. This ambiguity effectively weakens aggressive compiler optimizations that rely on static information, such as constant folding, loop unrolling, and instruction schedule. Consequently, this often leads to suboptimal performance. In this context, specializing kernels by replacing input schedule parameters with constants at compile time is generally beneficial, as it can enhance subsequent compiler optimizations. As the complexity of operators~}\mbox{\cite{dao2024flashattention2,ye2025flashinfer}}\hspace{0pt}\DIFdel{ continues to increase and programmable units~}\mbox{\cite{liao2019davinci,jouppi2023tpu}}\hspace{0pt}\DIFdel{ within hardware become increasingly diverse, the number of schedule parameters of kernels explodes, further necessitating kernel specialization. While manual specialization resolves schedule parameters at compile time, exhaustively enumerating parameter combinations to accommodate input dynamics leads to combinatorial explosion and severe code bloat.
+}
+\par}
+{\color{blue}%
+The two expert-written library designs expose a common \emph{specialization trade-off}. Schedule-fixed kernels expose schedule parameters as compile-time constants, enabling optimizations such as constant folding, loop unrolling, and instruction scheduling; however, enumerating combinations of schedule parameters causes combinatorial code-size growth. Schedule-generic kernels use a compact binary to cover a large shape space, but representing schedule parameters as runtime variables limits the same compiler optimizations and can reduce performance. This trade-off becomes more pronounced as operator implementations grow more complex~\cite{dao2024flashattention2,ye2025flashinfer} and accelerator architectures expose increasingly diverse programmable units~\cite{liao2019davinci,jouppi2023tpu}. Both trends increase the number of schedule parameters and the size of their configuration space, further exacerbating the trade-off.
+\par}
+
+{\color{red}%
+\DIFdel{%
+To address these limitations, we observe that deploying a specific model exhibits partial dynamics: while input dimensions (e.g., batch size, sequence length) vary at runtime, model-specific attributes (e.g., hidden size, head number) remain invariant throughout serving. We denote these compile-time constants as model-specific constants, which can be resolved by symbolic shape inference in current DL frameworks~}\mbox{\cite{shen2021nimble,zheng2023bladedisc,Lai2023RelaxCA,ansel2024dynamo}}\hspace{0pt}\DIFdel{. A key insight is that kernel schedule configurations are primarily determined by these model-specific constants. Our analysis (\S}\ref{sec:motivation}\DIFdel{) shows that over 90\% of schedule parameters become deterministic given model-specific constants, enabling static resolution of most dynamic schedule decisions.
+}
+\par}
+{\color{blue}%
+Our key observation is that most schedule parameters are runtime invariants once a model is deployed. Most deployment scenarios exhibit \emph{partial dynamics}: only a limited set of dimensions, such as batch size and sequence length, vary at runtime, while model-specific attributes and dimensions, such as hidden size, head count, and head dimension, remain fixed. We refer to these fixed facts as model-specific constants. Current DL frameworks can recover model-specific constants through graph capture and symbolic shape inference~\cite{shen2021nimble,zheng2023bladedisc,Lai2023RelaxCA,ansel2024dynamo}. Mechanistically, model-specific constants determine the core tiling and pipeline structure constrained by on-chip resources and compute units, whereas dynamic dimensions primarily affect the number of executions of these tiles, their parallel partitioning, and tail handling. Consistent with this mechanism, our analysis in \S\ref{sec:motivation} finds that, across the studied operators, about 90\% of schedule parameters are runtime invariants determined by model-specific constants and do not depend on the concrete runtime values of dynamic dimensions.
+\par}
+
+{\color{red}%
+\DIFdel{%
+To address the above challenges, we introduce TilingInfer, the first system designed to enable precise constant propagation across language boundaries for kernel specialization. We construct an automated cross-language and whole-program analysis framework for automatic specialization of generic library kernels and code debloating for manually specialized libraries. By introducing mechanisms specific to DL systems, TilingInfer extends traditional static analysis techniques and consists of four main components: (1) Cross-Language Context Reconstruction (\S}\ref{sec:design:context_construction}\DIFdel{) defines semantic mapping rules from Graph IR parameter types to the typed records in C++ memory, automatically generating partially-evaluated calling contexts without analyzing complex FFI glue code; (2) Early-Exit Edge Identification (\S}\ref{sec:design:early-return}\DIFdel{) tracks the value flow of return values and determines whether a path leads to error status codes based on guard conditions, enabling precise pruning of infeasible edges at control-flow merge points; (3) Inter-Procedural Constant Propagation (\S}\ref{sec:design:propagation}\DIFdel{) performs field-sensitive analysis to propagate constants through complex host-side programs; (4) Kernel Specialization and Library Pruning (\S}\ref{sec:design:specialization}\DIFdel{) performs LLVM IR-level transformations to specialize generic kernels and eliminate redundant template instantiations.
+}
+\par}
+{\color{blue}%
+This observation suggests a novel way to address the specialization trade-off: using model-specific constants to specialize existing operator libraries. Inspired by this insight, we present \textbf{\uline{TilingInfer}}, a static-analysis framework for LLVM-based operator libraries. It uses LLVM IR as a common representation for C++ libraries. TilingInfer first uses graph-level model constants to \textbf{\uline{infer}} invariant \textbf{\uline{tiling}} data (i.e., schedule parameters) for both schedule-fixed and schedule-generic implementations. For each Graph IR node(i.e., an operator invocation), TilingInfer extracts its arguments, shapes, and attributes to construct the entry state of the corresponding host-side LLVM IR function. This construction covers both concrete and symbolic dimensions. TilingInfer then propagates this constructed state information through the host-side LLVM IR programs to device-kernel launch sites. Finally, for a schedule-generic kernel, TilingInfer employ the inferred launch-site constant schedule parameters to specialize the kernel. For the schedule-fixed implementation, TilingInfer identifies template instances that cannot be reached and removes these instances.
+\par}
+
+{\color{red}%
+\DIFdel{%
+Based on this insight, we propose leveraging the model-specific constants as contextual information to perform whole-program constant propagation. By propagating these model-specific constants through the operator library down to the kernel call sites, we can statically specialize generic kernels or prune redundant instances in manually specialized libraries. However, implementing this strategy faces two critical challenges regarding the precision of static analysis: the cross-language semantic gap and early-exit paths from dynamic shape checks. First, the operator library is typically integrated into the framework via Python/C++ Foreign Function Interface (FFI), which creates a semantic gap between high-level Python objects and low-level C++ memory states. Standard static analysis cannot bridge this gap, as existing tools treat FFI glue code as black boxes, failing to model the deep heap layouts and internal indirections of domain-specific objects (e.g., Tensor's nested size arrays) that are essential for reconstructing precise C++ calling contexts. Second, the host-side programs of operators involve many shape checkers for validiting input shape, introducing numerous early-exit paths that return error status codes when shape constraints are violated. Standard static analysis conservatively merges data flows from these early-exit paths with the normal path, thereby corrupting precise constant information and causing significant precision loss at control-flow merge sites.
+}
+\par}
+{\color{blue}%
+Realizing TilingInfer faces two key challenges. \textbf{First}, reconstructing the calling context requires bridging \textbf{a cross-language semantic gap} between graph-level constants and symbolic shape information to the field-sensitive entry state of the corresponding C++ operator. Graph IR records constants and symbolic dimensions as typed shapes and attributes, whereas the separately compiled C++/LLVM code exposes nested object layouts and pointer/field accesses. Bridging this gap through end-to-end cross-language analysis would require traversing framework dispatch, type conversion, object construction, and other Python/FFI machinery, making the analysis costly and framework-specific. TilingInfer instead uses type-specific context-update rules to precisely construct the required C++ entry state directly from Graph IR, avoiding analysis of Python/C++ FFI glue code. \textbf{Second}, operator host code contains many \textbf{shape checkers, leading to numerous early-exit paths}. Their early-exit paths just handle invalid inputs, report errors and skip the normal computation of schedule parameters. As a result, merging both states on early-exit paths and normal paths can pollute the normal state and reduce the precision of constant propagation. Meanwhile, analyzing every possible path separately would be too expensive for a large operator library. TilingInfer therefore uses a Conditional Return-Value Flow Graph (CRVFG) to identify early-exit paths before propagation based on . It excludes states from these paths when states from normal paths are merged. This preserves constants without analyzing every path separately.
+\par}
+
+\DIFdel{In summary, the main contributions of this paper are as follows:}\par
+{\color{red}
+\begin{enumerate}
+    \item \DIFdel{We propose TilingInfer, a novel static analysis framework that enables precise constant propagation across the DL framework's language boundary (Python/C++) into the underlying operator libraries.}
+    \item \DIFdel{We introduce a cross-language context reconstruction method based on semantic modeling of core DL data types, and a conditional return-value flow analysis for identifying early-exit edges.}
+    \item \DIFdel{We implement TilingInfer based on LLVM~\cite{lattner2004llvm} and apply it to PyTorch~\cite{ansel2024dynamo}, with extensibility to other Python-based frameworks and hardware backends.}
+    \item \DIFdel{Evaluation demonstrates TilingInfer's effectiveness: for generic operators on Ascend, it achieves an average speedup of \textbf{1.06$\times$} (up to \textbf{1.17$\times$}) and \textbf{3\%} end-to-end inference speedup; for manually specialized libraries on GPU, it removes over \textbf{96\%} of redundant kernels.}
+\end{enumerate}
+}
+
+\DIFadd{This paper makes four contributions:}\par
+{\color{blue}
+\begin{enumerate}
+    \item We devise a mechanism that propagates graph-level shape information into the C++ compiler pipeline without analyzing FFI glue code. We formalize context-update rules that map Graph IR parameter types to the memory states of their underlying C++ implementations, allowing the mechanism to cover different PyTorch backends.
+    \item We propose CRVFG-based early-exit path identification for precise constant-propagation analysis of operator host code while avoiding expensive path-sensitive analysis.
+    \item We implement TilingInfer, a prototype system for specializing expert-written operator libraries on GPU and NPU platforms. It applies automatic partial evaluation to schedule-generic kernels to reduce scalar overhead and prunes unreachable template instances from schedule-fixed binaries at compile time to reduce binary size.
+    \item On an Ascend NPU, TilingInfer achieves a 1.06$\times$ geometric-mean device-kernel speedup across 14 CANN operators and a 1.05$\times$ geometric-mean end-to-end speedup across six representative inference scenarios; it provides larger benefits in the performance-critical LLM decode phase, averaging a 1.10$\times$ end-to-end speedup across the two decode scenarios. On an NVIDIA GPU, it reduces a 542\,MB FlashInfer archive by 88.8--95.5\% across 17 model variants.
+\end{enumerate}
+}

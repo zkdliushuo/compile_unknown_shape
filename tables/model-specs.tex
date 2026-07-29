@@ -1,0 +1,51 @@
+\begin{table}[t]
+    \centering
+    \caption{End-to-end model benchmark configurations. $B$ is the number of concurrent requests, $S$ is the HSTU interaction-sequence or LLM prompt length, and $L_{\mathrm{KV}}$ is the number of cached tokens visible to each decode request.}
+    \Description{Frameworks, fixed model dimensions, dynamic-shape sweeps, and representative Figure 12 shapes for the six end-to-end inference scenarios.}
+    \label{tab:eval:model-configs}
+    \scriptsize
+    \setlength{\tabcolsep}{3pt}
+    \renewcommand{\arraystretch}{0.92}
+    \begin{tabularx}{\textwidth}{@{}
+        >{\raggedright\arraybackslash}p{0.12\textwidth}
+        >{\raggedright\arraybackslash}p{0.15\textwidth}
+        >{\raggedright\arraybackslash}X
+        >{\raggedright\arraybackslash}p{0.22\textwidth}
+        >{\raggedright\arraybackslash}p{0.13\textwidth}
+        @{}}
+        \toprule
+        \textbf{Scenario} & \textbf{Deployment stack} & \textbf{Fixed configuration} & \textbf{Dynamic Range in \autoref{fig:eval:model-overall}} & \textbf{Shape in \autoref{fig:eval:operator-breakdown}} \\
+        \midrule
+        DeepFM &
+        \texttt{torch\_npu} + TorchRec &
+        20 sparse fields, 13 dense features, $D_{\mathrm{emb}}=64$, 10 dense blocks &
+        $B\in\{4,16,32,64,128\}$ &
+        $B=64$ \\
+        HSTU &
+        \texttt{torch\_npu} + TorchRec &
+        $B=2$, $D=512$, $N_H=8$, $D_H=64$, 8 HSTU blocks; no interaction-sequence cache &
+        $S\in\{32,64,128,256,512,1024\}$ &
+        $B=2,\ S=256$ \\
+        LLaMA-3 1B Prefill &
+        \texttt{torch\_npu} + Transformers &
+        $B=2$, $D=512$, $N_H=8$, $D_H=64$, 16 decoder blocks &
+        $S\in\{32,64,128,256,512,1024\}$ &
+        $B=2,\ S=256$ \\
+        LLaMA-3 1B Decode &
+        \texttt{torch\_npu} + Transformers &
+        one-token query, $D=512$, $N_H=8$, $D_H=64$, paged KV cache &
+        $B=2,\ L_{\mathrm{KV}}\in\{32,64,128,256,512,1024\}$ &
+        $B=16,\ L_{\mathrm{KV}}=256$ \\
+        Qwen-3.5 1B Prefill &
+        \texttt{torch\_npu} + Transformers &
+        $B=2$, $D=640$, $N_H=8$, $D_H=80$, 16 decoder blocks &
+        $S\in\{32,64,128,256,512,1024\}$ &
+        $B=2,\ S=256$ \\
+        Qwen-3.5 1B Decode &
+        \texttt{torch\_npu} + Transformers &
+        one-token query, $D=640$, $N_H=8$, $D_H=80$, paged KV cache &
+        $B=2,\ L_{\mathrm{KV}}\in\{32,64,128,256,512,1024\}$ &
+        $B=16,\ L_{\mathrm{KV}}=256$ \\
+        \bottomrule
+    \end{tabularx}
+\end{table}

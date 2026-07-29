@@ -1,0 +1,40 @@
+\subsection{Sensitivity to Resolved Schedule Parameters}
+\label{sec:eval:sensitivity}
+
+\begingroup
+\setlength{\intextsep}{8pt}
+\input{figures/evaluation/op-speedup/resolved-tiling-code-slice.tex}
+
+\begin{figure}[t]
+	\centering
+	\includegraphics[width=0.85\textwidth]{figures/evaluation/op-speedup/resolved_constant_sensitivity.pdf}
+	\caption{Sensitivity to resolved schedule parameters across runtime
+	shapes. Numbers in parentheses give the number of specialized schedule
+	parameters. Each point shows the speedup at one KV length; the first three
+	label backgrounds match the groups in
+	\autoref{fig:resolved-tiling-code}.}
+	\Description{Point plot of speedup over Baseline for Control logic with 6
+	specialized parameters, Per-core tile dimensions/addressing with 14,
+	Core-loop scheduling/memory resources with 14, the three groups jointly
+	with 34, and TilingInfer with 304.
+	Each row contains separate points for KV lengths 512, 768, 1024, and 1280,
+	and no error bars.}
+	\label{fig:eval:constant-sensitivity}
+\end{figure}
+\endgroup
+
+{\color{blue}%
+This section analyzes whether specializing different groups of schedule parameters yields different benefits: can one group provide a substantially larger gain than the others?
+\par}
+
+{\color{blue}%
+For D-Attn, $\mathrm{Query}_{b,h}\mathrm{Key}_{b,h}^{\mathsf T}$ multiplies the Query row of request $b$ and attention head $h$ by its cached Key rows, while $\mathbf{T}$ stores each request's KV length. Its 34 schedule parameters form Control logic (6), Per-core tile dimensions/addressing (14), and Core-loop scheduling/memory resources (14). Control logic covers the branches and loop bounds that select how Key data are loaded. Per-core tile dimensions/addressing specifies how much work each core owns and maps tile indices to tensor addresses. Core-loop scheduling/memory resources controls how tiles are assigned to active cores and how on-chip buffers are allocated and reused inside the core loop. \autoref{fig:resolved-tiling-code}(b) lists seven representative examples. In panel (c), $T_N$ and $K_c$ split Key rows and reduction columns into tiles, while $M_c$ and $N_c$ distribute the tiles to cores. TileOffset uses these extents and $\mathbf{T}$ to recover $(b,h,n_0,k_0)$, the tile's starting coordinate. The schedule parameters $T_N$, $P$, and $T_D$ select one page-aligned load or several narrow page-table loads, while $n_K$ selects the Key buffer. BMM then loads the matching Query slice and computes the tile.
+\par}
+
+{\color{blue}%
+Overall, \autoref{fig:eval:constant-sensitivity} shows that specialization value depends more on a parameter's use site than on parameter count. Across KV lengths 512--1280, the 14 Core-loop scheduling/memory-resource parameters achieve the largest isolated geometric-mean speedup, 1.07$\times$, by configuring per-core work and Key-buffer resources on the inner BMM path. The 14 Per-core tile dimension/addressing parameters reach 1.04$\times$, while the 6 Control-logic parameters reach 1.02$\times$. Thus, count alone poorly predicts specialization value.
+\par}
+
+{\color{blue}%
+The three isolated gains sum to 12.2\%, whereas jointly specializing all 34 parameters yields 1.10$\times$ (10.4\%), or 85.0\% of that sum, indicating interaction and diminishing returns. TilingInfer specializes 304 stable parameters and reaches 1.14$\times$. Although the 34 $\mathrm{Query}\times\mathrm{Key}^{\mathsf T}$ parameters comprise only 11.0\% of these fields, they recover 75.0\% of the full gain; the remaining 270 add only 3.4 percentage points. Because these 34 parameters control D-Attn's core BMM in \autoref{fig:resolved-tiling-code}(c), specializing its hot-path address and control flow is more valuable than resolving constants on colder paths.
+\par}

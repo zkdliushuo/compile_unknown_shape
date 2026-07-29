@@ -1,31 +1,30 @@
 \begin{table}[htbp]
   \centering
-  \caption{Context update rules for parameter types. C++ implementations are simplified to show only shape-related members.
-  \textbf{Definitions:} $\ell$ denotes a base object. $\delta_{\texttt{field}}$ is the byte offset of a structure field. $\text{sz}_{\texttt{T}}$ is the size of type \texttt{T} in bytes.
-  $\text{alloc}(\texttt{T})$ allocates a memory block sized for C++ type \texttt{T} and returns its base object.
-  $\text{Process}(\phi_1, v, \ell)$ recursively populates the store at location $\ell$ with value $v$ of type $\phi_1$.
-  $\alpha(x)$ returns $x$ if $x$ is concrete, or $\bot$ if symbolic.}
+  \caption{The five type-directed context-update rules $\mathcal{R}$ for constructing the abstract C++ entry state.
+  \textbf{Definitions:} $\text{alloc}(\texttt{T})$ creates an abstract base object with the validated fields accessed through type \texttt{T}.
+  $\text{Process}(\mathit{type}, v, \ell)$ recursively populates the store at location $\ell$ with value $v$ of type $\mathit{type}$.
+  $\alpha(x)$ returns $x$ if concrete, or $\bot$ if symbolic.}
   \label{tab:semantic-rules}
   
   % 定义粗横线，使用 noalign 避免 booktabs 的间距问题
   \newcommand{\thickhline}{\noalign{\hrule}}
   
-  \renewcommand{\arraystretch}{1.6}
-  \small
+  \renewcommand{\arraystretch}{1.5}
+  \scriptsize
   
-  \begin{tabular}{m{0.20\textwidth}|m{0.26\textwidth}|>{\raggedright\arraybackslash}m{0.20\textwidth}|>{\raggedright\arraybackslash}m{0.26\textwidth}}
+  \begin{tabular}{m{0.19\textwidth}|m{0.18\textwidth}|>{\raggedright\arraybackslash}m{0.24\textwidth}|>{\raggedright\arraybackslash}m{0.29\textwidth}}
     \thickhline
-    \textbf{Parameter Type} ($\phi$) & \textbf{C++ Implementations} & \textbf{Environment Update} & \textbf{Store Update} \\
+    \textbf{Context-Update Rule} & \textbf{Abstract Fields} & \textbf{Environment Update} & \textbf{Store Update} \\
     \hline
     
     % Row 1: Scalar
-    $\textsc{Scalar}(c)$ &
+    $\mathcal{R}_{\textsc{Scalar}}$ \newline $\phi=\textsc{Scalar}(c)$ &
     {\ttfamily int64\_t $c$; \newline double $c$;} &
     $v \mapsto \alpha(c)$ &
     None \\ \hline
     
     % Row 2: String
-    $\textsc{String}(s)$ &
+    $\mathcal{R}_{\textsc{String}}$ \newline $\phi=\textsc{String}(s)$ &
     {\ttfamily struct \{ \newline \hspace*{0.8em} size\_t len; \newline \hspace*{0.8em} char* data; \newline \}} &
     $\begin{aligned}
       & \ell = \text{alloc}(\texttt{str\_view}) \\
@@ -40,52 +39,51 @@
     \\ \hline
     
     % Row 3: Tensor
-    $\textsc{Tensor}(\vec{d})$ \newline $\vec{d}=[d_1 \dots d_k]$ &
-    {\ttfamily struct \{ \newline \hspace*{0.8em} int* sizes; \newline \hspace*{0.8em} int ndim; \newline \}} &
+    $\mathcal{R}_{\textsc{Tensor}}$ \newline $\phi=\textsc{Tensor}(\vec{d})$ \newline $\vec{d}=[d_1 \dots d_k]$ &
+    {\ttfamily struct \{ \newline \hspace*{0.8em} int64\_t* sizes; \newline \hspace*{0.8em} int64\_t ndim; \newline \}} &
     $\begin{aligned}
       & \ell = \text{alloc}(\texttt{Tensor}) \\
-      & \ell_{sz} = \text{alloc}(\texttt{int}[k]) \\
+      & \ell_{sz} = \text{alloc}(\texttt{int64\_t}[k]) \\
       & v \mapsto \langle\ell, 0\rangle
     \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{ndim}} \rangle \mapsto k \\
       & \langle \ell, \delta_{\texttt{sizes}} \rangle \mapsto \langle\ell_{sz}, 0\rangle \\
-      & \forall i.\; \langle \ell_{sz}, i \cdot \text{sz}_{\texttt{int}} \rangle \mapsto \alpha(d_i)
+      & \forall i.\; \langle \ell_{sz}, i \cdot \text{sz}_{\texttt{int64\_t}} \rangle \mapsto \alpha(d_i)
     \end{aligned}$
     \\ \hline
     
     % Row 4: List
-    $\textsc{List}\langle\phi_1\rangle(\vec{e})$ \newline $\vec{e}=[e_1 \dots e_n]$ &
+    $\mathcal{R}_{\textsc{List}}$ \newline $\phi=\textsc{List}\langle\mathit{type}\rangle(\vec{e})$ \newline $\vec{e}=[e_1 \dots e_n]$ &
     {\ttfamily struct \{ \newline \hspace*{0.8em} size\_t size; \newline \hspace*{0.8em} T* data; \newline \}} &
     $\begin{aligned}
-      & \ell = \text{alloc}(\texttt{List}\langle\phi_1\rangle) \\
-      & \ell_{buf} = \text{alloc}(\phi_1[n]) \\
+      & \ell = \text{alloc}(\texttt{List}\langle\mathit{type}\rangle) \\
+      & \ell_{buf} = \text{alloc}(\mathit{type}[n]) \\
       & v \mapsto \langle\ell, 0\rangle
     \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{size}} \rangle \mapsto n \\
       & \langle \ell, \delta_{\texttt{data}}\rangle \mapsto \langle\ell_{buf}, 0\rangle \\
-      & \forall i. \; \text{Process}(\phi_1, e_i, \langle \ell_{buf}, i \cdot \text{sz}_{\phi_1} \rangle)
+      & \forall i. \; \text{Process}(\mathit{type}, e_i, \langle \ell_{buf}, i \cdot \text{sz}_{\mathit{type}} \rangle)
     \end{aligned}$
     \\ \hline
     
     % Row 5: Optional
-    $\textsc{Optional}\langle\phi_1\rangle(u)$ &
+    $\mathcal{R}_{\textsc{Optional}}$ \newline $\phi=\textsc{Optional}\langle\mathit{type}\rangle(u)$ &
     {\ttfamily struct \{ \newline \hspace*{0.8em} bool has\_val; \newline \hspace*{0.8em} T* val; \newline \}} &
     $\begin{aligned}
-      & \ell = \text{alloc}(\texttt{Optional}\langle\phi_1\rangle) \\
+      & \ell = \text{alloc}(\texttt{Optional}\langle\mathit{type}\rangle) \\
       & \text{if } u \neq \text{None}: \\
-      & \quad \ell_{obj} = \text{alloc}(\phi_1) \\
+      & \quad \ell_{obj} = \text{alloc}(\mathit{type}) \\
       & v \mapsto \langle\ell, 0\rangle
     \end{aligned}$ &
     $\begin{aligned}
       & \langle \ell, \delta_{\texttt{has\_val}} \rangle \mapsto (u \neq \text{None}) \\
       & \text{if } u \neq \text{None}: \\
       & \quad \langle \ell, \delta_{\texttt{val}} \rangle \mapsto \langle\ell_{obj}, 0\rangle \\
-      & \quad \text{Process}(\phi_1, u, \langle \ell_{obj}, 0 \rangle)
+      & \quad \text{Process}(\mathit{type}, u, \langle \ell_{obj}, 0 \rangle)
     \end{aligned}$
     \\
     \thickhline
   \end{tabular}
-  \vspace{-10pt}
 \end{table}

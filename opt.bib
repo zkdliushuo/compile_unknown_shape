@@ -69,14 +69,21 @@
   author={Jouppi, Norm and Kurian, George and Li, Sheng and Ma, Peter and Nagarajan, Rahul and Nai, Lifeng and Patil, Nishant and Subramanian, Suvinay and Swing, Andy and Towles, Brian and others},
   booktitle={Proceedings of the 50th annual international symposium on computer architecture},
   pages={1--14},
-  year={2023}
+  year={2023},
+  publisher={Association for Computing Machinery},
+  address={New York, NY, USA},
+  doi={10.1145/3579371.3589350}
 }
 
-@article{Lai2023RelaxCA,
+@inproceedings{Lai2023RelaxCA,
   title={Relax: Composable Abstractions for End-to-End Dynamic Machine Learning},
-  author={Ruihang Lai and Junru Shao and Siyuan Feng and Steven Lyubomirsky and Bohan Hou and Wuwei Lin and Zihao Ye and Hongyi Jin and Yuchen Jin and Jiawei Liu and Lesheng Jin and Yaxing Cai and Ziheng Jiang and Yong Wu and Sunghyun Park and Prakalp Srivastava and Jared Roesch and Todd C. Mowry and Tianqi Chen},
-  journal={Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2},
-  year={2023}
+  author={Lai, Ruihang and Shao, Junru and Feng, Siyuan and Lyubomirsky, Steven and Hou, Bohan and Lin, Wuwei and Ye, Zihao and Jin, Hongyi and Jin, Yuchen and Liu, Jiawei and others},
+  booktitle={Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2},
+  pages={998--1013},
+  year={2025},
+  publisher={Association for Computing Machinery},
+  address={New York, NY, USA},
+  doi={10.1145/3676641.3716249}
 }
 
 %A
@@ -137,11 +144,14 @@
     pages = "4895--4901"
 }
 
-@article{shazeer2019fast,
+@misc{shazeer2019fast,
   title={Fast transformer decoding: One write-head is all you need},
   author={Shazeer, Noam},
-  journal={arXiv preprint arXiv:1911.02150},
-  year={2019}
+  year={2019},
+  eprint={1911.02150},
+  archivePrefix={arXiv},
+  primaryClass={cs.NE},
+  url={https://arxiv.org/abs/1911.02150}
 }
 
 @misc{gemmateam2024gemma2improvingopen,
@@ -177,6 +187,7 @@
 @misc{ascend_cannopsadv,
   author    = {{Ascend}},
   title     = {{cann-ops-adv: An Advanced Fusion Operator Library for Ascend Hardware}},
+  year      = {2024},
   url       = {https://gitee.com/ascend/cann-ops-adv},
   urldate   = {2025-07-31},
   note      = {A library of fusion operators based on Ascend hardware.}
@@ -207,7 +218,9 @@
   year      = {2024},
   publisher = {Association for Computing Machinery},
   address   = {New York, NY, USA},
-  url       = {https://pytorch.org/blog/pytorch-pytorch-2-paper-tutorial/}
+  pages     = {929--947},
+  doi       = {10.1145/3620665.3640366},
+  url       = {https://doi.org/10.1145/3620665.3640366}
 }
 
 @inproceedings{zhang2025the,
@@ -240,6 +253,8 @@
   booktitle    = {The Twelfth International Conference on Learning Representations,
                   {ICLR} 2024, Vienna, Austria, May 7-11, 2024},
   publisher    = {OpenReview.net},
+  address      = {Vienna, Austria},
+  numpages     = {14},
   year         = {2024},
   url          = {https://openreview.net/forum?id=mZn2Xyh9Ec},
   timestamp    = {Wed, 07 Aug 2024 17:11:53 +0200},
@@ -258,8 +273,13 @@
 @inproceedings{ye2025flashinfer,
     title={FlashInfer: Efficient and Customizable Attention Engine for {LLM} Inference Serving},
     author={Zihao Ye and Lequn Chen and Ruihang Lai and Wuwei Lin and Yineng Zhang and Stephanie Wang and Tianqi Chen and Baris Kasikci and Vinod Grover and Arvind Krishnamurthy and Luis Ceze},
-    booktitle={Eighth Conference on Machine Learning and Systems},
-    year={2025}
+    booktitle={Proceedings of Machine Learning and Systems},
+    volume={7},
+    numpages={17},
+    publisher={MLSys},
+    address={Santa Clara, CA, USA},
+    year={2025},
+    url={https://proceedings.mlsys.org/paper_files/paper/2025/file/dbf02b21d77409a2db30e56866a8ab3a-Paper-Conference.pdf}
 }
 
 @misc{veldhuizen1998ctemplatespartialevaluation,
@@ -772,7 +792,7 @@ series = {OSDI'18}
   month={June},
 }
 
-@article{ chetlur2014cudnn,
+@misc{chetlur2014cudnn,
   author  = {Sharan Chetlur and
          Cliff Woolley and
          Philippe Vandermersch and
@@ -781,12 +801,11 @@ series = {OSDI'18}
          Bryan Catanzaro and
          Evan Shelhamer},
   title   = {{cuDNN}: Efficient Primitives for Deep Learning},
-  journal   = {CoRR},
-  volume  = {abs/1410.0759},
   year    = {2014},
-  url     = {http://arxiv.org/abs/1410.0759},
-  archivePrefix = {arXiv},
   eprint  = {1410.0759},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.NE},
+  url     = {https://arxiv.org/abs/1410.0759},
   timestamp = {Mon, 13 Aug 2018 16:48:28 +0200},
   biburl  = {https://dblp.org/rec/journals/corr/ChetlurWVCTCS14.bib},
   bibsource = {dblp computer science bibliography, https://dblp.org}
@@ -2588,4 +2607,58 @@ address={Conference Location Unknown},
   urldate = {2025-11-20},
   abstract = {There is an increasing need to bring machine learning to a wide diversity of hardware devices. Current frameworks rely on vendor-specific operator libraries and optimize for a narrow range of server-class GPUs. Deploying workloads to new platforms - such as mobile phones, embedded devices, and accelerators (e.g., FPGAs, ASICs) - requires significant manual effort. We propose TVM, a compiler that exposes graph-level and operator-level optimizations to provide performance portability to deep learning workloads across diverse hardware back-ends. TVM solves optimization challenges specific to deep learning, such as high-level operator fusion, mapping to arbitrary hardware primitives, and memory latency hiding. It also automates optimization of low-level programs to hardware characteristics by employing a novel, learning-based cost modeling method for rapid exploration of code optimizations. Experimental results show that TVM delivers performance across hardware back-ends that are competitive with state-of-the-art, hand-tuned libraries for low-power CPU, mobile GPU, and server-class GPUs. We also demonstrate TVM's ability to target new accelerator back-ends, such as the FPGA-based generic deep learning accelerator. The system is open sourced and in production use inside several major companies.},
   isbn = {978-1-931971-47-8}
+}
+
+@misc{tilelang,
+  title = {TileLang: A Flexible and High-Performance DSL for Kernel Development},
+  author = {{TileLang Team}},
+  year = {2024},
+  howpublished = {\url{https://github.com/tile-ai/tilelang}},
+  note = {Accessed: 2024}
+}
+
+@inproceedings{dong2025qimengxpiler,
+  author = {Shouyang Dong and Jun Bi and Di Huang and Jiaming Guo and Jianxing Xu and Ruibai Xu and Xinkai Song and Yifan Hao and Ling Li and Xuehai Zhou and Tianshi Chen and Qi Guo and Yunji Chen},
+  title = {{QiMeng-Xpiler}: Transcompiling Tensor Programs for Deep Learning Systems with a {Neural-Symbolic} Approach},
+  booktitle = {19th USENIX Symposium on Operating Systems Design and Implementation (OSDI 25)},
+  year = {2025},
+  pages = {239--255},
+  publisher = {USENIX Association},
+  address = {Boston, MA, USA},
+  url = {https://www.usenix.org/conference/osdi25/presentation/dong}
+}
+
+@misc{ouyang2025kernelbench,
+  title = {{KernelBench}: Can {LLM}s Write Efficient {GPU} Kernels?},
+  author = {Anne Ouyang and Simon Guo and Simran Arora and Alex L. Zhang and William Hu and Christopher R{\'e} and Azalia Mirhoseini},
+  year = {2025},
+  eprint = {2502.10517},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.LG},
+  url = {https://arxiv.org/abs/2502.10517}
+}
+
+@inproceedings{ijcai2017p239,
+  author = {Huifeng Guo and Ruiming Tang and Yunming Ye and Zhenguo Li and Xiuqiang He},
+  title = {{DeepFM}: A Factorization-Machine Based Neural Network for {CTR} Prediction},
+  booktitle = {Proceedings of the Twenty-Sixth International Joint Conference on Artificial Intelligence},
+  pages = {1725--1731},
+  year = {2017},
+  publisher = {International Joint Conferences on Artificial Intelligence},
+  address = {Melbourne, Australia},
+  doi = {10.24963/ijcai.2017/239},
+  url = {https://doi.org/10.24963/ijcai.2017/239}
+}
+
+@inproceedings{pmlr-v235-zhai24a,
+  title = {Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations},
+  author = {Zhai, Jiaqi and Liao, Lucy and Liu, Xing and Wang, Yueming and Li, Rui and Cao, Xuan and Gao, Leon and Gong, Zhaojie and Gu, Fangda and He, Jiayuan and Lu, Yinghai and Shi, Yu},
+  booktitle = {Proceedings of the 41st International Conference on Machine Learning},
+  pages = {58484--58509},
+  year = {2024},
+  volume = {235},
+  series = {Proceedings of Machine Learning Research},
+  publisher = {PMLR},
+  address = {Vienna, Austria},
+  url = {https://proceedings.mlr.press/v235/zhai24a.html}
 }
