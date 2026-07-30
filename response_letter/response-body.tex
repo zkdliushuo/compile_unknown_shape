@@ -12,9 +12,6 @@
   {\LARGE\bfseries Response to the Editor and Reviewers\par}
   \vspace{0.6em}
   {\large Manuscript TACO-2026-79:\par}
-  \vspace{0.2em}
-  {\large\itshape Optimizing Dynamic-Shape Operator Libraries via Automatic
-  Kernel Specialization on AI Accelerators\par}
 \end{center}
 \vspace{1em}
 
@@ -23,13 +20,16 @@
 \section{Overall Response}
 \label{sec:overall-response}
 
-Thank you for the careful assessment of manuscript and for the
+Thank you for the careful assessment of the manuscript and for the
 opportunity to submit a major revision.  The remainder of this response letter
 is organized as follows.  Section~2 provides a concise revision map from each
 reviewer comment to the corresponding change and location in the revised
-manuscript.  Section~3 then responds to each comment in reviewer order.  The
-revised manuscript is appended after the response letter, and the links in both
-sections point directly to the corresponding manuscript locations.
+manuscript.  Section~3 then responds to each comment in reviewer order.  We
+append the marked revised manuscript to this response letter, with links in the
+Revision Map and detailed responses pointing directly to the corresponding
+manuscript locations.  In the appended manuscript, \DIFdel{xxx} denotes content
+from the previous version that has been removed, while \DIFadd{xxx} denotes
+content newly added in this revision.
 
 \section{Revision Map}
 
@@ -68,11 +68,12 @@ maps every actionable reviewer point to the corresponding revision.
 \bottomrule
 \endlastfoot
 
-\responseid{E}{sec:overall-response} &
+\responseid{E}{resp:editor} &
 Insufficient background, weak evaluation, and unclear novelty relative to
 systems such as TileLang. &
-Expanded the background and evaluation; clarified novelty, scope, and
-limitations. &
+Expanded the background and evaluation, including stronger gains in selected
+inference scenarios; stated the core challenges and contributions more
+precisely. &
 \SIntro--\SDiscussion \\
 \midrule
 
@@ -92,9 +93,9 @@ background. &
 
 \responseid{R1.2}{resp:r1-2} &
 Discuss benefits beyond an Ascend NPU with a lean Scalar unit. &
-For schedule-generic kernels, kernels will benefit from TilingInfer.
-However, there is no more open-source schedule-fixed expert-written operator libraries to conduct experiments. &
-\SDiscussion \\
+Validated only the footprint effect of pruning a schedule-fixed library on a
+non-Ascend platform and bounded the latency claim to Ascend. &
+\papersec{sec:eval:tradeoff}; \SDiscussion \\
 \midrule
 
 \responseid{R1.3}{resp:r1-3} &
@@ -121,16 +122,16 @@ matter more than parameter count. &
 
 \responseid{R2.2}{resp:r2-2} &
 Add non-dense-Transformer, model-level evaluation. &
-Added six end-to-end scenarios spanning DeepFM, HSTU, and LLaMA/Qwen
-prefill and decode. &
+Added six end-to-end scenarios spanning DeepFM, HSTU, Llama 3.2 1B, and
+Qwen3.5-0.8B prefill and decode. &
 \papersec{sec:eval:setup}; \papersec{sec:eval:result} \\
 \midrule
 
 \responseid{R2.3}{resp:r2-3} &
 The standard offline-compilation baseline is weak, and the reported
 end-to-end gain is too small. &
-Enabled NPU Graph Replay and added Optimal, the same-kernel per-shape
-full-specialization oracle. &
+Enabled NPU Graph Replay, quantified scenario-dependent gains, and added
+Optimal as a same-kernel per-shape full-specialization oracle. &
 \papersec{sec:eval:setup}; \papersec{sec:eval:result} \\
 \midrule
 
@@ -151,7 +152,8 @@ generated or translated kernels. &
 
 \responseid{R3.2}{resp:r3-2} &
 Add comparisons with AI compilers and libraries such as cuDNN. &
-Explained the cross-implementation confound; provides TileLang--CANN performance comparison. &
+Clarified why no direct comparison is claimed and explained the
+cross-implementation and cross-platform confounds. &
 \SIntro; \SRelated; \SDiscussion \\
 \midrule
 
@@ -179,13 +181,37 @@ size-selection rules. &
 
 \responseid{R3-W}{resp:r3-w} &
 The manuscript is difficult to follow and needs clearer English. &
-Reorganized the paper, standardized terminology and examples, and polished
-the English. &
+Performed an independent full-paper language check and corrected terminology,
+grammar, incomplete phrases, and numerical inconsistencies. &
 \SIntro--\SConclusion \\
 \end{longtable}
 \endgroup
 
+\paragraph{Editorial note.}
+To accommodate the added background and experiments within the revision page
+limit, we condensed material from the previous manuscript in
+\papersec{sec:motivation:auto-spec} and \papersec{sec:eval:analysis}.
+
 \section{Detailed Responses in Reviewer Order}
+
+\reviewcomment{E: Overall assessment}{resp:editor}
+{The manuscript needs additional background, a stronger evaluation, and a
+clearer account of its core contribution.}
+
+\authorresponse
+Thank you for summarizing the main concerns.  We expanded the background on
+Graph IR, PyTorch/ATen, and expert-written operator libraries; added
+device-level attribution, schedule-parameter sensitivity, six end-to-end
+inference scenarios, and a deployment-level binary-size trade-off study; and
+reported more pronounced gains in the DeepFM recommendation and LLM-decode
+scenarios.  We also revised the statement of the core challenges and
+contributions to define their scope and relationship more precisely.  Please
+see our responses to
+\hyperref[resp:r2-4]{\acmreftext{R2.4 (\S\ref*{resp:r2-4})}} and
+\hyperref[resp:r3-4]{\acmreftext{R3.4 (\S\ref*{resp:r3-4})}} for the detailed
+contribution boundary.
+
+\loc{\SIntro--\SDiscussion.}
 
 \reviewcomment{R1-Q: Meaning of the name TilingInfer}{resp:r1-q}
 {Does TilingInfer aim to enhance loop tiling or related optimizations?}
@@ -200,7 +226,7 @@ strategies.
 To avoid this potential misunderstanding, we added an explanation of the name
 to the Introduction.
 
-\loc{\SIntro, final paragraph before the contribution list.}
+\loc{\SIntro.}
 
 \reviewcomment{R1.1: PyTorch, ATen, and Graph IR background}{resp:r1-1}
 {Please add the background needed to understand calling-context generation.}
@@ -219,62 +245,45 @@ Libraries.''}
 {Please discuss performance benefits on a wider range of computing systems.}
 
 \authorresponse
-We addressed this issue by clarifying the applicability boundary in the
-Discussion.  This work targets expert-written operator libraries, which we
-classify as schedule-fixed or schedule-generic according to whether a kernel's
-scheduling parameters are specialized to constants at compile time (see the
-Introduction for definitions).  Operator libraries on mainstream platforms,
-including NVIDIA/AMD GPUs and CPUs, are predominantly schedule-fixed.  For such
-libraries, per-model library pruning can reduce the cost of loading shared
-libraries during online-service cold starts; we demonstrate the resulting
-footprint reduction using FlashInfer, a library widely adopted by LLM serving
-systems.  By contrast, to the best of our knowledge, schedule-generic libraries
-are currently found mainly on Ascend.  TilingInfer can obtain inference-time
-performance gains for Ascend libraries through automatic kernel specialization.
-However, because we have not found a comparable expert-written
-schedule-generic library on another platform for a controlled latency
-evaluation, we do not extrapolate the Ascend latency results to other
-platforms.
+On non-Ascend platforms, we validate only the footprint effect of pruning a
+schedule-fixed operator library, using FlashInfer on an NVIDIA GPU; we do not
+report non-Ascend latency gains.  Performance specialization requires a
+schedule-generic expert-written implementation whose schedule parameters remain
+runtime variables.  Among the open-source libraries we examined, we did not
+find a comparable non-Ascend implementation with the same compilation path for
+a controlled latency comparison.  We therefore confine the cross-platform
+claim to the library binary-footprint reduction from per-model pruning.
 
-Ascend's use of schedule-generic kernels is also related to the extent to which
-its ISA exposes the hardware.  Compared with GPUs, its ISA exposes more
-programmable compute and memory components that require multiple sets of
-scheduling parameters to be configured according to the runtime workload.  A
-schedule-fixed design that enumerated and specialized every parameter
-combination at compile time would therefore cause severe code-size blowup.
-
-\loc{\SDiscussion, ``Platform applicability.''}
+\loc{\papersec{sec:eval:tradeoff}; \SDiscussion, ``Platform applicability.''}
 
 \reviewcomment{R1.3: Host/device breakdown and compiler mechanisms}{resp:r1-3}
 {Separate host-side control-flow simplification from device-side
 specialization, and examine optimizations beyond loop unrolling.}
 
 \authorresponse
-Regarding the first issue, TilingInfer analyzes host code to derive constant
-scheduling parameters and identify live template instances, but it does not
-specialize the host program itself.  We therefore do not separately attribute
-gains to host-side control-flow simplification and device-kernel
-specialization.  There are two reasons for not specializing the host program:
+Regarding host/device separation, TilingInfer analyzes host code only to
+recover constant schedule parameters and kernel-launch-site reachability; it
+neither rewrites nor specializes the host program.  We therefore attribute no
+performance gain to host-side control-flow simplification.  We did not design
+host specialization because NPU Graph replay suppresses repeated launch
+overhead, while identical input shapes across Transformer layers allow
+host-computed schedule parameters to be reused.  Host schedule computation is
+therefore not a bottleneck in our evaluated setting.  Moreover,
+operator-library code bloat arises mainly from enumerated device-kernel
+template instances.
 
-\begin{enumerate}[label=(\arabic*),leftmargin=*,nosep]
-  \item With CUDA/NPU Graph optimization, and in layered Transformer models
-  where the host program runs once while device kernels execute repeatedly,
-  host execution accounts for only a small fraction of device-kernel execution
-  cost.  Specializing the host program would therefore provide little benefit.
+The device kernel's lower-level compiler on Ascend is closed source, and we currently
+have neither source access nor permission to modify it.  We therefore cannot
+disable loop unrolling alone and must use the default optimization-pass
+pipeline for all compared variants.
 
-  \item Code bloat in operator libraries primarily results from enumerating
-  template-kernel parameters, so specializing the host program would contribute
-  little to binary-size reduction.
-\end{enumerate}
+To examine benefits beyond loop unrolling under this constraint, we conduct a controlled sensitivity 
+analysis in \papersec{sec:eval:sensitivity} and \paperfig{fig:eval:constant-sensitivity} by specializing different groups of schedule parameters. 
+The results show benefits from simplifying control flow, address calculations, task assignment, and buffer management, not only from loop unrolling. 
 
-Regarding the second issue, we added a qualitative analysis in the evaluation
-of the benefits of specializing different categories of kernel scheduling
-parameters in Attention operators.  The results show that specializing
-scheduling parameters related to memory-resource and task allocation, scalar
-computation, and control flow can all provide benefits.  Please see
-Section~4.4 for details.
 
-\loc{\papersec{sec:eval:sensitivity}; \SDiscussion.}
+\loc{\papersec{sec:eval:sensitivity};
+\paperfig{fig:eval:constant-sensitivity}; \SDiscussion.}
 
 \reviewcomment{R1.4: Universal archive versus per-model binaries}{resp:r1-4}
 {A separate custom library for every program may consume more total storage
@@ -283,8 +292,8 @@ than one universal static library.}
 \authorresponse
 We added a deployment-level FlashInfer study.  The universal AOT-compiled
 library occupies 542\,MB.  Across 17 model variants, the corresponding
-per-model specialized libraries occupy 24.3--60.7\,MB, an 88.8--95.5\%
-reduction.  Without cross-service deduplication, per-model specialization
+per-model pruned libraries occupy 24.3--60.7\,MB, an 88.8--95.5\%
+reduction.  Without cross-service deduplication, per-model pruning
 remains beneficial for up to eight model services in the worst case and up to
 22 in the best case.  Shared container layers, deduplication, and model mix can
 shift this break-even point.  We therefore conclude that universal operator
@@ -308,14 +317,15 @@ scheduling parameters for the Flash Attention operator.  The results are:
   \item Core-loop scheduling and memory resources, 14 scheduling parameters:
   1.07$\times$.
   \item The three groups jointly, 34 scheduling parameters: 1.10$\times$.
-  \item All constant scheduling parameters specialized by TilingInfer, 304
+  \item All constant schedule parameters specialized by TilingInfer, 352
   parameters: 1.14$\times$.
 \end{itemize}
 
-Specializing the 34 hot-path parameters above achieves 75.0\% of TilingInfer's
-full gain, while the remaining 270 parameters contribute only an additional
-3.4 percentage points.  These results demonstrate that the types and use sites
-of the specialized scheduling parameters matter more than their number.
+For the evaluated D-Attn implementation and shapes, specializing the 34
+hot-path parameters above achieves 75.0\% of TilingInfer's full gain, while the
+remaining 318 parameters contribute only an additional 3.4 percentage points.
+Within this scope, the types and use sites of the specialized schedule
+parameters matter more than their number.
 
 \loc{\papersec{sec:eval:sensitivity}, ``Sensitivity to Resolved Schedule
 Parameters.''}
@@ -325,8 +335,8 @@ Parameters.''}
 
 \authorresponse
 We expanded the evaluation to six representative end-to-end inference
-scenarios: DeepFM recommendation, HSTU generative recommendation, LLaMA-3 1B
-prefill and decode, and Qwen-3.5 1B prefill and decode.  For all six scenarios,
+scenarios: DeepFM recommendation, HSTU generative recommendation, Llama 3.2 1B
+prefill and decode, and Qwen3.5-0.8B prefill and decode.  For all six scenarios,
 we report end-to-end speedup, device-kernel category composition, and
 category-level specialization speedup.
 
@@ -337,26 +347,26 @@ category-level specialization speedup.
 compilation is a weak baseline.}
 
 \authorresponse
-Regarding the first issue, we enabled NPU Graph Replay for all evaluated
-model-inference workloads to reduce repeated CPU launch overhead.  Across the
-six representative inference scenarios, TilingInfer achieves an average
-speedup of approximately 1.10$\times$ on DeepFM and the two LLM decode
-scenarios, where Attention and MatMul involve less computation and therefore
-expose relatively larger specialization gains.  In contrast, the average
-speedup remains smaller (1.03$\times$) on HSTU and the two LLM prefill
-scenarios because these workloads are more compute-intensive, so the eliminated
-scalar overhead constitutes a smaller fraction of end-to-end latency.
+Across six representative inference scenarios, TilingInfer achieves a
+1.05$\times$ geometric-mean end-to-end speedup. Gains are lower for the
+compute-intensive HSTU and LLM prefill scenarios, where tensor computation
+dominates. In contrast, DeepFM and the two LLM decode scenarios average
+1.10$\times$ because their shorter, relatively memory-intensive kernels expose
+a larger fraction of removable scalar and scheduling overhead.
 
-Regarding the second issue, we compare TilingInfer with Optimal in the
-end-to-end evaluation.  Optimal fully specializes all scheduling parameters of
-every kernel for each shape and serves as the performance upper bound for
-kernel specialization in this evaluation.
+The average gain of the two decode scenarios increased from approximately 3\%
+in the previous manuscript to 10\% after we enabled NPU Graph replay for all
+compared methods. This suppresses repeated CPU launch overhead that previously
+masked the contribution of device-kernel specialization.
 
-Additional note: Compared with the previous version, TilingInfer's average
-speedup on the LLM decode scenarios increased from 3\% to 10\%, primarily
-because we enabled NPU Graph.  In the previous model-inference setup, CPU
-overhead was non-negligible, which obscured the end-to-end contribution of our
-device-kernel optimizations.
+To address the baseline concern, we compare TilingInfer with Optimal, a
+per-shape full-specialization oracle that specializes all schedule parameters
+produced by host scheduling. Although impractical for production because it
+recompiles every shape, Optimal provides a same-kernel reference. TilingInfer
+and Optimal average 1.05$\times$ and 1.08$\times$ across all six scenarios,
+and 1.10$\times$ and 1.14$\times$ across the two decode scenarios,
+respectively. Each data point averages 90 measured runs after 10 warm-up runs
+to reduce measurement noise.
 
 \loc{\papersec{sec:eval:setup} and \papersec{sec:eval:result}.}
 
@@ -398,10 +408,11 @@ have clarified this contribution boundary in the revised manuscript.
 {The manuscript is difficult to follow, and the English should be refined.}
 
 \authorresponse
-Thank you for this comment on the presentation.  We reorganized the manuscript,
-standardized the use of terminology, consistently defined concepts that could
-otherwise be confused, used a consistent example throughout the manuscript,
-and polished the writing throughout.
+Thank you for this comment on the presentation.  We performed an independent
+full-paper language check in addition to reorganizing the manuscript.  The
+revision standardizes terminology and examples and corrects subject--verb
+agreement, incomplete phrases, awkward constructions, and numerical
+inconsistencies throughout.
 
 \loc{Substantial revisions throughout \SIntro--\SConclusion.}
 
@@ -449,7 +460,8 @@ comparison would therefore conflate the benefits of specialization with
 performance differences in the kernels' own scheduling implementations.  To
 illustrate this gap, we additionally measured TileLang-Ascend and the CANN
 expert-written operator library on Ascend, as shown in
-Fig.~\ref{fig:tilelang-cann-roofline}:
+\hyperref[fig:tilelang-cann-roofline]{%
+  \acmreftext{Fig.~\ref*{fig:tilelang-cann-roofline}}}:
 
 \begin{itemize}[leftmargin=*,nosep]
   \item Grouped Matmul: CANN averages 100.2\,TFLOPS, while TileLang-Ascend
@@ -490,10 +502,8 @@ use these libraries by default.
     \centering
     \includegraphics[width=\linewidth]{response_letter/figures/tilelang-vs-cann-mm.png}
   \end{minipage}
-  \caption{Ascend roofline comparison of the starting implementations used to
-  assess baseline comparability: Grouped Matmul (left) and Matmul (right).
-  These response-only plots characterize CANN and TileLang-Ascend, not
-  TilingInfer.}
+  \caption{Ascend roofline characterization of CANN and TileLang-Ascend for
+  Grouped Matmul (left) and Matmul (right).}
   \Description{Two Ascend roofline scatter plots comparing TileLang-Ascend and
   CANN for Grouped Matmul and Matmul across sampled arithmetic intensities.}
   \label{fig:tilelang-cann-roofline}
@@ -509,13 +519,15 @@ two accelerators.}
 
 \authorresponse
 TilingInfer operates within the compilation flow of existing expert-written
-libraries.  It does not change the lowering from tensor-program IR (e.g., LLVM
-IR) to ISA in the GPU/NPU operator compilation process; the existing backend
-pipelines remain unchanged.
+libraries.  It analyzes and transforms LLVM IR emitted from their C++ host and
+device implementations, but it does not modify the subsequent
+backend-specific lowering from compiler IR to GPU or NPU machine instructions.
+The existing accelerator backend and instruction-selection pipelines remain
+unchanged.
 
-Because TilingInfer does not involve accelerator-specific instruction lowering
-and this topic is peripheral to the paper's core problem, we did not add a
-discussion of backend lowering to the manuscript.
+Because backend instruction lowering is outside TilingInfer's optimization
+scope and is not required to explain its cross-layer constant propagation, we
+did not add backend-lowering details to the manuscript.
 
 \loc{No corresponding manuscript location; response clarification only.}
 

@@ -3,7 +3,7 @@
     \caption{Overview of dynamic shape operator benchmarks.
     \textbf{Symbols:} $T$: total tokens, $B$: batch size, $P$: page size, $N_P$: number of KV-cache pages, $M_P$: maximum pages per request, $N_Q/N_{KV}$: query/key--value head counts, $D$: model dimension, $D_{head}$: head dimension ($D/N_Q$), $K$: matrix reduction dimension, $C$: channels, $E$: experts, and $H/W$: image height/width. \textbf{Aux. Input}: indexing or geometric metadata.
     \textbf{Configurations:} Unless otherwise stated, we fix static dimensions based on representative models: $D=4096, D_{head}=128, N_Q=32, N_{KV}=32$ for Llama2-7B; $E=8$ for Mixture-of-Experts (MoE) layer; $C=512$ for CV (e.g., ResNet-50); and $D=128$ for RecSys. 
-    \textbf{Note:} Operators labeled \textbf{MM}, \textbf{FFN}, and \textbf{RMS} share identical kernel implementations across Prefill and Decoding phases, differing only in the leading dynamic dimension ($T$ vs. $B$).
+    \textbf{Note:} Operators labeled \textbf{MM}, \textbf{FFN}, and \textbf{RMS} share identical kernel implementations across Prefill and Decode phases, differing only in the leading dynamic dimension ($T$ vs. $B$).
     \textbf{Conv2d} is lowered to \texttt{im2col} followed by MatMul and is therefore reported as \textbf{MM}. Unless otherwise stated, each operator-level result is the geometric mean over five shapes sampled from the listed dynamic range; all methods use the same samples.}
     \label{tab:dynamic_operators}
     \resizebox{0.99\textwidth}{!}{%
@@ -23,7 +23,7 @@
     & & MatMul & \textbf{MM} & $[T, K]$ & - & $T \in [256, 8k]$ \\
     \cmidrule{2-7}
     % Decoding Phase
-    & \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} & 
+    & \multirow{6}{*}{\shortstack[l]{Decode Phase\\(Paged KV)}} &
     \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q: [B, 1, N_Q, D_{head}]$ & \texttt{BlockTbl[B, $M_P$]} & $T \in [256, 8k]$ \\
     & & & & $K,V: [N_P, P, N_{KV}, D_{head}]$ & \texttt{Offsets[B+1]} & $B \in [1, 8]$ \\
     \cmidrule{3-7}
@@ -34,23 +34,23 @@
     & & MatMul & \textbf{MM} & $[B, K]$ & - & $B \in [1, 8]$ \\
     \cmidrule{2-7}
     % MoE Layer
-    & \multirow{4}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & $[T, E]$ & - & $T \in [256, 8k]$ \\
+    & \multirow{4}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoEGating & \textbf{Gate} & $[T, E]$ & - & $T \in [256, 8k]$ \\
     \cmidrule{3-7}
     & & GroupedMatMul & \textbf{GMM} & $[T, D]$ & \texttt{GroupOffsets[E+1]} & $T \in [256, 8k]$ \\
     \cmidrule{3-7}
     & & Sinkhorn & \textbf{Sink} & $[T, E]$ & - & $E \in [8, 64]$ \\ 
     \cmidrule{3-7}
-    & & MoeTokenPermute & \textbf{Perm} & $[T, D]$ & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
+    & & MoETokenPermute & \textbf{Perm} & $[T, D]$ & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
     \midrule
     % CV Domain
     \multirow{7}{*}{\shortstack{\textbf{CV}\\\textit{ResNet,}\\\textit{YOLOv5}}} & \multirow{4}{*}{\shortstack[l]{General Inference\\(Standard Batch)}} 
-    & Conv2d(img2col) & \textbf{MM} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
+    & Conv2d (im2col) & \textbf{MM} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
     \cmidrule{3-7}
     & & GroupNorm & \textbf{GN} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
     \cmidrule{3-7}
     & & AvgPool & \textbf{Pool} & $[B, C, D, H, W]$ & - & $B \in [1, 8]$ \\
     \cmidrule{3-7}
-    & & ElementWise Pow & \textbf{Pow} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
+    & & Elementwise Pow & \textbf{Pow} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
     \cmidrule{2-7}
     & \multirow{2}{*}{\shortstack[l]{Object Detection\\(Dyn. Resolution)}} & Upsample & \textbf{Upsample} & $[B, C, H, W]$ & - & \shortstack[l]{$H, W \in [224, 1024]$} \\
     \cmidrule{3-7}

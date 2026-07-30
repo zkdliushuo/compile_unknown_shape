@@ -16,7 +16,7 @@
 	\Description{Point plot of speedup over Baseline for Control logic with 6
 	specialized parameters, Per-core tile dimensions/addressing with 14,
 	Core-loop scheduling/memory resources with 14, the three groups jointly
-	with 34, and TilingInfer with 304.
+	with 34, and TilingInfer with 352.
 	Each row contains separate points for KV lengths 512, 768, 1024, and 1280,
 	and no error bars.}
 	\label{fig:eval:constant-sensitivity}
@@ -36,5 +36,5 @@ Overall, \autoref{fig:eval:constant-sensitivity} shows that specialization value
 \par}
 
 {\color{blue}%
-The three isolated gains sum to 12.2\%, whereas jointly specializing all 34 parameters yields 1.10$\times$ (10.4\%), or 85.0\% of that sum, indicating interaction and diminishing returns. TilingInfer specializes 304 stable parameters and reaches 1.14$\times$. Although the 34 $\mathrm{Query}\times\mathrm{Key}^{\mathsf T}$ parameters comprise only 11.0\% of these fields, they recover 75.0\% of the full gain; the remaining 270 add only 3.4 percentage points. Because these 34 parameters control D-Attn's core BMM in \autoref{fig:resolved-tiling-code}(c), specializing its hot-path address and control flow is more valuable than resolving constants on colder paths.
+The three isolated gains sum to 12.2\%, whereas jointly specializing all 34 parameters yields 1.10$\times$ (10.4\%), or 85.0\% of that sum, indicating interaction and diminishing returns. TilingInfer specializes 352 constant schedule parameters and reaches 1.14$\times$. Although the 34 $\mathrm{Query}\times\mathrm{Key}^{\mathsf T}$ parameters comprise only 9.7\% of these parameters, they recover 75.0\% of the full gain; the remaining 318 add only 3.4 percentage points. Because these 34 parameters control D-Attn's core BMM in \autoref{fig:resolved-tiling-code}(c), specializing its hot-path address and control flow is more valuable than resolving constants on colder paths. These conclusions apply to the evaluated D-Attn implementation and shapes.
 \par}

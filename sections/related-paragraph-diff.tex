@@ -32,7 +32,7 @@ Industrial practices for dynamic shapes. PyTorch 2~}\cite{ansel2024dynamo}\DIFde
 \par}
 
 {\color{blue}%
-LLM-assisted systems change how the target program is produced but retain this generation or translation paradigm. QiMeng-Xpiler combines LLM-guided transformations, symbolic repair, and hierarchical autotuning to translate tensor programs across accelerator programming interfaces~\cite{dong2025qimengxpiler}. KernelBench evaluates whether LLMs can generate correct and efficient GPU kernels from ML workloads~\cite{ouyang2025kernelbench}. These systems generate or translate an implementation and then optimize its transformation or schedule choices. They do not reconstruct deployment constants inside an unchanged expert-written operator library to partially evaluate scalar LLVM instructions or prune unreachable precompiled variants.
+LLM-assisted systems change how the target program is produced but retain this generation or translation paradigm. QiMeng-Xpiler combines LLM-guided transformations, symbolic repair, and hierarchical autotuning to translate tensor programs across accelerator programming interfaces~\cite{dong2025qimengxpiler}. KernelBench evaluates whether LLMs can generate correct and efficient GPU kernels from ML workloads~\cite{ouyang2025kernelbench}. These systems generate or translate an implementation and then optimize its transformation or schedule choices. They do not reconstruct deployment constants within an unchanged source-level expert implementation to partially evaluate scalar LLVM instructions or prune unreachable precompiled variants.
 \par}
 
 {\color{blue}%

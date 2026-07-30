@@ -32,6 +32,6 @@ We implement TilingInfer on Ascend NPUs and NVIDIA GPUs. Evaluations on state-of
 }
 \par}
 {\color{blue}%
-On an Ascend NPU, Tiling achieves an average $1.06\times$ operator speedup across diverse operators and an average $1.05\times$ speedup across six representative inference scenarios. It provides larger benefits in the LLM decode phase and recommendation models, averaging a $1.10\times$ speedup. On an NVIDIA GPU, it reduces a 542\,MB binary size by 88.8--95.5\% across 17 model variants.
+On an Ascend NPU, TilingInfer achieves a $1.06\times$ geometric-mean device-kernel speedup across 14 operators, with a maximum of $1.17\times$, and a $1.05\times$ geometric-mean end-to-end speedup across six representative inference scenarios. It provides larger benefits in the DeepFM recommendation and LLM decode scenarios, which average $1.10\times$. On an NVIDIA GPU, it reduces a 542\,MB operator-library archive by 88.8--95.5\% across 17 model variants.
 \par}
 \end{abstract}

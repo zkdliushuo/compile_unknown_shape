@@ -248,3 +248,59 @@ return SUCC;
 
 这里面增加了在错误路径上的print代码来反映形状检查出错路径上存在一些其他语句。
 8. 所有的增删改都需要保持英文论文写作的严谨、需要保证前后上下文逻辑连贯、简洁
+
+
+对下面的每一个修改要求，要求你找出 unmarked 版本的论文、marked 版本论文以及回复信中对应的段落，先在聊天框中给我这个段落对应的中英文双版本的修改稿，等我同意后修改到对应的 unmarked 版本的论文、marked 版本论文以及回复信中对应的段落。
+1. 针对 Editor：背景不足、评估弱、创新点不清楚：
+    - 给 Editor 的回复放到 3.1 节，并且概括描述新增的背景、实验（新增的实验和针对部分模型取得了更显著的性能提升效果）以及更准确阐述了核心挑战以及本文的核心贡献
+    - 给 Editor 的回复要尽量简洁，并且这里不要再展开说 technical novelty，但可以让主编看 3.9 和 3.14
+2. 针对 R1-Q：TilingInfer 是否是在改进 loop tiling：
+    - 删除回复信中的回复所说的 “final paragraph before the contribution list”
+3. 针对R1.1：补充 PyTorch、ATen 和 Graph IR 背景：
+    - 无需修改
+4. R1.2：Ascend 之外的适用性与性能收益：
+    - 在新版本中补充上旧版本中的 cold-start 论证
+    - 在 marked 版本中同步修改，并且看是否需要修改 diff 的差异
+    - 回复信中不要出现“wider-range performance validation”的回复，明确改成：非 Ascend 平台只验证了 schedule-fixed library pruning 的 footprint 效果，并简单解释原因。
+5. 针对 R1.3：Host/device 拆分及 loop unrolling 之外的优化：
+    - 回复信中除了回复 host-side 未设计之外，然后先增加一句“Device Kernel 的底层编译器是闭源的，且目前我们无修改权限，所以无法控制不启用 loop unrolling，只能采用默认优化 pass pipeline”，然后引用论文中的 §4.3 Device-Level Attribution 和 §4.4 Sensitivity 中的 table 7 以及 fig 15，告诉审稿人我们在论文中通过 prof 数据以及控制特化的 schedule 参数，讨论了除 loop unrolling 优化之外的性能收益。
+6. 通用 archive 与每模型 library 的总存储 trade-off：
+    - 回复中的 “per-model specialized libraries” 应改成 “per-model pruned libraries”
+7. R2.1：参数数量不能代表性能影响，需要 sensitivity analysis
+    - 在回复中结论限定范围为 “for the evaluated D-Attn implementation and shapes”
+    - 修改原论文和标记版的论文的“4.4 Sensitivity to Resolved Schedule Parameters”这一节以及回复信中的内容，修改图 15 、正文中以及回复信中关于 304 个 stable parameters 参数的描述，需要统一修改成 352 个 constant schedule parameters。你可能需要修改图 15 的画图脚本，重新绘制这个图然后替换现有的图
+    （注意：之前的统计口径得出的 304 有误，没有统计数组类型的 schedule parameters，丢了 48 个参数。这里需要补上。注意这是修改错误，并非捏造。你只需要修改论文、图、回复信即可，无需在论文中讨论统计口径）
+8. R2.2：增加非 dense-Transformer 的端到端评估
+    - 修改原论文和标记版中的 Table 4，Decode 这两行的 breakdown shape 统一修改，从 𝐵 = 16 改成 𝐵 = 2
+    - 然后你需要调研告诉我 Table 4 中 LLaMA-3 1B、Qwen-3.5 1B 的维度被缩小了吗？如果被缩小了，需要修改成这两个模型对应的真实的维度大小（注意：如果维度写小了，估计是我之前统计错了，以你调研到的官方的维度 size 为准）
+    - 没有修改模型结构等信息，无需说明
+9. R2.3：收益小、baseline 弱、3% 可能是噪声、强调 peak outlier
+    - 在原版和标记版论文中的 Experimental Setup 同步增加启用了 NPU Graph 的说明
+    - 修改回复信中把 Optimal 称为 “performance upper bound”。采用论文中更准确的定义 per-shape full-specialization oracle
+    - 修改回复信、原论文和标记版论文，统一用 P-Attn 1.08×、D-Attn 1.17× 加速比. Abstract/Conclusion/回复信同采用最大 1.17x
+    - 修改回复信：对当前回复的内容进行润色：先直接给出目前 TilingInfer 在六种推理场景下平均是 1.05x 加速比。再指出：主要是 LLM 的 Prefill 阶段以及 HSTU 这类计算密集型的 Transformer 架构上拉低了平均加速比。对于推荐系统模型、LLM 的 Decode 阶段平均加速比为 1.10x。主要是因为这些推理场景下模型计算量小、每个 kernel 的 execution duration 短，特化消除 schedule parameters 的收益相对更大。然后是解释为什么相对于修改前的版本加速比高了。然后再回答第二个问题。
+10. R2.4：只是经典 partial evaluation/constant propagation 的工程集成
+    - 修改原论文以及标记版论文，将Introduction 中 “suggests a novel way” 改成更克制的 “suggests a distinct application strategy”
+11. R3-W：论文难读，英文需要改进
+    - 针对原论文进行一次独立的全文语言检查，同时修复术语、主谓一致、空缺短语和数字不一致。并记录下所有的修复
+    - 将所有的修复同步更新到标记版论文中。
+12. R3.1：相对于 TileLang、QiMeng-Xpiler 的独特性
+    - 将原论文和标记版论文中的 “unchanged expert-written operator library” 明确写成 “unchanged source-level expert implementation”
+13. R3.2：与 AI compilers 和 cuDNN 比较
+    - 将 Revision Map 对应的部分改成“clarified why no direct comparison is claimed”
+    - 不需要在图 1 中增加 TilingInfer，也不要在回复中提及图中没有 TilingInfer 的数据
+14. R3.3：解释 NPU/GPU 编译及 instruction lowering 的差异
+    - 修改回复中用的“peripheral” 单词，换成更简单易懂的
+    - “tensor-program IR (e.g., LLVM IR)” 不准确，尝试修改
+15. cross-language gap 是否只是简单参数传递/按尺寸独立优化
+    - 无需修改
+16. R3.5：Fig. 8 中 Rules \(\mathcal R\) 的含义
+    - 无需修改
+17. “Others” 行
+    - 保留为单独的 editorial note，不要暗示它是对某条审稿意见的回复
+
+
+确认：
+1. 通过标签自动生成编号，不写死 3.9/3.14
+2. Llama 应准确称为 Llama 3.2 1B；Qwen3.5 请写做 Qwen3.5-0.8B
+3. 在 /mnt/workspace 下搜索一下 plot_scripts/plot_resolved_tiling_sensitivity.py，看能不能在其他地方找到这个脚本，然后找出来复制到本仓库下

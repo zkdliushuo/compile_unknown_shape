@@ -8,7 +8,7 @@ Deep-learning (DL) frameworks and serving systems~\cite{ansel2024dynamo,abadi201
 These libraries must cover \dynamics from both cross-model heterogeneity (such as different algorithmic variants~\cite{vaswani2017attention,ainslie2023gqa,shazeer2019fast,beltagy2020longformerlongdocumenttransformer} and architectural attributes~\cite{yang2024qwen2technicalreport,touvron2023llama2openfoundation,deepseekai2025deepseekv3technicalreport}) and runtime variation in dimensions (such as batch size and sequence length). 
 The performance of each resulting operator configuration depends not only on its algorithm but also on its \emph{schedule parameters}, including tile sizes, loop bounds, pipeline stages, and memory layout choices. 
 Different shapes can have different optimal schedules. 
-Consequently, when input shapes are dynamic, the operator implementation must select a high-performance schedule from the runtime shape.
+Consequently, when input shapes are dynamic, the operator implementation must select a high-performance schedule based on the runtime shape.
 
 Existing approaches can be classified by how their generated binaries represent schedule parameters. 
 A \emph{schedule-fixed kernel} compiles the key schedule parameters as constants, so each compiled kernel realizes a fixed schedule. 
@@ -35,27 +35,27 @@ This trade-off becomes more pronounced as operator implementations grow more com
 Our key observation is that most schedule parameters are runtime invariants once a model is deployed. Most deployment scenarios exhibit \emph{partial dynamics}: only a limited set of dimensions, such as batch size and sequence length, vary at runtime, while model-specific attributes and dimensions, such as hidden size, head count, and head dimension, remain fixed. We refer to these fixed facts as \initialconsts. Current DL frameworks can recover \initialconsts through graph capture and symbolic shape inference~\cite{shen2021nimble,zheng2023bladedisc,Lai2023RelaxCA,ansel2024dynamo}. Mechanistically, \initialconsts determine the core tiling and pipeline structure constrained by on-chip resources and compute units, whereas dynamic dimensions primarily affect the number of executions of these tiles, their parallel partitioning, and tail handling. 
 Consistent with this mechanism, our analysis in \S\ref{sec:motivation} finds that, across the studied operators, about 90\% of schedule parameters are runtime invariants determined by \initialconsts and do not depend on the concrete runtime values of dynamic dimensions.
 
-This observation suggests a novel way to address the specialization trade-off: using \initialconsts to specialize existing operator libraries.
+This observation suggests a distinct application strategy for addressing the specialization trade-off: using \initialconsts to specialize existing operator libraries.
 Inspired by this insight, we present \textbf{\uline{\mysys{}}}, a static-analysis framework for LLVM-based operator libraries.
-It uses LLVM IR as a common representation for C++ libraries.
+It uses LLVM IR as a common representation of C++ operator libraries.
 \mysys first uses graph-level model constants to \textbf{\uline{infer}} invariant \textbf{\uline{tiling}} data (i.e., schedule parameters) for both schedule-fixed and schedule-generic implementations.
-For each Graph IR node(i.e., an operator invocation), \mysys extracts its arguments, shapes, and attributes to construct the entry state of the corresponding host-side LLVM IR function.
+For each Graph IR node (i.e., an operator invocation), \mysys extracts its arguments, shapes, and attributes to construct the entry state of the corresponding host-side LLVM IR function.
 This construction covers both concrete and symbolic dimensions.
 \mysys then propagates this constructed state information through the host-side LLVM IR programs to device-kernel launch sites.
-Finally, for a schedule-generic kernel, \mysys employ the inferred launch-site constant schedule parameters to specialize the kernel.
+Finally, for a schedule-generic kernel, \mysys employs the inferred launch-site constant schedule parameters to specialize the kernel.
 For the schedule-fixed implementation, \mysys identifies template instances that cannot be reached and removes these instances.
 
 Realizing \mysys faces two key challenges.
-\textbf{First}, reconstructing the calling context requires bridging \textbf{a cross-language semantic gap} between graph-level constants and symbolic shape information to the field-sensitive entry state of the corresponding C++ operator.
+\textbf{First}, reconstructing the calling context requires bridging \textbf{a cross-language semantic gap} by mapping graph-level constants and symbolic shape information into the field-sensitive entry state of the corresponding C++ operator.
 Graph IR records constants and symbolic dimensions as typed shapes and attributes, whereas the separately compiled C++/LLVM code exposes nested object layouts and pointer/field accesses. 
 Bridging this gap through end-to-end cross-language analysis would require traversing framework dispatch, type conversion, object construction, and other Python/FFI machinery, making the analysis costly and framework-specific. 
 \mysys instead uses type-specific context-update rules to precisely construct the required C++ entry state directly from Graph IR, avoiding analysis of Python/C++ FFI glue code.
-\textbf{Second}, operator host code contains many \textbf{shape checkers, leading to numerous early-exit paths}.
-Their early-exit paths just handle invalid inputs, report errors and skip the normal computation of schedule parameters.
-As a result, merging both states on early-exit paths and normal paths can pollute the normal state and reduce the precision of constant propagation.
+\textbf{Second}, operator host code contains many \textbf{shape checkers that create early-exit paths}.
+These paths handle only invalid inputs: they report errors and bypass the normal computation of schedule parameters.
+As a result, merging states from early-exit and normal paths can pollute the normal-path state and reduce the precision of constant propagation.
 Meanwhile, analyzing every possible path separately would be too expensive for a large operator library.
-\mysys therefore uses a Conditional Return-Value Flow Graph (CRVFG) to identify early-exit paths before propagation based on .
-It excludes states from these paths when states from normal paths are merged.
+\mysys therefore uses a Conditional Return-Value Flow Graph (CRVFG) to identify early-exit edges from the conditional flow of status return values before propagation.
+It excludes states propagated along these edges from normal-path merges.
 This preserves constants without analyzing every path separately.
 
 This paper makes four contributions:

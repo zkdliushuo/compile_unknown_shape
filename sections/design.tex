@@ -88,7 +88,7 @@ Each rule maps one typed metadata item to updates of the abstract environment an
 
 \subsubsection{Graph IR Node and Metadata Extraction}\label{sec:design:extract}
 
-The Graph IR is a functional intermediate representation based on the ATen operator set, organized as a directed acyclic graph where each node represents a logical ATen operator invocation.
+The Graph IR is a functional intermediate representation based on the ATen operator set, organized as a directed acyclic graph in which each node represents a logical ATen operator invocation.
 We formally define a Graph IR node as:
 \begin{equation}
 	N = (\texttt{op}, \mathit{In}, \mathit{Out}, \sigma)
@@ -183,7 +183,7 @@ For example, the $\mathcal{R}_{\textsc{Tensor}}$ context-update rule is defined 
 
 \noindent\textbf{Completeness.}
 The context-update rules cover all five core parameter types (Scalar, String, Tensor, List, Optional) in the PyTorch operator interface.
-Recursive applications of the context-update rules enable complex compositions like $\textsc{Optional}\langle\textsc{List}\rangle$, ensuring the approach is generic across standard operator schemas.
+Recursive applications of the context-update rules enable complex compositions such as $\textsc{Optional}\langle\textsc{List}\rangle$, ensuring that the approach is generic across standard operator schemas.
 % Note: The recursive nature of the Process function allows handling of nested types,
 % e.g., $\textsc{List}\langle\textsc{Tensor}\rangle$ or $\textsc{Optional}\langle\textsc{List}\langle\textsc{Scalar}\rangle\rangle$,
 % by recursively applying the appropriate rules for each element.
@@ -202,7 +202,7 @@ The early-exit edge identification process consists of three steps: (1) construc
 		\resizebox{\linewidth}{!}{%
 		\input{figures/sys-design/conditional-value-flow}
 		}
-		\captionof{figure}{Return-Value Flow Graphs for \texttt{check} and \texttt{set\_t} functions. For \texttt{check}: direct error return when $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$ holds, the return value is $-1 \in \mathcal{E}$. For \texttt{set\_t}: propagated error when $\varphi_1 = (\%0 \neq 0)$ holds, the error code from \texttt{check} flows to the return.}
+			\captionof{figure}{Return-Value Flow Graphs for \texttt{check} and \texttt{set\_t}. In \texttt{check}, when $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$ holds, the function returns $-1 \in \mathcal{E}$. In \texttt{set\_t}, when $\varphi_1 = (\%0 \neq 0)$ holds, the error code returned by \texttt{check} flows to the function return.}
 		\label{fig:conditional-value-flow}
 	\end{minipage}%
 	\hfill
@@ -300,9 +300,9 @@ If an early-exit path is identified, the algorithm extracts the key clause $\var
 This operation returns the rightmost sub-clause (e.g., $\varphi=(b_1=b_2)\land(\texttt{s1}\neq\texttt{s2})$ yields $\varphi_{key}=(\texttt{s1}\neq\texttt{s2})$), because the rightmost clause determines the error status under short-circuit evaluation.
 The algorithm obtains the basic block $B_{src}$ containing $\varphi_{key}$ via $\texttt{GetBasicBlock}(\varphi_{key})$ and the successor block $B_{dst}$ via $\texttt{GetSuccessor}(B_{src},\varphi_{key})$, then marks the CFG edge $B_{src}\rightarrow B_{dst}$ as an early-exit edge.
 
-\subsubsection{Inter-Procedural Recursion}\label{sec:design:inter-procedural-recursion}
+\subsubsection{Interprocedural Recursion}\label{sec:design:inter-procedural-recursion}
 
-When a function containing shape checkers has a return value derived from a callee, inter-procedural recursion is required to identify early-exit paths across functions.
+When a function containing shape checkers has a return value derived from a callee, interprocedural recursion is required to identify early-exit paths across functions.
 Two scenarios trigger recursive analysis of a callee:
 \begin{enumerate}
 	\item If the source value $v$ of a value-flow path is the return value of a call instruction, the callee is recursively analyzed.
@@ -310,7 +310,7 @@ Two scenarios trigger recursive analysis of a callee:
 	This case corresponds to common status-propagation patterns in production code (e.g., \texttt{if (x == ERROR) return ERROR}), where \texttt{x} is the return value of a callee.
 \end{enumerate}
 
-\subsection{Inter-Procedural Constant Propagation for Host-Side Programs}\label{sec:design:propagation}
+\subsection{Interprocedural Constant Propagation for Host-Side Programs}\label{sec:design:propagation}
 
 The propagation stage takes the initial calling context $\mathbb{C}_{init}$ from \S\ref{sec:design:context_construction} and the early-exit edges $E_{exit}$ from \S\ref{sec:design:early-return} as inputs, and propagates constants through the host-side program to kernel launch sites.
 The analysis maintains a symbolic environment $\mathbb{E}$ and a flow-sensitive memory store $\mathbb{S}$, performing value propagation over the domain defined in \autoref{fig:abstract-domain}.
@@ -334,13 +334,13 @@ For example, if a shape checker returns an error code when dimensions mismatch, 
 \subsection{Kernel Specialization and Library Pruning} \label{sec:design:specialization}
 
 
-Based on the context derived from inter-procedural constant propagation, \mysys performs two key optimizations: schedule-generic kernel specialization and pruning redundant template instantiations from schedule-fixed operator libraries.
+Based on the context derived from interprocedural constant propagation, \mysys performs two key optimizations: schedule-generic kernel specialization and pruning of redundant template instantiations from schedule-fixed operator libraries.
 
 For schedule-generic kernels, \mysys substitutes kernel variables with the concrete schedule parameters identified by the host-side analysis.
-Then \mysys employs a sequence of optimization passes, specifically \texttt{IPSCCP}, \texttt{Loop Unrolling}, and \texttt{CFG Simplification}.
+\mysys then applies a sequence of optimization passes, specifically \texttt{IPSCCP}, \texttt{Loop Unrolling}, and \texttt{CFG Simplification}.
 These passes exploit the newly introduced constants to fold computations and simplify control structures, generating a highly optimized kernel binary.
 
 For schedule-fixed libraries, \mysys reduces code size by leveraging path liveness information from the host analysis.
 During constant propagation, we identify \texttt{Dead Paths}, i.e., execution branches where guard conditions evaluate to false based on deterministic constants.
-If a specific template function instance is invoked only on these dead paths, \mysys determines it is unreachable at runtime and removes the instance entirely.
+If a specific template function instance is invoked only on these dead paths, \mysys determines that it is unreachable at runtime and removes the instance entirely.
 This selective pruning ensures that only potentially active operator instances are retained in the final binary.

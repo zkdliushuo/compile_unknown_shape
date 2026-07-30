@@ -19,7 +19,7 @@ LLM-assisted systems change how the target program is produced but retain this g
 QiMeng-Xpiler combines LLM-guided transformations, symbolic repair, and hierarchical autotuning to translate tensor programs across accelerator programming interfaces~\cite{dong2025qimengxpiler}.
 KernelBench evaluates whether LLMs can generate correct and efficient GPU kernels from ML workloads~\cite{ouyang2025kernelbench}.
 These systems generate or translate an implementation and then optimize its transformation or schedule choices.
-They do not reconstruct deployment constants inside an unchanged expert-written operator library to partially evaluate scalar LLVM instructions or prune unreachable precompiled variants.
+They do not reconstruct deployment constants within an unchanged source-level expert implementation to partially evaluate scalar LLVM instructions or prune unreachable precompiled variants.
 
 \mysys therefore has a different optimization object.
 It preserves the expert-written kernel, including its vendor-specific control flow, data movement, and intrinsic calls, and specializes standard scalar LLVM instructions such as loads, stores, arithmetic, branches, and address calculations.

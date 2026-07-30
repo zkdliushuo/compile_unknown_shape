@@ -8,10 +8,10 @@ because Attention and MatMul expose profitable invariant schedules, yielding
 about 10\% average inference speedup. Schedule-fixed expert-written libraries
 also benefit from removing unreachable template instances. This per-model
 pruning is most attractive when a deployment serves fewer models, because each
-specialized binary can discard a larger fraction of the universal library. By
+pruned binary can discard a larger fraction of the universal library. By
 contrast, HSTU and prefill remain compute-heavy, so specializing their core
 Attention and MatMul kernels removes little of the total work and improves
-end-to-end latency by only about 2\%. Some kernels in the current open-source
+end-to-end latency by only about 3\%. Some kernels in the current open-source
 baselines also cannot be further specialized by \mysys, further limiting
 end-to-end gains.
 
@@ -31,11 +31,12 @@ libraries. This differs from AI compilers, which generate implementations and
 search schedules; their code-generation pipelines do not optimize an existing
 C++ expert library in place. 
 
-Besides, \mysys analyzes host code only to recover constants
+In addition, \mysys analyzes host code only to recover constants
 and launch-site liveness, then optimizes reachable device kernels; it does not
 rewrite host code. Host control flow is complex, CPUs already execute it
 efficiently, and profitable host specialization would require a more selective
-policy than device-kernel constant propagation. Production NPU Graph execution
-further suppresses CPU overhead. In layered Transformers, one host path is
-typically executed once per decode step while its device kernels repeat across
-many layers, making kernel optimization the higher-value target.
+policy than device-kernel constant propagation. NPU Graph replay suppresses
+repeated launch overhead, while identical input shapes across Transformer
+layers allow host-computed schedule parameters to be reused. Host schedule
+computation is therefore not a bottleneck in our evaluated setting, making
+device-kernel optimization the higher-value target.

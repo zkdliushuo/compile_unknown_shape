@@ -1,15 +1,15 @@
 \begin{table}[htbp]
 \centering
-\caption{Performance Comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{\mysys} (T).
+\caption{Performance comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{\mysys} (T).
 Best values are bolded.
-Reflecting our goal to maximize time spent on tensor computation units (Cube and Vector), $\downarrow$ denotes lower is better for metrics irrelative to tensor computations. $\uparrow$ denotes higher is better for speedup ratio.}
+Reflecting our goal to maximize time spent on tensor computation units (Cube and Vector), $\downarrow$ denotes lower is better for metrics not directly tied to tensor computation. $\uparrow$ denotes higher is better for speedup ratio.}
 \label{tab:performance_metrics}
 \vspace{2pt}
 \renewcommand{\arraystretch}{0.86}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lcccccccccccccccccc}
 \toprule
-\multirow{2}{*}{\textbf{Op}} & \multicolumn{3}{c}{\textbf{Speedup} ($\uparrow$)} & \multicolumn{3}{c}{\textbf{I-Cache Miss (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Scalar Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Mem Read Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Mem Write Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Binary Size(KB)} ($\downarrow$)} \\
+\multirow{2}{*}{\textbf{Op}} & \multicolumn{3}{c}{\textbf{Speedup} ($\uparrow$)} & \multicolumn{3}{c}{\textbf{I-Cache Miss (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Scalar Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Mem Read Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Mem Write Ratio (\%)} ($\downarrow$)} & \multicolumn{3}{c}{\textbf{Binary Size (KB)} ($\downarrow$)} \\
 \cmidrule(lr){2-4} \cmidrule(lr){5-7} \cmidrule(lr){8-10} \cmidrule(lr){11-13} \cmidrule(lr){14-16} \cmidrule(lr){17-19}
  & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} & \textbf{B} & \textbf{L} & \textbf{T} \\
 \midrule

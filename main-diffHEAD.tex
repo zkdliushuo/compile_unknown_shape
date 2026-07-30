@@ -150,11 +150,11 @@
 %DIF < % \setlength{\abovecaptionskip}{2pt}  % 调整标题与图表之间的距离
 %DIF < % \setlength{\belowcaptionskip}{1pt}  % 调整标题与正文之间的距离
 %DIF -------
-\setlength{\textfloatsep}{2pt plus 1pt minus 1pt} %DIF > 
-\setlength{\floatsep}{2pt plus 1pt minus 1pt} %DIF > 
-\setlength{\intextsep}{2pt plus 1pt minus 1pt} %DIF > 
-\setlength{\abovecaptionskip}{1pt} %DIF > 
-\setlength{\belowcaptionskip}{0pt} %DIF > 
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt} %DIF >
+\setlength{\floatsep}{8pt plus 2pt minus 2pt} %DIF >
+\setlength{\intextsep}{8pt plus 2pt minus 2pt} %DIF >
+\setlength{\abovecaptionskip}{3pt} %DIF >
+\setlength{\belowcaptionskip}{2pt} %DIF >
 %DIF -------
 \usepackage{cleveref}
 \usepackage{tikz}
@@ -461,7 +461,21 @@ belowskip=0em  % 控制代码块下方的距离
 \RequirePackage{xcolor} %DIF PREAMBLE
 \RequirePackage{ulem} %DIF PREAMBLE
 \providecommand{\DIFaddtex}[1]{{\protect\color{blue}#1}} %DIF PREAMBLE
-\providecommand{\DIFdeltex}[1]{{\protect\color{red}\sout{#1}}} %DIF PREAMBLE
+\makeatletter
+\providecommand{\DIFidentity}[1]{#1}
+\providecommand{\DIFdeltex}[1]{{%
+  \protect\color{red}%
+  \normalfont\normalsize
+  \let\textbf\DIFidentity
+  \let\textit\DIFidentity
+  \let\texttt\DIFidentity
+  \let\textsc\DIFidentity
+  \let\textsf\DIFidentity
+  \let\emph\DIFidentity
+  \let\uline\DIFidentity
+  \sout{#1}%
+}} %DIF PREAMBLE
+\makeatother
 \providecommand{\DIFaddbegin}{} %DIF PREAMBLE
 \providecommand{\DIFaddend}{} %DIF PREAMBLE
 \providecommand{\DIFdelbegin}{} %DIF PREAMBLE
@@ -477,6 +491,7 @@ belowskip=0em  % 控制代码块下方的距离
 %DIF HYPERREF PREAMBLE %DIF PREAMBLE
 \providecommand{\DIFadd}[1]{\texorpdfstring{\DIFaddtex{#1}}{#1}} %DIF PREAMBLE
 \providecommand{\DIFdel}[1]{\texorpdfstring{\DIFdeltex{#1}}{}} %DIF PREAMBLE
+\AtBeginDocument{\hypersetup{hidelinks}}
 %DIF LISTINGS PREAMBLE %DIF PREAMBLE
 \RequirePackage{listings} %DIF PREAMBLE
 \RequirePackage{color} %DIF PREAMBLE
@@ -538,50 +553,7 @@ belowskip=0em  % 控制代码块下方的距离
 %% of authors' names for this purpose.
 % \renewcommand{\shortauthors}{Shuo et al.}
 
-\begin{abstract}
-%DIF <  Deep Learning (DL) frameworks and serving systems rely on operator libraries to support diverse model architectures and dynamic input shapes.
-%DIF <  Such flexibility introduces a considerable number of runtime parameters into accelerator kernels, making high performance heavily dependent on kernel specialization, i.e., resolving kernel parameters with concrete values at compile time.
-%DIF <  However, existing operator libraries lack effective mechanisms for automatic specialization, leading to a fundamental trade-off between performance degradation and severe code bloat.
-\DIFdelbegin %DIFDELCMD < 
-
-%DIFDELCMD < %%%
-%DIF <  This work reveals that most kernel parameters are actually invariants given model and hardware configurations.
-%DIF <  The key to achieving automatic kernel specialization is to determine values of such invariable parameters at compile-time, which faces challenges in cross-language semantic loss and control flow dependent on dynamic shapes.
-%DIF <  We present \mysys, a framework that first achieves propagating model-specific constant information to optimize operator libraries.
-%DIF <  \mysys is designed to address challenges when propagating information of invariants across multiple layers from front-end Python runtime to host-side programs and finally to device kernel functions.
-%DIF <  We implement \mysys on Ascend and GPU platform.
-%DIF <  Comprehensive operator-level and end-to-end evaluations demonstrate \mysys's ability to infer invariants and specialize kernels across diverse operators and models:
-%DIF <  compared to the baseline compiler for Ascend, \mysys achieves 1.06$\times$ speedup on average and up to 1.17$\times$ speedup on specific operators, 1.03$\times$ speedup on large language models(LLMs) inference speed.
-%DIF <  Besides, \mysys shows potential on operator libraries slimming by using inferred invariants for GPUs, reducing the binary size of FlashInfer by over 96\%.
-%DIFDELCMD < 
-
-%DIFDELCMD < %%%
-\DIFdel{Deep learning }\DIFdelend %DIF >  目前，主流的深度学习系统广泛依赖专家实现的算子库来达到高性能。
-%DIF >  然而，为了适配动态形状，需要根据输入形状选择最优的调度实现，包括循环分块大小、数据缓存布局等调度参数。
-%DIF >  不同形状的最优调度参数不同，这使得编译专家算子库面临着 specialization 的权衡：允许运行时传递调度参数的通用内核面临显著的性能损失，而编译时枚举调度参数取值逐个生成专门化 kernel 会导致编译产物体积过度膨胀。
-%DIF >  此外，现有的生成高性能内核的 AI 编译器针对的是不同的问题，不会就地特化现有的专家算子库。
-\DIFaddbegin \DIFadd{Deep-learning }\DIFaddend (DL) \DIFdelbegin \DIFdel{frameworks rely heavily on operator libraries to support diverse model architectures and }\DIFdelend \DIFaddbegin \DIFadd{systems rely on expert-written operator libraries for high performance across }\DIFaddend dynamic input shapes. \DIFdelbegin \DIFdel{To maintain flexibility, these libraries employ generic kernels with numerous runtime parameters for optimal scheduling. However, relying on runtime resolution for these parameters hurts performance, whereas statically enumerating them for efficiency leads to severe code bloat, creating a fundamental dilemma: accepting performance degradation with generic kernels or suffering severe code bloat through exhaustive specialization. A promising solution is to specialize kernels by propagating }\DIFdelend \DIFaddbegin \DIFadd{These libraries use shape-dependent schedule parameters, such as tile sizes and on-chip buffer layouts. Schedule-generic expert-written operator libraries preserve shape coverage with a single kernel but limit compile-time optimization, whereas schedule-fixed expert-written operator libraries precompile combinations of schedule parameters and incur binary bloat. Kernel-generation compilers do not resolve this trade-off because they generate new kernels rather than specialize existing libraries.
-}
-
-%DIF >  这一问题的关键根因是，手写算子库在编译阶段丢失了保存在 Graph IR 层面的模型常量信息，导致全部调度参数在编译时都是未知变量，而实际上大部分调度参数取值在给定模型时是固定的。
-%DIF >  因此 A promising solution is to specialize kernels by propagating model-specific constants from the framework to the compiler.
-%DIF >  然而，基于现有算子库的编译设施执行上述传播面临着两个挑战：(1) Cross-language semantic gap, where constant information in the high-level Python DSL fails to propagate to device-native C++ compilers, and (2) Control flow obstruction, where extensive shape checkers for dynamic dimensions generate massive execution paths, hurting the precision of constant propagation.
-
-\DIFadd{Although many schedule parameters are fixed for a given model, the corresponding model-specific constants recorded in Graph IR are absent from the LLVM IR of separately compiled C++ operator libraries. Runtime argument transmission through Python/C++ FFI does not make these values available as compile-time facts. Propagating }\DIFaddend model-specific constants from the framework \DIFdelbegin \DIFdel{to the compiler.
-However, this approach faces }\DIFdelend \DIFaddbegin \DIFadd{enables specialization, but existing toolchains face }\DIFaddend two challenges: \DIFdelbegin \DIFdel{(1) Cross-language semantic gap, where constant information in the high-level PythonDSL fails to propagate to device-native }\DIFdelend \DIFaddbegin \DIFadd{the Python/}\DIFaddend C++ \DIFdelbegin \DIFdel{compilers, and (2) Control flow obstruction, where extensive validity checks on dynamic dimensions generate massive execution paths handling invalid shapes, thereby impeding the precision and efficiency of }\DIFdelend \DIFaddbegin \DIFadd{semantic gap prevents constant information from reaching the native compiler, and shape checkers for dynamic dimensions introduce many early-exit paths that weaken }\DIFaddend constant propagation.
-
-%DIF >  因此我们提出了 \mysys，一个用于自动特化专家算子库的静态分析框架。它将 Graph IR 层面的模型常量信息映射为抽象的 C++ 调用上下文，并基于 LLVM 对 C++ 算子程序在给定的 C++ 调用上下文下执行常量传播，并自动根据常量传播推导的常量调度参数对算子库做 kernel 特化或代码去冗余。
-%DIF >  基于抽象的 C++ 调用上下文，\mysys 无需分析 Python/C++ 跨语言层接口的复杂粘合代码（e.g. FFI）。
-%DIF >  此外，在常量传播前，我们利用条件返回值流图标记错误处理路径，从而防止常量传播时错误处理路径污染有效路径状态。
-We present \mysys, \DIFdelbegin \DIFdel{the first framework designed to automate kernel specialization in cross-language and dynamic-shape scenarios. To bridge the semantic gap}\DIFdelend \DIFaddbegin \DIFadd{a static-analysis framework that uses LLVM to propagate Graph IR shape information through existing C++ operator libraries and derive constant schedule parameters for kernel specialization and redundant-code elimination. To address the two challenges above}\DIFaddend , \mysys \DIFdelbegin \DIFdel{employs program synthesis to generate partial evaluation programs directly from the Graph IR . To handle control flow, it constructs }\DIFdelend \DIFaddbegin \DIFadd{introduces two core designs. First, type-specific context-update rules construct C++ entry states directly from Graph IR shapes and attributes, avoiding analysis of Python/C++ FFI glue code. Second, }\DIFaddend a Conditional Return-Value Flow Graph \DIFdelbegin \DIFdel{to trace the relationship between shape check conditions and }\DIFdelend \DIFaddbegin \DIFadd{identifies }\DIFaddend early-exit paths \DIFdelbegin \DIFdel{, enabling efficient identification and pruning of infeasible execution pathsthrough lightweight constant comparison.
-We implement }%DIFDELCMD < \mysys %%%
-\DIFdel{on Ascend NPUs and NVIDIA GPUs.
-Evaluations on state-of-the-art libraries (CANN and FlashInfer) demonstrate its effectiveness: }%DIFDELCMD < \mysys %%%
-\DIFdelend \DIFaddbegin \DIFadd{and prevents their states from affecting normal paths, preserving precision without analyzing every path.
-}
-
-\DIFadd{On an Ascend NPU, Tiling }\DIFaddend achieves an average \DIFdelbegin \DIFdel{1.06$\times$ speedup (up to 1.17$\times$) on Ascend operators and 1.03$\times$ speedup on LLM inference . Furthermore}\DIFdelend \DIFaddbegin \DIFadd{$1.06\times$ operator speedup across diverse operators and an average $1.05\times$ speedup across six representative inference scenarios. It provides larger benefits in the LLM decode phase and recommendation models, averaging a $1.10\times$ speedup. On an NVIDIA GPU}\DIFaddend , it reduces \DIFdelbegin \DIFdel{the binary size of FlashInfer by over 96\% on GPUs, demonstrating significant potential for library slimming}\DIFdelend \DIFaddbegin \DIFadd{a 542\,MB binary size by 88.8--95.5\% across 17 model variants}\DIFaddend .
-\end{abstract}
+\input{sections/abstract-paragraph-diff}
 
 
 %%
@@ -628,16 +600,15 @@ Evaluations on state-of-the-art libraries (CANN and FlashInfer) demonstrate its 
 %% information and builds the first part of the formatted document.
 \maketitle
 
+\input{sections/introduction-paragraph-diff}
+\begin{comment}
 \section{Introduction}\label{sec:intro}
 
-\DIFdelbegin \DIFdel{DL }\DIFdelend %DIF >  循环分块、流水并行、缓存分配等调度策略对张量算子程序的性能有显著影响。
-%DIF >  而不同的输入形状可能对应不同的最优调度策略，导致在动态形状场景下，算子程序需要在运行时根据输入形状选择不同的调度策略。
-%DIF > 
 \DIFaddbegin 
 
-\DIFadd{Deep-learning (DL) }\DIFaddend frameworks and serving systems~\cite{ansel2024dynamo,abadi2016tensorflow,kwon2023vllm,zheng2024sglang} rely heavily on \DIFdelbegin \DIFdel{hand-written }\DIFdelend \DIFaddbegin \DIFadd{expert-written }\DIFaddend operator libraries~\cite{nvidia2021cublas,nvidia2017cutlass,ye2025flashinfer,ascend_cannopsadv,dao2024flashattention2,flashmla2025}\DIFdelbegin \DIFdel{to ensure efficient operator implementation. 
+Deep-learning (DL) frameworks and serving systems~\cite{ansel2024dynamo,abadi2016tensorflow,kwon2023vllm,zheng2024sglang} rely heavily on \DIFdelbegin \DIFdel{hand-written }\DIFdelend \DIFaddbegin \DIFadd{expert-written }\DIFaddend operator libraries~\cite{nvidia2021cublas,nvidia2017cutlass,ye2025flashinfer,ascend_cannopsadv,dao2024flashattention2,flashmla2025}\DIFdelbegin \DIFdel{to ensure efficient operator implementation.
 To achieve universal applicability, these libraries must handle }\DIFdelend \DIFaddbegin \DIFadd{. 
-These libraries must cover }\DIFaddend \dynamics \DIFdelbegin \DIFdel{arising from two main sources: (1) Cross-model heterogeneity , involving diverse algorithmic variants(e.g., attention mechanisms~\mbox{%DIFAUXCMD
+These libraries must cover }\DIFaddend input dynamics \DIFdelbegin \DIFdel{arising from two main sources: (1) Cross-model heterogeneity , involving diverse algorithmic variants(e.g., attention mechanisms~\mbox{%DIFAUXCMD
 \cite{vaswani2017attention,ainslie2023gqa,shazeer2019fast,beltagy2020longformerlongdocumenttransformer} }\hspace{0pt}%DIFAUXCMD
 ) and varying attributes(e.g., head numbers}\DIFdelend \DIFaddbegin \DIFadd{from both cross-model heterogeneity (such as different algorithmic variants~\mbox{%DIFAUXCMD
 \cite{vaswani2017attention,ainslie2023gqa,shazeer2019fast,beltagy2020longformerlongdocumenttransformer} }\hspace{0pt}%DIFAUXCMD
@@ -1222,41 +1193,41 @@ and accelerator architectures expose increasingly diverse programmable units~\mb
 \cite{liao2019davinci,jouppi2023tpu}}\hspace{0pt}%DIFAUXCMD
 . Both trends increase the number of schedule parameters and the size of their configuration space, further exacerbating the trade-off}\DIFaddend .
 
-\DIFdelbegin \DIFdel{To address these limitations, we observe that deploying a specific model exhibits }%DIFDELCMD < \partialdynamics%%%
-\DIFdel{: while input dimensions(e.g., batch size, sequence length) }\DIFdelend \DIFaddbegin \DIFadd{Our key observation is that most schedule parameters are runtime invariants once a model is deployed. Most deployment scenarios exhibit }\emph{\DIFadd{partial dynamics}}\DIFadd{: only a limited set of dimensions, such as batch size and sequence length, }\DIFaddend vary at runtime, \DIFaddbegin \DIFadd{while }\DIFaddend model-specific attributes \DIFdelbegin \DIFdel{(e.g., }\DIFdelend \DIFaddbegin \DIFadd{and dimensions, such as }\DIFaddend hidden size, head \DIFdelbegin \DIFdel{number) remain invariant throughout serving. We denote these compile-time constants }\DIFdelend \DIFaddbegin \DIFadd{count, and head dimension, remain fixed. We refer to these fixed facts }\DIFaddend as \initialconsts\DIFdelbegin \DIFdel{, which can be resolved by }\DIFdelend \DIFaddbegin \DIFadd{. Current DL frameworks can recover }\initialconsts \DIFadd{through graph capture and }\DIFaddend symbolic shape inference\DIFdelbegin \DIFdel{in current DL frameworks~\mbox{%DIFAUXCMD
+\DIFdelbegin \DIFdel{To address these limitations, we observe that deploying a specific model exhibits }%DIFDELCMD < partial dynamics%%%
+\DIFdel{: while input dimensions(e.g., batch size, sequence length) }\DIFdelend \DIFaddbegin \DIFadd{Our key observation is that most schedule parameters are runtime invariants once a model is deployed. Most deployment scenarios exhibit }\emph{\DIFadd{partial dynamics}}\DIFadd{: only a limited set of dimensions, such as batch size and sequence length, }\DIFaddend vary at runtime, \DIFaddbegin \DIFadd{while }\DIFaddend model-specific attributes \DIFdelbegin \DIFdel{(e.g., }\DIFdelend \DIFaddbegin \DIFadd{and dimensions, such as }\DIFaddend hidden size, head \DIFdelbegin \DIFdel{number) remain invariant throughout serving. We denote these compile-time constants }\DIFdelend \DIFaddbegin \DIFadd{count, and head dimension, remain fixed. We refer to these fixed facts }\DIFaddend as model-specific constants\DIFdelbegin \DIFdel{, which can be resolved by }\DIFdelend \DIFaddbegin \DIFadd{. Current DL frameworks can recover }model-specific constants \DIFadd{through graph capture and }\DIFaddend symbolic shape inference\DIFdelbegin \DIFdel{in current DL frameworks~\mbox{%DIFAUXCMD
 \cite{shen2021nimble, zheng2023bladedisc, Lai2023RelaxCA, ansel2024dynamo}}\hspace{0pt}%DIFAUXCMD
-. }\textbf{\DIFdel{A key insight is that kernel schedule configurations are primarily determined by these }%DIFDELCMD < \initialconsts%%%
+. }\textbf{\DIFdel{A key insight is that kernel schedule configurations are primarily determined by these }%DIFDELCMD < model-specific constants%%%
 \DIFdel{.}}
 %DIFAUXCMD
 \DIFdel{Our analysis (\S\ref{sec:motivation} ) shows thatover }\DIFdelend \DIFaddbegin \DIFadd{~\mbox{%DIFAUXCMD
 \cite{shen2021nimble,zheng2023bladedisc,Lai2023RelaxCA,ansel2024dynamo}}\hspace{0pt}%DIFAUXCMD
-. Mechanistically, }\initialconsts \DIFadd{determine the core tiling and pipeline structure constrained by on-chip resources and compute units, whereas dynamic dimensions primarily affect the number of executions of these tiles, their parallel partitioning, and tail handling. 
-Consistent with this mechanism, our analysis in \S\ref{sec:motivation} finds that, across the studied operators, about }\DIFaddend 90\% of schedule parameters \DIFdelbegin \DIFdel{become deterministic given }\DIFdelend \DIFaddbegin \DIFadd{are runtime invariants determined by }\DIFaddend \initialconsts \DIFdelbegin \DIFdel{, enabling static resolution of most dynamic schedule decisions}\DIFdelend \DIFaddbegin \DIFadd{and do not depend on the concrete runtime values of dynamic dimensions}\DIFaddend .
+. Mechanistically, }model-specific constants \DIFadd{determine the core tiling and pipeline structure constrained by on-chip resources and compute units, whereas dynamic dimensions primarily affect the number of executions of these tiles, their parallel partitioning, and tail handling.
+Consistent with this mechanism, our analysis in \S\ref{sec:motivation} finds that, across the studied operators, about }\DIFaddend 90\% of schedule parameters \DIFdelbegin \DIFdel{become deterministic given }\DIFdelend \DIFaddbegin \DIFadd{are runtime invariants determined by }\DIFaddend model-specific constants \DIFdelbegin \DIFdel{, enabling static resolution of most dynamic schedule decisions}\DIFdelend \DIFaddbegin \DIFadd{and do not depend on the concrete runtime values of dynamic dimensions}\DIFaddend .
 
-\DIFdelbegin \DIFdel{Based on }\DIFdelend \DIFaddbegin \DIFadd{This observation suggests a novel way to address the specialization trade-off: using }\initialconsts \DIFadd{to specialize existing operator libraries.
-Inspired by }\DIFaddend this insight, we \DIFdelbegin \DIFdel{propose leveraging the }%DIFDELCMD < \initialconsts %%%
-\DIFdel{as contextual information to perform whole-program constant propagation.By propagating these }%DIFDELCMD < \initialconsts %%%
+\DIFdelbegin \DIFdel{Based on }\DIFdelend \DIFaddbegin \DIFadd{This observation suggests a novel way to address the specialization trade-off: using }model-specific constants \DIFadd{to specialize existing operator libraries.
+Inspired by }\DIFaddend this insight, we \DIFdelbegin \DIFdel{propose leveraging the }%DIFDELCMD < model-specific constants %%%
+\DIFdel{as contextual information to perform whole-program constant propagation.By propagating these }%DIFDELCMD < model-specific constants %%%
 \DIFdel{through the operator library down to the kernel call sites, we can statically specialize generic kernels or prune redundant instances in manually specialized libraries.
 However, implementing this strategy faces two critical challengesregarding the precision of static analysis: the }\textbf{\DIFdel{cross-language semantic gap}} %DIFAUXCMD
-\DIFdelend \DIFaddbegin \DIFadd{present }\textbf{\uline{\mysys{}}}\DIFadd{, a static-analysis framework for LLVM-based operator libraries.
+\DIFdelend \DIFaddbegin \DIFadd{present }\textbf{\uline{TilingInfer}}\DIFadd{, a static-analysis framework for LLVM-based operator libraries.
 It uses LLVM IR as a common representation for C++ libraries.
-}\mysys \DIFadd{first uses graph-level model constants to }\textbf{\uline{infer}} \DIFadd{invariant }\textbf{\uline{tiling}} \DIFadd{data (i.e., schedule parameters) for both schedule-fixed }\DIFaddend and \DIFdelbegin \textbf{\DIFdel{early-exit paths from dynamic shape checks}}%DIFAUXCMD
+}TilingInfer \DIFadd{first uses graph-level model constants to }\textbf{\uline{infer}} \DIFadd{invariant }\textbf{\uline{tiling}} \DIFadd{data (i.e., schedule parameters) for both schedule-fixed }\DIFaddend and \DIFdelbegin \textbf{\DIFdel{early-exit paths from dynamic shape checks}}%DIFAUXCMD
 \DIFdel{.
 First, the operator library is typically integrated into the framework via Python/}\DIFdelend \DIFaddbegin \DIFadd{schedule-generic implementations.
-For each Graph IR node(i.e., an operator invocation), }\mysys \DIFadd{extracts its arguments, shapes, and attributes to construct the entry state of the corresponding host-side LLVM IR function.
+For each Graph IR node(i.e., an operator invocation), }TilingInfer \DIFadd{extracts its arguments, shapes, and attributes to construct the entry state of the corresponding host-side LLVM IR function.
 This construction covers both concrete and symbolic dimensions.
-}\mysys \DIFadd{then propagates this constructed state information through the host-side LLVM IR programs to device-kernel launch sites.
-Finally, for a schedule-generic kernel, }\mysys \DIFadd{employ the inferred launch-site constant schedule parameters to specialize the kernel.
-For the schedule-fixed implementation, }\mysys \DIFadd{identifies template instances that cannot be reached and removes these instances.
+}TilingInfer \DIFadd{then propagates this constructed state information through the host-side LLVM IR programs to device-kernel launch sites.
+Finally, for a schedule-generic kernel, }TilingInfer \DIFadd{employ the inferred launch-site constant schedule parameters to specialize the kernel.
+For the schedule-fixed implementation, }TilingInfer \DIFadd{identifies template instances that cannot be reached and removes these instances.
 }
 
-\DIFadd{Realizing }\mysys \DIFadd{faces two key challenges.
+\DIFadd{Realizing }TilingInfer \DIFadd{faces two key challenges.
 }\textbf{\DIFadd{First}}\DIFadd{, reconstructing the calling context requires bridging }\textbf{\DIFadd{a cross-language semantic gap}} \DIFadd{between graph-level constants and symbolic shape information to the field-sensitive entry state of the corresponding }\DIFaddend C++ \DIFdelbegin \DIFdel{Foreign Function Interface (FFI), which creates a semantic gap between high-level Python objects and low-level }\DIFdelend \DIFaddbegin \DIFadd{operator.
 Graph IR records constants and symbolic dimensions as typed shapes and attributes, whereas the separately compiled }\DIFaddend C++\DIFdelbegin \DIFdel{memory states. 
 Standard static analysis cannot bridge this gap , as existing tools treat FFI glue code as black boxes, failing to model the deep heap layouts and internal indirections of domain-specific objects (e.g. 
 , Tensor's nested size arrays) that are essential for reconstructing precise }\DIFdelend \DIFaddbegin \DIFadd{/LLVM code exposes nested object layouts and pointer/field accesses. 
 Bridging this gap through end-to-end cross-language analysis would require traversing framework dispatch, type conversion, object construction, and other Python/FFI machinery, making the analysis costly and framework-specific. 
-}\mysys \DIFadd{instead uses type-specific context-update rules to precisely construct the required C++ entry state directly from Graph IR, avoiding analysis of Python/}\DIFaddend C++ \DIFdelbegin \DIFdel{calling contexts.
+}TilingInfer \DIFadd{instead uses type-specific context-update rules to precisely construct the required C++ entry state directly from Graph IR, avoiding analysis of Python/}\DIFaddend C++ \DIFdelbegin \DIFdel{calling contexts.
 Second, the host-side programs of operators involve many shape checkers for validiting input shape, introducing numerous early-exit paths that return error status codes when shape constraints are violated.
 Standard static analysis conservatively merges data flows from these }\DIFdelend \DIFaddbegin \DIFadd{FFI glue code.
 }\textbf{\DIFadd{Second}}\DIFadd{, operator host code contains many }\textbf{\DIFadd{shape checkers, leading to numerous early-exit paths}}\DIFadd{.
@@ -1264,13 +1235,13 @@ Their }\DIFaddend early-exit paths \DIFdelbegin \DIFdel{with the normal path, th
 }%DIFDELCMD < 
 
 %DIFDELCMD < %%%
-\DIFdel{To address the above challenges, we introduce }%DIFDELCMD < \mysys%%%
+\DIFdel{To address the above challenges, we introduce }%DIFDELCMD < TilingInfer%%%
 \DIFdel{, the first system designed to enable precise constant propagationacross language boundaries for kernel specialization.
 We construct an automated cross-language and whole-program analysis framework for automatic specialization of generic librarykernels and code debloating for manually specialized libraries.
 By introducing mechanisms specific to DL systems, }\DIFdelend \DIFaddbegin \DIFadd{just handle invalid inputs, report errors and skip the normal computation of schedule parameters.
 As a result, merging both states on early-exit paths and normal paths can pollute the normal state and reduce the precision of constant propagation.
 Meanwhile, analyzing every possible path separately would be too expensive for a large operator library.
-}\DIFaddend \mysys \DIFdelbegin \DIFdel{extends traditional static analysis techniques and consists of four main components:
+}\DIFaddend TilingInfer \DIFdelbegin \DIFdel{extends traditional static analysis techniques and consists of four main components:
 (1) }\textbf{\DIFdel{Cross-Language Context Reconstruction}} %DIFAUXCMD
 \DIFdel{(\S\ref{sec:design:context_construction}) defines semantic mapping rules from Graph IR parameter types to the typed records in C++ memory, automatically generating partially-evaluated calling contexts without analyzing complex FFI glue code;
 (2) }\textbf{\DIFdel{Early-Exit Edge Identification}} %DIFAUXCMD
@@ -1284,22 +1255,25 @@ This preserves constants without analyzing every path separately}\DIFaddend .
 
 \DIFdelbegin \DIFdel{In summary, the main contributions of this paper are as follows}\DIFdelend \DIFaddbegin \DIFadd{This paper makes four contributions}\DIFaddend :
 \begin{enumerate}
-    \item We \DIFdelbegin \DIFdel{propose }%DIFDELCMD < \mysys%%%
+    \item We \DIFdelbegin \DIFdel{propose }%DIFDELCMD < TilingInfer%%%
 \DIFdel{, a novel static analysis framework that enables precise constant propagation across the DL framework's language boundary (Python/}\DIFdelend \DIFaddbegin \DIFadd{devise a mechanism that propagates graph-level shape information into the }\DIFaddend C++ \DIFdelbegin \DIFdel{) into the underlying operator libraries}\DIFdelend \DIFaddbegin \DIFadd{compiler pipeline without analyzing FFI glue code. We formalize context-update rules that map Graph IR parameter types to the memory states of their underlying C++ implementations, allowing the mechanism to cover different PyTorch backends}\DIFaddend .
     \item We \DIFdelbegin \DIFdel{introduce a cross-language context reconstruction method based on semantic modeling of core DL data types, and a conditional return-value flow analysisfor identifying }\DIFdelend \DIFaddbegin \DIFadd{propose CRVFG-based }\DIFaddend early-exit \DIFdelbegin \DIFdel{edges}\DIFdelend \DIFaddbegin \DIFadd{path identification for precise constant-propagation analysis of operator host code while avoiding expensive path-sensitive analysis}\DIFaddend .
-    \item We implement \mysys\DIFdelbegin \DIFdel{based on LLVM~\mbox{%DIFAUXCMD
+    \item We implement TilingInfer\DIFdelbegin \DIFdel{based on LLVM~\mbox{%DIFAUXCMD
 \cite{lattner2004llvm} }\hspace{0pt}%DIFAUXCMD
 and apply it to PyTorch~\mbox{%DIFAUXCMD
 \cite{ansel2024dynamo}}\hspace{0pt}%DIFAUXCMD
 , with extensibility to other Python-based frameworks and hardware backends}\DIFdelend \DIFaddbegin \DIFadd{, a prototype system for specializing expert-written operator libraries on GPU and NPU platforms. It applies automatic partial evaluation to schedule-generic kernels to reduce scalar overhead and prunes unreachable template instances from schedule-fixed binaries at compile time to reduce binary size}\DIFaddend .
-    \item \DIFdelbegin \DIFdel{Evaluation demonstrates }%DIFDELCMD < \mysys%%%
+    \item \DIFdelbegin \DIFdel{Evaluation demonstrates }%DIFDELCMD < TilingInfer%%%
 \DIFdel{'s effectiveness: for generic operators on Ascend , it achieves an average speedup of }\textbf{\DIFdel{1.06$\times$}} %DIFAUXCMD
 \DIFdel{(up to }\textbf{\DIFdel{1.17$\times$}}%DIFAUXCMD
 \DIFdel{) and }\textbf{\DIFdel{3\%}} %DIFAUXCMD
-\DIFdelend \DIFaddbegin \DIFadd{On an Ascend NPU, }\mysys \DIFadd{achieves a 1.06$\times$ geometric-mean device-kernel speedup across 14 CANN operators and a 1.05$\times$ geometric-mean }\DIFaddend end-to-end \DIFdelbegin \DIFdel{inference speedup ; for manually specialized libraries on }\DIFdelend \DIFaddbegin \DIFadd{speedup across six representative inference scenarios; it provides larger benefits in the performance-critical LLM decode phase, averaging a 1.10$\times$ end-to-end speedup across the two decode scenarios. On an NVIDIA }\DIFaddend GPU, it \DIFdelbegin \DIFdel{removes over }\textbf{\DIFdel{96\%}} %DIFAUXCMD
+\DIFdelend \DIFaddbegin \DIFadd{On an Ascend NPU, }TilingInfer \DIFadd{achieves a 1.06$\times$ geometric-mean device-kernel speedup across 14 CANN operators and a 1.05$\times$ geometric-mean }\DIFaddend end-to-end \DIFdelbegin \DIFdel{inference speedup ; for manually specialized libraries on }\DIFdelend \DIFaddbegin \DIFadd{speedup across six representative inference scenarios; it provides larger benefits in the performance-critical LLM decode phase, averaging a 1.10$\times$ end-to-end speedup across the two decode scenarios. On an NVIDIA }\DIFaddend GPU, it \DIFdelbegin \DIFdel{removes over }\textbf{\DIFdel{96\%}} %DIFAUXCMD
 \DIFdel{of redundant kernels}\DIFdelend \DIFaddbegin \DIFadd{reduces a 542\,MB FlashInfer archive by 88.8--95.5\% across 17 model variants}\DIFaddend .
 \end{enumerate}
 
+\end{comment}
+\input{sections/background-paragraph-diff}
+\begin{comment}
 \section{Background and Motivation}
 \label{sec:motivation}
 
@@ -1331,7 +1305,7 @@ These parameters are fixed per model but vary across models, making them ideal f
 \DIFdelbegin %DIFDELCMD < \begin{figure}[ht]
 %DIFDELCMD <     \centering
 %DIFDELCMD <     \includegraphics[width=\linewidth]{figures/motivation/motivating-example.png}
-%DIFDELCMD <     \caption{A simplified example illustrating how constant information propagation of the Flash-Attention operator across Python and C++. The final constants (e.g., \texttt{stages}) derived from \initialconsts (e.g., \texttt{q->size(1) = 40}) can be used to specialize the device kernel \texttt{kernel\_fa}.}
+%DIFDELCMD <     \caption{A simplified example illustrating how constant information propagation of the Flash-Attention operator across Python and C++. The final constants (e.g., \texttt{stages}) derived from model-specific constants (e.g., \texttt{q->size(1) = 40}) can be used to specialize the device kernel \texttt{kernel\_fa}.}
 %DIFDELCMD <     \Description{Diagram showing constant propagation from Python through FFI to C++ and device kernel.}
 %DIFDELCMD <     \label{fig:motivating-example}
 %DIFDELCMD <     \vspace{-10pt}
@@ -1363,7 +1337,7 @@ scaled\_dot\_product\_attention(query: Tensor, key: Tensor, value: Tensor, attn\
 
 \DIFdelbegin \DIFdel{The }\textbf{\textit{\DIFdel{partial dynamics}}%DIFAUXCMD
 } %DIFAUXCMD
-\DIFdel{characteristic of DL models implies that while input tensors vary , there are many }%DIFDELCMD < \initialconsts%%%
+\DIFdel{characteristic of DL models implies that while input tensors vary , there are many }%DIFDELCMD < model-specific constants%%%
 \DIFdel{.
 }%DIFDELCMD < \autoref{fig:motivating-example} %%%
 \DIFdel{illustrates how these constants propagate through the software stack}\DIFdelend \DIFaddbegin \DIFadd{DL models are partially dynamic: batch size and sequence lengths may vary at runtime, while dimensions and attributes such as head count are fixed by the model configuration}\DIFaddend . When a \DIFdelbegin \DIFdel{Python-level operator (e.g., }\texttt{\DIFdel{torch.fa}}%DIFAUXCMD
@@ -1381,7 +1355,7 @@ By propagating $h=40$ from the Python front-end to the host C++ compiler, the ex
 \DIFdel{value. }%DIFDELCMD < 
 
 %DIFDELCMD < %%%
-\DIFdel{This observation suggests an opportunity : by statically tracking }%DIFDELCMD < \initialconsts %%%
+\DIFdel{This observation suggests an opportunity : by statically tracking }%DIFDELCMD < model-specific constants %%%
 \DIFdel{from the Python front-end down to the kernel launch, we can identify runtime invariants that are currently treated as variables.
 For generic kernels , this enables aggressive specialization of the device code.
 Furthermore, for manually specialized libraries, this allows us to identify the specific kernel instantiations not matching the derived compile-time constants.
@@ -1398,7 +1372,7 @@ This facilitates the pruning of unreachable code paths for a specific model, mit
 \DIFaddend \subsubsection{\DIFdelbegin \DIFdel{Disadvantages }\DIFdelend \DIFaddbegin \DIFadd{Limitations }\DIFaddend of \DIFdelbegin \DIFdel{Generic Kernels and Manually Specialized Libraries}\DIFdelend \DIFaddbegin \DIFadd{the Two Expert-Written Operator-Library Designs}\DIFaddend }
 \label{sec:motivation:disadvantages}
 
-\paragraph*{Bottleneck Analysis \DIFdelbegin \DIFdel{for Generic Kernels}\DIFdelend \DIFaddbegin \DIFadd{of Schedule-Generic Implementations}\DIFaddend .}
+\paragraph*{\DIFdelbegin \DIFdel{Bottleneck Analysis for Generic Kernels}\DIFdelend \DIFaddbegin \DIFadd{Bottleneck Analysis of Schedule-Generic Implementations}\DIFaddend .}
 \DIFdelbegin \DIFdel{Some operator libraries implement their kernels in the form of generic kernels, such as the built-in operator library of Ascend CANN.
 These kernels are not specialized mainly due to their complex schedule strategies and the great number of schedule parameters.
 In this design, almost all schedule parameters are passed as runtime arguments }\DIFdelend \DIFaddbegin 
@@ -1509,7 +1483,7 @@ This pre-instantiation strategy, while manageable on GPUs, is ill-suited for Asc
 
 We further analyze the schedule parameters of key operators from the \textbf{Qwen2.5-1.5B} model, classifying them into \textit{invariable parameters} (constants derived from model configuration) and \textit{variable parameters} (runtime-dependent values such as batch size and sequence length).
 \autoref{fig:param_stats} reveals that the overwhelming majority of kernel parameters are invariable.
-Propagating \initialconsts to resolve schedule parameters at compile time yields two benefits: (1) for \DIFdelbegin \DIFdel{generic kernels}\DIFdelend \DIFaddbegin \DIFadd{schedule-generic implementations}\DIFaddend , it enables model-specific \DIFaddbegin \DIFadd{kernel }\DIFaddend specialization with aggressive constant folding, reducing scalar overhead and I-Cache misses; (2) for \DIFdelbegin \DIFdel{manually specialized libraries}\DIFdelend \DIFaddbegin \DIFadd{schedule-fixed implementations}\DIFaddend , it makes kernel dispatch paths deterministic, enabling precise pruning of unused binaries.
+Propagating model-specific constants to resolve schedule parameters at compile time yields two benefits: (1) for \DIFdelbegin \DIFdel{generic kernels}\DIFdelend \DIFaddbegin \DIFadd{schedule-generic implementations}\DIFaddend , it enables model-specific \DIFaddbegin \DIFadd{kernel }\DIFaddend specialization with aggressive constant folding, reducing scalar overhead and I-Cache misses; (2) for \DIFdelbegin \DIFdel{manually specialized libraries}\DIFdelend \DIFaddbegin \DIFadd{schedule-fixed implementations}\DIFaddend , it makes kernel dispatch paths deterministic, enabling precise pruning of unused binaries.
 
 \DIFaddbegin \DIFadd{Besides, the further sensitivity study in \S\ref{sec:eval:sensitivity} analyzes which schedule parameters tend to have the most significant impact on performance.
 It reveals that a small subset of parameters, which lie in the hot path of the kernel, are responsible for the majority of performance impact.
@@ -1558,7 +1532,7 @@ The latter assumes or derives a cross-language caller context but does not defin
 \DIFdel{DL systems compile models and represent them using Graph IR (e.g., ATen IR), which contains precise information regarding operator input parameters, enabling direct extraction of semantic values without analyzing Python source code. Specifically, model-specific constants are captured as exact values from tracing, while dynamic dimensions are represented as symbolic variables.
 Building on these insights, we directly map computation graph node information to the abstract states of C}\DIFdelend \DIFaddbegin \DIFadd{and their C}\DIFaddend ++ \DIFdelbegin \DIFdel{entry functions, achieving high-precision reconstruction of }\DIFdelend \DIFaddbegin \DIFadd{interface layouts are stable within a backend.
 We can therefore define a context-update rule for each type and use Graph IR shapes and attributes to construct an accurate }\DIFaddend C++ \DIFdelbegin \DIFdel{contexts while avoiding the overhead of analyzing complex }\DIFdelend \DIFaddbegin \DIFadd{operator calling context directly.
-This approach avoids analyzing }\DIFaddend FFI glue code\DIFaddbegin \DIFadd{; }\autoref{tab:semantic-rules} \DIFadd{formalizes the context-update rules used by }\mysys\DIFaddend .
+This approach avoids analyzing }\DIFaddend FFI glue code\DIFaddbegin \DIFadd{; }\autoref{tab:semantic-rules} \DIFadd{formalizes the context-update rules used by }TilingInfer\DIFaddend .
 
 
 \DIFdelbegin %DIFDELCMD < \begin{figure}[htbp]
@@ -1832,7 +1806,8 @@ Conversely, when the guard $\neg\%1$ holds, we have $\%0 = 0 = \texttt{SUCCESS}$
 Confirmed early-exit-edge states are excluded from normal-path merges, while unclassified edges are retained conservatively.
 }
 
-\DIFaddend \section{System Design of \mysys}
+\end{comment}
+\DIFaddend \section{System Design of TilingInfer}
 \label{sec:design}
 
 \DIFdelbegin %DIFDELCMD < \begin{figure}[htbp]
@@ -1984,7 +1959,7 @@ Confirmed early-exit-edge states are excluded from normal-path merges, while unc
 
 %DIFDELCMD <     \end{tikzpicture}
 %DIFDELCMD <     }
-%DIFDELCMD <     \caption{The overall workflow of \mysys.}
+%DIFDELCMD <     \caption{The overall workflow of TilingInfer.}
 %DIFDELCMD <     \Description{Flow diagram showing the workflow from Graph IR through Context Generation, Early-Exit Identification, Constant Propagation, to Kernel Specialization.}
 %DIFDELCMD <     \label{fig:overall_workflow}
 %DIFDELCMD <     \vspace{-10pt}
@@ -2120,16 +2095,16 @@ Confirmed early-exit-edge states are excluded from normal-path merges, while unc
 
     \end{tikzpicture}
     }
-    \caption{The overall workflow of \mysys.}
+    \caption{The overall workflow of TilingInfer.}
     \Description{Flow diagram showing Graph IR context generation, early-exit identification, constant propagation, NPU kernel specialization, and GPU library pruning.}
     \label{fig:overall_workflow}
 \end{figure}
 \DIFaddend 
 
 
-\autoref{fig:overall_workflow} illustrates the workflow of \mysys.
+\autoref{fig:overall_workflow} illustrates the workflow of TilingInfer.
 \DIFaddbegin \DIFadd{Here, an }\emph{\DIFadd{early-exit edge}} \DIFadd{is the CFG edge that enters an early-exit path after a shape check fails.
-}\DIFaddend The framework takes the traced Graph IR containing operator invocation information with \initialconsts as input, and proceeds through four stages: \textbf{Context Generation} (\S\ref{sec:design:context_construction}), \textbf{Early-Exit Identification} (\S\ref{sec:design:early-return}), \textbf{Constant Propagation} (\S\ref{sec:design:propagation}), and \textbf{Kernel Specialization} (\S\ref{sec:design:specialization}).
+}\DIFaddend The framework takes the traced Graph IR containing operator invocation information with model-specific constants as input, and proceeds through four stages: \textbf{Context Generation} (\S\ref{sec:design:context_construction}), \textbf{Early-Exit Identification} (\S\ref{sec:design:early-return}), \textbf{Constant Propagation} (\S\ref{sec:design:propagation}), and \textbf{Kernel Specialization} (\S\ref{sec:design:specialization}).
 We detail each stage in the following subsections.
 
 \DIFdelbegin %DIFDELCMD < \begin{table}[htbp]
@@ -2137,7 +2112,7 @@ We detail each stage in the following subsections.
 %DIFDELCMD <   \small
 %DIFDELCMD <   \renewcommand{\arraystretch}{1.2}
 %DIFDELCMD <   \setlength{\tabcolsep}{5pt} 
-%DIFDELCMD <   \caption{Abstract domains and definitions in \mysys.}
+%DIFDELCMD <   \caption{Abstract domains and definitions in TilingInfer.}
 %DIFDELCMD <   \label{fig:abstract-domain}
 %DIFDELCMD <   \begin{tabular}{rl @{\hskip 0.8cm} rl}
 %DIFDELCMD <     \toprule
@@ -2181,7 +2156,7 @@ We detail each stage in the following subsections.
 	\small
 	\renewcommand{\arraystretch}{1.05}
 	\setlength{\tabcolsep}{5pt}
-	\caption{Abstract domains and definitions in \mysys.}
+	\caption{Abstract domains and definitions in TilingInfer.}
 	\label{fig:abstract-domain}
 	\begin{tabular}{rl @{\hskip 0.8cm} rl}
 		\toprule
@@ -2217,7 +2192,7 @@ We detail each stage in the following subsections.
 
 \subsection{Definitions}\label{sec:design:definitions}
 
-To formally describe the analysis of \mysys, we first define the abstract domains and notations used in our framework, as summarized in \autoref{fig:abstract-domain}.
+To formally describe the analysis of TilingInfer, we first define the abstract domains and notations used in our framework, as summarized in \autoref{fig:abstract-domain}.
 
 \textit{Memory Model and Variables.}
 We distinguish between SSA values and memory locations:
@@ -2422,7 +2397,7 @@ The program state and \DIFdelbegin \DIFdel{inter-procedural }\DIFdelend \DIFaddb
 
 \subsection{Calling Context Generation for C++}\label{sec:design:context_construction}
 
-\autoref{fig:context_workflow} illustrates the overall workflow of context generation in \mysys{}.
+\autoref{fig:context_workflow} illustrates the overall workflow of context generation in TilingInfer.
 The process takes a Graph IR node $N$ representing an operator invocation as input, and produces the initial calling context $\mathbb{C}_{init}$ for the corresponding C++ entry function.
 This process bridges the \DIFdelbegin \DIFdel{semantic gap between the high-level Graph IR and the low-level }\DIFdelend \DIFaddbegin \DIFadd{representation and compilation boundary between Graph IR metadata and the abstract }\DIFaddend C++ \DIFdelbegin \DIFdel{execution state }\DIFdelend \DIFaddbegin \DIFadd{entry state required by LLVM analysis }\DIFaddend through two phases:
 (1) \textbf{Extraction} (\ding{172}--\ding{174}), which parses the IR node $N$ to \DIFdelbegin \DIFdel{extract the parameter type information }\DIFdelend \DIFaddbegin \DIFadd{generate structured metadata }\DIFaddend $\Phi$; and
@@ -2433,7 +2408,7 @@ Each rule maps one typed metadata item to updates of the abstract environment an
 
 \subsubsection{Graph IR Node and \DIFdelbegin \DIFdel{Parameter Type }\DIFdelend \DIFaddbegin \DIFadd{Metadata }\DIFaddend Extraction}\label{sec:design:extract}
 
-The Graph IR is a functional intermediate representation based on the ATen operator set, organized as a directed acyclic graph \DIFdelbegin \DIFdel{(DAG) }\DIFdelend where each node represents a logical ATen operator invocation.
+The Graph IR is a functional intermediate representation based on the ATen operator set, organized as a directed acyclic graph \DIFdelbegin \DIFdel{(DAG) where }\DIFdelend \DIFaddbegin \DIFadd{in which }\DIFaddend each node represents a logical ATen operator invocation.
 We formally define a Graph IR node as:
 \begin{equation}
 	N = (\texttt{op}, \mathit{In}, \mathit{Out}, \sigma)
@@ -2453,8 +2428,8 @@ ATen operators have strictly defined signatures that specify the types of inputs
 \DIFdelend \DIFaddbegin \DIFadd{Each parameter type is directly mapped to a metadata variant }\DIFaddend $\phi$ \DIFdelbegin \DIFdel{as }\DIFdelend \DIFaddbegin \DIFadd{(e.g., }\textsc{\DIFadd{Tensor}}\DIFadd{, }\textsc{\DIFadd{Scalar}}\DIFadd{, }\textsc{\DIFadd{List}}\DIFadd{, }\textsc{\DIFadd{Optional}}\DIFadd{) without introducing a separate type variable.
 }
 
-\mysys{} \DIFadd{extracts }\ding{173} \DIFadd{the }\textit{\DIFadd{context metadata}} \DIFadd{$\Phi$ }\ding{174} \DIFadd{by aligning the Graph IR node's arguments with the operator's formal parameters.
-For each parameter in the signature, if an explicit argument is provided, }\mysys{} \DIFadd{captures its value or shape information as a metadata item $\phi_i$ according to the parameter's type; if the argument is omitted and a default value exists, the default is used.
+\DIFadd{TilingInfer extracts }\ding{173} \DIFadd{the }\textit{\DIFadd{context metadata}} \DIFadd{$\Phi$ }\ding{174} \DIFadd{by aligning the Graph IR node's arguments with the operator's formal parameters.
+For each parameter in the signature, if an explicit argument is provided, TilingInfer captures its value or shape information as a metadata item $\phi_i$ according to the parameter's type; if the argument is omitted and a default value exists, the default is used.
 }
 
 \DIFadd{The context metadata $\Phi = [\phi_0, \phi_1, \dots, \phi_n]$ is a sequence where each $\phi_i$ is }\DIFaddend a tagged union \DIFdelbegin \DIFdel{:
@@ -2472,7 +2447,7 @@ Each parameter type constructor corresponds to the semantic meaning in the C++ o
 \end{itemize}
 
 
-\DIFdelbegin %DIFDELCMD < \mysys{} %%%
+\DIFdelbegin %DIFDELCMD < TilingInfer %%%
 \DIFdel{organizes the parameter type descriptors of a Graph IR node into a }\textit{\DIFdel{parameter type sequence}} %DIFAUXCMD
 \DIFdel{$\Phi = [\phi_0, \phi_1, \dots, \phi_n]$.
 	The extraction process }%DIFDELCMD < \ding{173}%%%
@@ -2489,7 +2464,7 @@ Each parameter type constructor corresponds to the semantic meaning in the C++ o
 		\DIFadd{\sigma(\texttt{v}) }& \DIFadd{= (\texttt{dtype}(\texttt{v}),}[\DIFadd{s_B,8,s_{kv},128}]\DIFadd{), }&
 		\DIFadd{\sigma(\texttt{o}) }& \DIFadd{= (\texttt{dtype}(\texttt{o}),}[\DIFadd{s_B,40,s_q,128}]\DIFadd{).
 	}\end{align*}
-	\DIFadd{Thus, $s_B$, $s_q$, and $s_{kv}$ remain symbolic, while 40}\DIFaddend , \DIFdelbegin \DIFdel{if an explicit argument is provided, }%DIFDELCMD < \mysys{} %%%
+	\DIFadd{Thus, $s_B$, $s_q$, and $s_{kv}$ remain symbolic, while 40}\DIFaddend , \DIFdelbegin \DIFdel{if an explicit argument is provided, }%DIFDELCMD < TilingInfer %%%
 \DIFdel{captures its value or shape information as a parameter type descriptor $\phi_i$; if the argument is omitted and a default value exists, the default is used.
 This parameter type sequence serves as the input for the subsequent Context Construction phase.
 	}%DIFDELCMD < 
@@ -2630,7 +2605,7 @@ For tensor parameters, the dimension list captures both concrete constants (e.g.
 \subsubsection{Context Construction from \DIFdelbegin \DIFdel{Parameter Types}\DIFdelend \DIFaddbegin \DIFadd{Metadata}\DIFaddend }\label{sec:design:update}
 
 The goal of the construction phase is to synthesize the initial C++ calling context $\mathbb{C}_{init} = (\mathbb{E}, \mathbb{S})$ from the \DIFdelbegin \DIFdel{parameter type sequence }\DIFdelend \DIFaddbegin \DIFadd{metadata }\DIFaddend $\Phi$.
-Starting with an empty context $\mathbb{C}_{0}$ \ding{176}, \mysys{} iterates \DIFdelbegin \DIFdel{through each parameter type descriptor }\DIFdelend \DIFaddbegin \DIFadd{over the metadata items }\DIFaddend $\phi_i$ and sequentially updates \ding{175} the abstract state:
+Starting with an empty context $\mathbb{C}_{0}$ \ding{176}, TilingInfer iterates \DIFdelbegin \DIFdel{through each parameter type descriptor }\DIFdelend \DIFaddbegin \DIFadd{over the metadata items }\DIFaddend $\phi_i$ and sequentially updates \ding{175} the abstract state:
 \DIFaddbegin \DIFadd{for $\tau_i = \operatorname{type}(\phi_i)$, we write $\mathcal{R}_{\phi_i}(\mathbb{C}) := \mathcal{R}_{\tau_i}(\mathbb{C}, \phi_i)$ for the instance of the matching type-directed context-update rule.
 }\DIFaddend \begin{equation}
 	\mathbb{C}_{init} = \mathcal{R}_{\phi_n} \circ \dots \circ \mathcal{R}_{\phi_1} \circ \mathcal{R}_{\phi_0} (\mathbb{C}_0)
@@ -2794,164 +2769,11 @@ For example, the \DIFdelbegin \DIFdel{$\textbf{Process}(\texttt{Tensor}, [d_1, \
 
 \noindent\textbf{Completeness.}
 The \DIFaddbegin \DIFadd{context-update }\DIFaddend rules cover all five core parameter types (Scalar, String, Tensor, List, Optional) in the PyTorch operator interface.
-Recursive \DIFaddbegin \DIFadd{applications of the context-update }\DIFaddend rules enable complex compositions like \DIFdelbegin \DIFdel{$\textsc{Optional}\langle\textsc{List}\langle\phi_1\rangle\rangle$}\DIFdelend \DIFaddbegin \DIFadd{$\textsc{Optional}\langle\textsc{List}\rangle$}\DIFaddend , ensuring the approach is generic across standard operator schemas.
+Recursive \DIFaddbegin \DIFadd{applications of the context-update }\DIFaddend rules enable complex compositions \DIFdelbegin\DIFdel{like}\DIFdelend\DIFaddbegin\DIFadd{such as}\DIFaddend{} \DIFdelbegin \DIFdel{$\textsc{Optional}\langle\textsc{List}\langle\phi_1\rangle\rangle$}\DIFdelend \DIFaddbegin \DIFadd{$\textsc{Optional}\langle\textsc{List}\rangle$}\DIFaddend , ensuring \DIFaddbegin\DIFadd{that }\DIFaddend the approach is generic across standard operator schemas.
 % Note: The recursive nature of the Process function allows handling of nested types,
 % e.g., $\textsc{List}\langle\textsc{Tensor}\rangle$ or $\textsc{Optional}\langle\textsc{List}\langle\textsc{Scalar}\rangle\rangle$,
 % by recursively applying the appropriate rules for each element.
 
-
-\DIFdelbegin %DIFDELCMD < \begin{center}
-%DIFDELCMD <   \begin{minipage}[b]{0.48\linewidth}
-%DIFDELCMD <     \centering
-%DIFDELCMD <     \resizebox{\linewidth}{!}{%
-%DIFDELCMD <     \begin{tikzpicture}[
-%DIFDELCMD <     bb/.style={
-%DIFDELCMD <         rectangle,
-%DIFDELCMD <         rounded corners=2pt,
-%DIFDELCMD <         draw=black,
-%DIFDELCMD <         thick,
-%DIFDELCMD <         minimum height=0.5cm,
-%DIFDELCMD <         minimum width=2cm,
-%DIFDELCMD <         inner sep=2pt,
-%DIFDELCMD <         font=\ttfamily\small,
-%DIFDELCMD <         align=center
-%DIFDELCMD <     },
-%DIFDELCMD <     edge_label/.style={
-%DIFDELCMD <         font=\ttfamily\scriptsize,
-%DIFDELCMD <         midway
-%DIFDELCMD <     },
-%DIFDELCMD <     data_edge/.style={
-%DIFDELCMD <         ->,
-%DIFDELCMD <         thick,
-%DIFDELCMD <         draw=black
-%DIFDELCMD <     },
-%DIFDELCMD <     func_frame/.style={
-%DIFDELCMD <         draw=gray!60,
-%DIFDELCMD <         rounded corners=4pt,
-%DIFDELCMD <         thick,
-%DIFDELCMD <         inner sep=8pt
-%DIFDELCMD <     },
-%DIFDELCMD <     func_title/.style={
-%DIFDELCMD <         font=\bfseries\small,
-%DIFDELCMD <         fill=blue!15,
-%DIFDELCMD <         rounded corners=2pt,
-%DIFDELCMD <         inner sep=3pt,
-%DIFDELCMD <         text=blue!70!black
-%DIFDELCMD <     },
-%DIFDELCMD <     >=stealth
-%DIFDELCMD < ]
-%DIFDELCMD < 
-
-%DIFDELCMD <     % ====== 上半部分: check 函数的 CRVFG ======
-%DIFDELCMD <     % 顶层节点：常量值 - 两个节点宽度相同以确保居中
-%DIFDELCMD <     \node[bb, minimum width=3.2cm] (neg_one) at (-1.6, 2) {\textbf{-1}};
-%DIFDELCMD <     \node[bb, minimum width=2.2cm] (zero_check) at (1.6, 2) {\textbf{0}};
-%DIFDELCMD < 
-
-%DIFDELCMD <     % 中层节点：返回值赋值 - 两个节点宽度相同以确保居中
-%DIFDELCMD <     \node[bb, minimum width=2.2cm] (verr) at (-1.6, 1) {{\color{green!50!black}\%ret} = \textbf{-1}};
-%DIFDELCMD <     \node[bb, minimum width=2.2cm] (vok_check) at (1.6, 1) {{\color{green!50!black}\%ret} = \textbf{0}};
-%DIFDELCMD < 
-
-%DIFDELCMD <     % 底层返回节点
-%DIFDELCMD <     \node[bb, minimum width=2.6cm] (ret_check) at (0, 0) {\textbf{return} {\color{green!50!black}\%ret}};
-%DIFDELCMD < 
-
-%DIFDELCMD <     % 数据流边 (实线)
-%DIFDELCMD <     \draw[data_edge] (neg_one.south) -- node[left, font=\ttfamily\scriptsize, pos=0.4, align=right] {{\color{green!50!black}$\varphi_0$}{=\scriptsize $(\texttt{s1} \neq \texttt{s2})$}} (verr.north);
-%DIFDELCMD <     \draw[data_edge] (zero_check.south) -- node[right, font=\ttfamily\scriptsize, pos=0.4, align=left] {$\neg\varphi_0$} (vok_check.north);
-%DIFDELCMD <     \draw[data_edge] (verr.south) -- (ret_check.north west);
-%DIFDELCMD <     \draw[data_edge] (vok_check.south) -- (ret_check.north east);
-%DIFDELCMD <     
-
-%DIFDELCMD <     % check 函数的边框和标题（左下角）
-%DIFDELCMD <     \node[func_frame, fit=(neg_one) (zero_check) (verr) (vok_check) (ret_check)] (check_frame) {};
-%DIFDELCMD <     \node[func_title, anchor=south west] at ([yshift=-0.5pt]check_frame.south west) {\texttt{check}};
-%DIFDELCMD < 
-
-%DIFDELCMD <     % ====== 下半部分: set_t 函数的 CRVFG ======
-%DIFDELCMD <     % 顶层节点：值定义 - 与 check 函数的顶层节点宽度相同
-%DIFDELCMD <     \node[bb, minimum width=3.2cm] (check) at (-1.6, -1.3) {{\color{green!50!black}\%0} = call @check(...) };
-%DIFDELCMD <     \node[bb, minimum width=2.2cm] (zero) at (1.6, -1.3) {\textbf{0}};
-%DIFDELCMD < 
-
-%DIFDELCMD <     % 中层节点：条件赋值 - 与 check 函数的中层节点宽度相同
-%DIFDELCMD <     \node[bb, minimum width=2.2cm] (ve) at (-1.6, -2.3) {{\color{green!50!black}\%ret} = {\color{green!50!black}\%0}};
-%DIFDELCMD <     \node[bb, minimum width=2.2cm] (vok) at (1.6, -2.3) {{\color{green!50!black}\%ret} = \textbf{0}};
-%DIFDELCMD < 
-
-%DIFDELCMD <     % 底层返回节点
-%DIFDELCMD <     \node[bb, minimum width=2.6cm] (ret) at (0, -3.3) {\textbf{return} {\color{green!50!black}\%ret}};
-%DIFDELCMD < 
-
-%DIFDELCMD <     % 数据流边 (实线)
-%DIFDELCMD <     \draw[data_edge] (check.south) -- node[left, font=\ttfamily\scriptsize, pos=0.4, align=right] {{\color{green!50!black}$\varphi_1$}{=\scriptsize $(\%0 \neq 0)$}} (ve.north);
-%DIFDELCMD <     \draw[data_edge] (zero.south) -- node[right, font=\ttfamily\scriptsize, pos=0.4, align=left] {$\neg\varphi_1$} (vok.north);
-%DIFDELCMD <     \draw[data_edge] (ve.south) -- (ret.north west);
-%DIFDELCMD <     \draw[data_edge] (vok.south) -- (ret.north east);
-%DIFDELCMD <     
-
-%DIFDELCMD <     % set_t 函数的边框和标题（左下角）
-%DIFDELCMD <     \node[func_frame, fit=(check) (zero) (ve) (vok) (ret)] (set_t_frame) {};
-%DIFDELCMD <     \node[func_title, anchor=south west] at (set_t_frame.south west) {\texttt{set\_t}};
-%DIFDELCMD < 
-
-%DIFDELCMD < \end{tikzpicture}
-%DIFDELCMD <     }
-%DIFDELCMD <     \captionof{figure}{Return-Value Flow Graphs for \texttt{check} and \texttt{set\_t} functions. For \texttt{check}: direct error return when $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$ holds, the return value is $-1 \in \mathcal{E}$. For \texttt{set\_t}: propagated error when $\varphi_1 = (\%0 \neq 0)$ holds, the error code from \texttt{check} flows to the return.}
-%DIFDELCMD <     \label{fig:conditional-value-flow}
-%DIFDELCMD <   \end{minipage}%%%
-%DIF < 
-  %DIFDELCMD < \hfill
-%DIFDELCMD <   \begin{minipage}[b]{0.48\linewidth}
-%DIFDELCMD <     \centering
-%DIFDELCMD <     \vspace{2pt}
-%DIFDELCMD <     \hrule
-%DIFDELCMD <     \vspace{2pt}
-%DIFDELCMD <     \captionof{algorithm}{\textbf{Early-Exit Edge Identification}}
-%DIFDELCMD <     \label{algo:early-exit-identification}
-%DIFDELCMD <     \vspace{-9pt}
-%DIFDELCMD <     \hrule
-%DIFDELCMD <     \vspace{2pt}
-%DIFDELCMD <     \begin{algorithmic}[1]
-%DIFDELCMD <       \Require %%%
-\DIFdel{Function $F$, Success set $\mathcal{S}$, Error set $\mathcal{E}$
-      }%DIFDELCMD < \Ensure %%%
-\DIFdel{Set of early-exit edges $E_{exit}$
-      }%DIFDELCMD < \State %%%
-\DIFdel{$E_{exit} \gets \emptyset$
-      }%DIFDELCMD < \State %%%
-\DIFdel{$inst \gets \texttt{GetReturnInst}(F)$
-      }%DIFDELCMD < \State %%%
-\DIFdel{$v_{ret} \gets \texttt{GetReturnValue}(inst)$
-      }%DIFDELCMD < \State %%%
-\DIFdel{$P_{flow} \gets \texttt{BuildCRVFG}(F, v_{ret})$
-      }%DIFDELCMD < \ForAll{$path \in P_{flow}$}
-%DIFDELCMD <         \State %%%
-\DIFdel{$\varphi \gets \texttt{GetCondition}(path)$
-        }%DIFDELCMD < \State %%%
-\DIFdel{$v \gets \texttt{GetSourceValue}(path)$
-        }%DIFDELCMD < \If{$\text{isError}(v, \varphi)$}
-%DIFDELCMD <           \State %%%
-\DIFdel{$\varphi_{key} \gets \texttt{GetKeyClause}(\varphi)$
-          }%DIFDELCMD < \State %%%
-\DIFdel{$B_{src} \gets \texttt{GetBasicBlock}(\varphi_{key})$
-          }%DIFDELCMD < \State %%%
-\DIFdel{$B_{dst} \gets \texttt{GetSuccessor}(B_{src}, \varphi_{key})$
-          }%DIFDELCMD < \State %%%
-\DIFdel{$\texttt{MarkEarlyExitEdge}(B_{src} \rightarrow B_{dst})$
-          }%DIFDELCMD < \State %%%
-\DIFdel{$E_{exit} \gets E_{exit} \cup \{B_{src} \rightarrow B_{dst}\}$
-        }%DIFDELCMD < \EndIf
-%DIFDELCMD <       \EndFor
-%DIFDELCMD <       \State \Return %%%
-\DIFdel{$E_{exit}$
-    }%DIFDELCMD < \end{algorithmic}
-%DIFDELCMD <     \vspace{2pt}
-%DIFDELCMD <     \hrule
-%DIFDELCMD <   \end{minipage}
-%DIFDELCMD < \end{center}
-%DIFDELCMD < 
 
 %DIFDELCMD < %%%
 \DIFdelend \subsection{\DIFdelbegin \DIFdel{Identify Early Exit }\DIFdelend \DIFaddbegin \DIFadd{Early-Exit }\DIFaddend Edge \DIFaddbegin \DIFadd{Identification}\DIFaddend }\label{sec:design:early-return}
@@ -3049,7 +2871,7 @@ The early-exit edge identification process consists of three steps: (1) construc
 \end{tikzpicture}
 
 		}
-		\captionof{figure}{Return-Value Flow Graphs for \texttt{check} and \texttt{set\_t} functions. For \texttt{check}: direct error return when $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$ holds, the return value is $-1 \in \mathcal{E}$. For \texttt{set\_t}: propagated error when $\varphi_1 = (\%0 \neq 0)$ holds, the error code from \texttt{check} flows to the return.}
+		\captionof{figure}{\DIFdel{Return-Value Flow Graphs for \texttt{check} and \texttt{set\_t} functions. For \texttt{check}: direct error return when $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$ holds, the return value is $-1 \in \mathcal{E}$. For \texttt{set\_t}: propagated error when $\varphi_1 = (\%0 \neq 0)$ holds, the error code from \texttt{check} flows to the return.}\DIFadd{Return-Value Flow Graphs for \texttt{check} and \texttt{set\_t}. In \texttt{check}, when $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$ holds, the function returns $-1 \in \mathcal{E}$. In \texttt{set\_t}, when $\varphi_1 = (\%0 \neq 0)$ holds, the error code returned by \texttt{check} flows to the function return.}}
 		\label{fig:conditional-value-flow}
 	\end{minipage}%
 	\hfill
@@ -3103,7 +2925,7 @@ The CRVFG is a directed graph $G = (V, E)$ where:
 	\item Each edge \DIFdelbegin \DIFdel{$e = (v_s, v_d) \in E$ }\DIFdelend \DIFaddbegin \DIFadd{$e = (v_s, v_d, \varphi) \in E$ }\DIFaddend represents a data-flow dependency from $v_s$ to $v_d$ \DIFaddbegin \DIFadd{under branch predicate $\varphi$}\DIFaddend .
 \end{itemize}
 
-The CRVFG is constructed \textit{\DIFdelbegin \DIFdel{on-demand}\DIFdelend \DIFaddbegin \DIFadd{on demand}\DIFaddend } \DIFdelbegin \DIFdel{starting from the return instruction, tracing backward through data-flow dependencies exclusively for the return value .
+The CRVFG is constructed \textit{on-demand} \DIFdel{starting from the return instruction, tracing backward through data-flow dependencies exclusively for the return value .
 During construction, }\texttt{\DIFdel{phi}} %DIFAUXCMD
 \DIFdel{instructions are split into multiple nodes according to the guard conditions on incoming CFG edges.
 For a }\texttt{\DIFdel{phi}} %DIFAUXCMD
@@ -3139,45 +2961,44 @@ For a value-flow path with return value $v$ and governing condition $\varphi$, w
 Intuitively, \DIFdelbegin \DIFdel{this means an error }\DIFdelend \DIFaddbegin \DIFadd{an early-exit }\DIFaddend path is identified when \DIFdelbegin \DIFdel{the condition }\DIFdelend $\varphi$ implies that \DIFdelbegin \DIFdel{the return value }\DIFdelend $v$ is either not a success code or is an error code.
 
 For \textit{Direct-constant-return checkers}, \DIFdelbegin \DIFdel{determining whether $\varphi \Rightarrow (v \notin \mathcal{S})$ or $\varphi \Rightarrow (v \in \mathcal{E})$ is straightforward: }\DIFdelend since $v$ is a constant, we directly test whether $v \notin \mathcal{S}$ or $v \in \mathcal{E}$ holds.
-For \textit{Variable-return checkers}, \DIFdelbegin \DIFdel{the condition }\DIFdelend $\varphi$ \DIFdelbegin \DIFdel{only involves }\DIFdelend \DIFaddbegin \DIFadd{contains }\DIFaddend comparisons against constants (e.g., \DIFdelbegin \DIFdel{$v = -1$ or $v \neq 0$}\DIFdelend \DIFaddbegin \DIFadd{$v=-1$ or $v\neq0$}\DIFaddend ), where the constants are typically error \DIFdelbegin \DIFdel{codes }\DIFdelend or success codes.
+For \textit{Variable-return checkers}, \DIFdelbegin \DIFdel{the condition }\DIFdelend $\varphi$ \DIFdelbegin \DIFdel{only involves }\DIFdelend \DIFaddbegin \DIFadd{contains }\DIFaddend comparisons against constants (e.g., $v = -1$ or $v \neq 0$), where the constants are typically error \DIFdelbegin \DIFdel{codes }\DIFdelend or success codes.
 \DIFdelbegin \DIFdel{To determine whether $\varphi \Rightarrow (v \notin \mathcal{S})$ or $\varphi \Rightarrow (v \in \mathcal{E})$, we directly }\DIFdelend \DIFaddbegin \DIFadd{We }\DIFaddend compute the possible value set of \DIFdelbegin \DIFdel{the return value variable from the condition }\DIFdelend \DIFaddbegin \DIFadd{$v$ from }\DIFaddend $\varphi$, \DIFdelbegin \DIFdel{and }\DIFdelend then test whether all possible values are \DIFdelbegin \DIFdel{not in }\DIFdelend \DIFaddbegin \DIFadd{outside }\DIFaddend $\mathcal{S}$ or belong to $\mathcal{E}$.
 Both cases \DIFdelbegin \DIFdel{involve only set membership }\DIFdelend \DIFaddbegin \DIFadd{require only constant comparison and set-membership }\DIFaddend operations computable in $O(1)$ time\DIFaddbegin \DIFadd{, without invoking an SMT solver}\DIFaddend .
 
 \autoref{fig:conditional-value-flow} illustrates this \DIFdelbegin \DIFdel{determination }\DIFdelend process.
-For \DIFdelbegin \DIFdel{the }\DIFdelend \texttt{check}\DIFdelbegin \DIFdel{function, under condition $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$}\DIFdelend \DIFaddbegin \DIFadd{, under $\varphi_0=(\texttt{s1}\neq\texttt{s2})$}\DIFaddend , the return value is the constant $-1$.
+For the \texttt{check} function, under condition $\varphi_0 = (\texttt{s1} \neq \texttt{s2})$, the return value is the constant $-1$.
 Since \DIFdelbegin \DIFdel{$-1 \in \mathcal{E}$, we directly have $v \in \mathcal{E}$, and thus $\text{isError}(-1, \varphi_0) = \text{true}$.
 For the }\DIFdelend \DIFaddbegin \DIFadd{$-1\in\mathcal{E}$, $\text{isError}(-1,\varphi_0)=\text{true}$.
-For }\DIFaddend \texttt{set\_t}\DIFdelbegin \DIFdel{function, under condition $\varphi_1 = (\%0 \neq 0)$}\DIFdelend \DIFaddbegin \DIFadd{, under $\varphi_1=(\%0\neq0)$}\DIFaddend , the return value is $\%0$\DIFdelbegin \DIFdel{(the return value of }\DIFdelend \DIFaddbegin \DIFadd{, which is returned by }\DIFaddend \texttt{check}\DIFdelbegin \DIFdel{)}\DIFdelend .
-From $\varphi_1$, we infer that \DIFdelbegin \DIFdel{the possible values of $\%0$ are $\mathbb{Z} \setminus \{0\}$.
-Since $\mathcal{S} = \{0\}$}\DIFdelend \DIFaddbegin \DIFadd{$\%0\in\mathbb{Z}\setminus\{0\}$.
-Since $\mathcal{S}=\{0\}$}\DIFaddend , all possible values are \DIFdelbegin \DIFdel{not in }\DIFdelend \DIFaddbegin \DIFadd{outside }\DIFaddend $\mathcal{S}$, so \DIFdelbegin \DIFdel{$\text{isError}(\%0, \varphi_1) = \text{true}$}\DIFdelend \DIFaddbegin \DIFadd{$\text{isError}(\%0,\varphi_1)=\text{true}$}\DIFaddend .
+For }\DIFaddend \texttt{set\_t} function, under condition $\varphi_1 = (\%0 \neq 0)$, the return value is $\%0$\DIFdelbegin \DIFdel{(the return value of }\DIFdelend \DIFaddbegin \DIFadd{, which is returned by }\DIFaddend \texttt{check}\DIFdelbegin \DIFdel{)}\DIFdelend .
+From $\varphi_1$, we infer that the possible values of $\%0$ are $\mathbb{Z} \setminus \{0\}$.
+Since $\mathcal{S} = \{0\}$, all possible values are \DIFdelbegin \DIFdel{not in }\DIFdelend \DIFaddbegin \DIFadd{outside }\DIFaddend $\mathcal{S}$, so $\text{isError}(\%0,\varphi_1)=\text{true}$ .
 
 \subsubsection{Early-Exit Edge Identification on CFG}\label{sec:design:edge-identification}
 
 The third step maps identified \DIFdelbegin \DIFdel{error conditions to control-flow edges in the CFG }\DIFdelend \DIFaddbegin \DIFadd{early-exit conditions to CFG edges}\DIFaddend , as presented in \DIFdelbegin %DIFDELCMD < \autoref{algo:early-exit-identification}%%%
 \DIFdelend \DIFaddbegin \DIFadd{Algorithm~\ref{algo:early-exit-identification}}\DIFaddend .
-For each value-flow path in the CRVFG, where a path represents a complete flow from a source (\DIFdelbegin \DIFdel{either }\DIFdelend a call instruction or \DIFdelbegin \DIFdel{a }\DIFdelend constant) to the return instruction, the algorithm extracts the guard condition $\varphi$ \DIFdelbegin \DIFdel{(conjunction of conditions along the path) and the }\DIFdelend \DIFaddbegin \DIFadd{and }\DIFaddend source value $v$, then invokes \DIFdelbegin \DIFdel{$\text{isError}(v, \varphi)$ }\DIFdelend \DIFaddbegin \DIFadd{$\text{isError}(v,\varphi)$ }\DIFaddend to determine whether \DIFdelbegin \DIFdel{this path leads to an error return}\DIFdelend \DIFaddbegin \DIFadd{the path is an early-exit path}\DIFaddend .
+For each value-flow path in the CRVFG, where a path represents a complete flow from a source (\DIFdelbegin \DIFdel{either }\DIFdelend a call instruction or \DIFdelbegin \DIFdel{a }\DIFdelend constant) to the return instruction, the algorithm extracts the guard condition $\varphi$ \DIFdelbegin \DIFdel{(conjunction of conditions along the path) and the }\DIFdelend \DIFaddbegin \DIFadd{and }\DIFaddend source value $v$, then invokes $\text{isError}(v, \varphi)$ to determine whether \DIFdelbegin \DIFdel{this path leads to an error return}\DIFdelend \DIFaddbegin \DIFadd{the path is an early-exit path}\DIFaddend .
 If an \DIFdelbegin \DIFdel{error }\DIFdelend \DIFaddbegin \DIFadd{early-exit }\DIFaddend path is identified, the algorithm extracts the key clause $\varphi_{key}$ from $\varphi$ via $\texttt{GetKeyClause}$\DIFdelbegin \DIFdel{, which }\DIFdelend \DIFaddbegin \DIFadd{.
-This operation }\DIFaddend returns the rightmost sub-clause (e.g., \DIFdelbegin \DIFdel{$\varphi = (b_1 = b_2) \land (\texttt{s1} \neq \texttt{s2})$ yields $\varphi_{key} = (\texttt{s1} \neq \texttt{s2})$), since }\DIFdelend \DIFaddbegin \DIFadd{$\varphi=(b_1=b_2)\land(\texttt{s1}\neq\texttt{s2})$ yields $\varphi_{key}=(\texttt{s1}\neq\texttt{s2})$), because }\DIFaddend the rightmost clause determines the error status under short-circuit evaluation\DIFdelbegin \DIFdel{semantics}\DIFdelend .
-The algorithm \DIFdelbegin \DIFdel{then }\DIFdelend obtains the basic block $B_{src}$ containing $\varphi_{key}$ via $\texttt{GetBasicBlock}(\varphi_{key})$ and the successor block $B_{dst}$ via \DIFdelbegin \DIFdel{$\texttt{GetSuccessor}(B_{src}, \varphi_{key})$, marking }\DIFdelend \DIFaddbegin \DIFadd{$\texttt{GetSuccessor}(B_{src},\varphi_{key})$, then marks }\DIFaddend the CFG edge \DIFdelbegin \DIFdel{$B_{src} \rightarrow B_{dst}$ as }\DIFdelend \DIFaddbegin \DIFadd{$B_{src}\rightarrow B_{dst}$ as an }\DIFaddend early-exit \DIFaddbegin \DIFadd{edge}\DIFaddend .
+This operation }\DIFaddend returns the rightmost sub-clause (e.g., $\varphi=(b_1=b_2)\land(\texttt{s1}\neq\texttt{s2})$ yields $\varphi_{key}=(\texttt{s1}\neq\texttt{s2})$), because the rightmost clause determines the error status under short-circuit evaluation\DIFdelbegin \DIFdel{semantics}\DIFdelend .
+The algorithm \DIFdelbegin \DIFdel{then }\DIFdelend obtains the basic block $B_{src}$ containing $\varphi_{key}$ via $\texttt{GetBasicBlock}(\varphi_{key})$ and the successor block $B_{dst}$ via $\texttt{GetSuccessor}(B_{src},\varphi_{key})$, then marks the CFG edge $B_{src}\rightarrow B_{dst}$ as an early-exit \DIFaddbegin \DIFadd{edge}\DIFaddend .
 
-\subsubsection{Inter-Procedural Recursion}\label{sec:design:inter-procedural-recursion}
+\subsubsection{\DIFdel{Inter-Procedural}\DIFadd{Interprocedural} Recursion}\label{sec:design:inter-procedural-recursion}
 
-When a function containing shape checkers has \DIFdelbegin \DIFdel{its }\DIFdelend \DIFaddbegin \DIFadd{a }\DIFaddend return value derived from a callee\DIFdelbegin \DIFdel{function}\DIFdelend , inter-procedural recursion is required to \DIFdelbegin \DIFdel{propagate error status information }\DIFdelend \DIFaddbegin \DIFadd{identify early-exit paths }\DIFaddend across functions.
+When a function containing shape checkers has \DIFdelbegin \DIFdel{its }\DIFdelend \DIFaddbegin \DIFadd{a }\DIFaddend return value derived from a callee\DIFdelbegin \DIFdel{function}\DIFdelend , \DIFdelbegin\DIFdel{inter-procedural}\DIFdelend\DIFaddbegin\DIFadd{interprocedural}\DIFaddend{} recursion is required to \DIFdelbegin \DIFdel{propagate error status information }\DIFdelend \DIFaddbegin \DIFadd{identify early-exit paths }\DIFaddend across functions.
 \DIFdelbegin \DIFdel{Our algorithm identifies two scenarios that }\DIFdelend \DIFaddbegin \DIFadd{Two scenarios }\DIFaddend trigger recursive analysis of \DIFdelbegin \DIFdel{callee functions}\DIFdelend \DIFaddbegin \DIFadd{a callee}\DIFaddend :
 \begin{enumerate}
 	\item If the source value $v$ of a value-flow path is the return value of a call instruction, the callee \DIFdelbegin \DIFdel{function }\DIFdelend is recursively analyzed.
-	\item If a clause in the guard condition $\varphi$ checks whether the return value of a call instruction belongs to $\mathcal{E}$ or $\mathcal{S}$ (e.g., \DIFdelbegin \DIFdel{$\varphi = (\%0 \neq 0)$ }\DIFdelend \DIFaddbegin \DIFadd{$\varphi=(\%0\neq0)$ }\DIFaddend where $\%0$ is a call return), the callee \DIFdelbegin \DIFdel{function }\DIFdelend is recursively analyzed.
+	\item If a clause in the guard condition $\varphi$ checks whether the return value of a call instruction belongs to $\mathcal{E}$ or $\mathcal{S}$ (e.g., $\varphi = (\%0 \neq 0)$  where $\%0$ is a call return), the callee \DIFdelbegin \DIFdel{function }\DIFdelend is recursively analyzed.
 	This \DIFdelbegin \DIFdel{scenario }\DIFdelend \DIFaddbegin \DIFadd{case }\DIFaddend corresponds to common \DIFdelbegin \DIFdel{status propagation }\DIFdelend \DIFaddbegin \DIFadd{status-propagation }\DIFaddend patterns in production code (e.g., \texttt{if (x == ERROR) return ERROR})\DIFaddbegin \DIFadd{, }\DIFaddend where \texttt{x} is \DIFaddbegin \DIFadd{the }\DIFaddend return value of \DIFdelbegin \DIFdel{one calleefunction}\DIFdelend \DIFaddbegin \DIFadd{a callee}\DIFaddend .
 \end{enumerate}
 
-\subsection{Inter-Procedural Constant Propagation for Host-Side Programs}\label{sec:design:propagation}
+\subsection{\DIFdel{Inter-Procedural}\DIFadd{Interprocedural} Constant Propagation for Host-Side Programs}\label{sec:design:propagation}
 
 The propagation stage takes the initial calling context $\mathbb{C}_{init}$ from \S\ref{sec:design:context_construction} and the early-exit edges $E_{exit}$ from \S\ref{sec:design:early-return} as inputs, and propagates \DIFdelbegin \DIFdel{constant information }\DIFdelend \DIFaddbegin \DIFadd{constants }\DIFaddend through the host-side program to kernel launch sites.
 The analysis maintains a symbolic environment $\mathbb{E}$ and a flow-sensitive memory store $\mathbb{S}$, performing value propagation \DIFdelbegin \DIFdel{on value domain as }\DIFdelend \DIFaddbegin \DIFadd{over the domain }\DIFaddend defined in \autoref{fig:abstract-domain}.
 
 \textit{Initialization.}
-The analysis begins with \DIFdelbegin \DIFdel{$\mathbb{C}_{init} = (\mathbb{E}, \mathbb{S})$ constructed from the Graph IR node}\DIFdelend \DIFaddbegin \DIFadd{$\mathbb{C}_{init}=(\mathbb{E},\mathbb{S})$ constructed from Graph IR metadata}\DIFaddend , which provides concrete values for tensor dimensions and operator parameters.
+The analysis begins with $\mathbb{C}_{init} = (\mathbb{E}, \mathbb{S})$ constructed from the Graph IR \DIFdelbegin \DIFdel{node}\DIFdelend \DIFaddbegin \DIFadd{metadata}\DIFaddend , which provides concrete values for tensor dimensions and operator parameters.
 These \DIFdelbegin \DIFdel{initial constants serve as seeds for }\DIFdelend \DIFaddbegin \DIFadd{constants seed }\DIFaddend propagation: when the analysis \DIFdelbegin \DIFdel{encounters a load }\DIFdelend \DIFaddbegin \DIFadd{loads }\DIFaddend from a memory location initialized with a concrete value, that value flows into the corresponding virtual register.
 
 \textit{Propagation and Edge Liveness.}
@@ -3195,38 +3016,38 @@ For example, if a shape checker returns an error code when dimensions mismatch, 
 \subsection{Kernel Specialization and Library Pruning} \label{sec:design:specialization}
 
 
-Based on the context derived from \DIFdelbegin \DIFdel{the }\DIFdelend inter-procedural \DIFdelbegin \DIFdel{analysis}\DIFdelend \DIFaddbegin \DIFadd{constant propagation}\DIFaddend , \mysys performs two key optimizations: \DIFdelbegin \DIFdel{generic }\DIFdelend \DIFaddbegin \DIFadd{schedule-generic }\DIFaddend kernel specialization and pruning redundant template instantiations \DIFdelbegin \DIFdel{for manually specialized }\DIFdelend \DIFaddbegin \DIFadd{from schedule-fixed operator }\DIFaddend libraries.
+Based on the context derived from \DIFdelbegin \DIFdel{the inter-procedural analysis}\DIFdelend \DIFaddbegin \DIFadd{interprocedural constant propagation}\DIFaddend , TilingInfer performs two key optimizations: \DIFdelbegin \DIFdel{generic }\DIFdelend \DIFaddbegin \DIFadd{schedule-generic }\DIFaddend kernel specialization and pruning \DIFaddbegin\DIFadd{of }\DIFaddend redundant template instantiations \DIFdelbegin \DIFdel{for manually specialized }\DIFdelend \DIFaddbegin \DIFadd{from schedule-fixed operator }\DIFaddend libraries.
 
-For \DIFdelbegin \DIFdel{generic }\DIFdelend \DIFaddbegin \DIFadd{schedule-generic }\DIFaddend kernels, \mysys substitutes \DIFdelbegin \DIFdel{the variable inside the kernel }\DIFdelend \DIFaddbegin \DIFadd{kernel variables }\DIFaddend with the concrete schedule parameters identified \DIFdelbegin \DIFdel{from the analysis on }\DIFdelend \DIFaddbegin \DIFadd{by }\DIFaddend the host-side \DIFdelbegin \DIFdel{program}\DIFdelend \DIFaddbegin \DIFadd{analysis}\DIFaddend .
-Then \mysys employs a sequence of optimization passes, specifically \texttt{IPSCCP}, \texttt{Loop Unrolling}, and \texttt{CFG Simplification}.
+For \DIFdelbegin \DIFdel{generic }\DIFdelend \DIFaddbegin \DIFadd{schedule-generic }\DIFaddend kernels, TilingInfer substitutes \DIFdelbegin \DIFdel{the variable inside the kernel }\DIFdelend \DIFaddbegin \DIFadd{kernel variables }\DIFaddend with the concrete schedule parameters identified \DIFdelbegin \DIFdel{from the analysis on }\DIFdelend \DIFaddbegin \DIFadd{by }\DIFaddend the host-side \DIFdelbegin \DIFdel{program}\DIFdelend \DIFaddbegin \DIFadd{analysis}\DIFaddend .
+\DIFdelbegin\DIFdel{Then TilingInfer employs}\DIFdelend\DIFaddbegin\DIFadd{TilingInfer then applies}\DIFaddend{} a sequence of optimization passes, specifically \texttt{IPSCCP}, \texttt{Loop Unrolling}, and \texttt{CFG Simplification}.
 These passes exploit the newly introduced constants to fold \DIFdelbegin \DIFdel{sclar }\DIFdelend computations and simplify control structures, generating a highly optimized kernel binary.
 
-For \DIFdelbegin \DIFdel{manually specialized }\DIFdelend \DIFaddbegin \DIFadd{schedule-fixed }\DIFaddend libraries, \mysys reduces code size by leveraging path liveness information from the host analysis.
+For \DIFdelbegin \DIFdel{manually specialized }\DIFdelend \DIFaddbegin \DIFadd{schedule-fixed }\DIFaddend libraries, TilingInfer reduces code size by leveraging path liveness information from the host analysis.
 During constant propagation, we identify \texttt{Dead Paths}, i.e., execution branches where guard conditions evaluate to false based on deterministic constants.
-If a specific template function instance is invoked only on these dead paths, \mysys determines it is unreachable at runtime and removes the instance entirely.
+If a specific template function instance is invoked only on these dead paths, TilingInfer determines \DIFaddbegin\DIFadd{that }\DIFaddend it is unreachable at runtime and removes the instance entirely.
 This selective pruning ensures that only potentially active operator instances are retained in the final binary.
 
 \section{Evaluation}
 \label{sec:eval}
 
 Our evaluation addresses the following research questions: 
-\textbf{RQ1:} Can \mysys enhance performance across diverse operators and \DIFdelbegin \DIFdel{models based on generic kernels}\DIFdelend \DIFaddbegin \DIFadd{neural networks that are based on schedule-generic expert-written libraries}\DIFaddend ?
-\textbf{RQ2:} Can \mysys effectively infer more invariant \DIFaddbegin \DIFadd{schedule }\DIFaddend parameters with reasonable compilation overhead?
-\textbf{RQ3:} Can \mysys effectively eliminate redundant code \DIFdelbegin \DIFdel{for manually specialized GPU }\DIFdelend \DIFaddbegin \DIFadd{from schedule-fixed expert-written operator }\DIFaddend libraries?
+\textbf{RQ1:} Can TilingInfer enhance performance across diverse operators and \DIFdelbegin \DIFdel{models based on generic kernels}\DIFdelend \DIFaddbegin \DIFadd{neural networks that are based on schedule-generic expert-written libraries}\DIFaddend ?
+\textbf{RQ2:} Can TilingInfer effectively infer more invariant \DIFaddbegin \DIFadd{schedule }\DIFaddend parameters with reasonable compilation overhead?
+\textbf{RQ3:} Can TilingInfer effectively eliminate redundant code \DIFdelbegin \DIFdel{for manually specialized GPU }\DIFdelend \DIFaddbegin \DIFadd{from schedule-fixed expert-written operator }\DIFaddend libraries?
 Beyond these questions, we evaluate detailed performance metrics and improvements under different shape configurations.
 
 \subsection{Experimental Setup}
 \label{sec:eval:setup}
 
-\textit{Hardware and Software Platforms}
-We use two platforms: (1) \textbf{NPU Platform}—Ascend 910B1 NPU (64GB HBM) with Intel Core i7-8700 CPU and 64GB DRAM, running CANN 8.0.RC1, LLVM 15.0.5, and PyTorch 2.6.0\DIFaddbegin \DIFadd{. The end-to-end model experiments additionally use Transformers 4.57.6 and TorchRec 1.2.0 }\DIFaddend (reported metrics are averaged over 90 runs after 10 warm-up iterations); (2) \textbf{GPU Platform}—NVIDIA RTX 3090 (24GB VRAM) with Intel Xeon Gold 6348 CPU, running CUDA 12.2, PyTorch 2.6.0, vLLM 0.9.1, and FlashInfer v0.2.
+\textit{Hardware and Software Platforms\DIFadd{.}}
+We use two platforms\DIFdelbegin\DIFdel{:}\DIFdelend\DIFaddbegin\DIFadd{.}\DIFaddend{} (1) \DIFaddbegin\DIFadd{The }\DIFaddend\textbf{NPU \DIFdel{Platform}\DIFadd{platform}} \DIFdelbegin\DIFdel{—}\DIFdelend\DIFaddbegin\DIFadd{consists of an }\DIFaddend Ascend 910B1 NPU (64\DIFadd{\,}GB HBM)\DIFdel{ with}\DIFadd{, an} Intel Core i7-8700 CPU \DIFdel{and}\DIFadd{, and} 64\DIFadd{\,}GB DRAM, running CANN 8.0.RC1, LLVM 15.0.5, and PyTorch 2.6.0\DIFaddbegin \DIFadd{. The end-to-end model experiments additionally use Transformers 4.57.6 and TorchRec 1.2.0. All end-to-end model-inference experiments enable NPU Graph replay for every compared method, so the methods use the same graph-execution setting and repeated CPU launch overhead is suppressed. Each reported metric is averaged over 90 measured runs after 10 warm-up iterations. }\DIFaddend \DIFdelbegin\DIFdel{(reported metrics are averaged over 90 runs after 10 warm-up iterations);}\DIFdelend{} (2) \DIFaddbegin\DIFadd{The }\DIFaddend\textbf{GPU \DIFdel{Platform}\DIFadd{platform}} \DIFdelbegin\DIFdel{—}\DIFdelend\DIFaddbegin\DIFadd{consists of an }\DIFaddend NVIDIA RTX 3090 (24\DIFadd{\,}GB VRAM) \DIFdel{with}\DIFadd{and an} Intel Xeon Gold 6348 CPU, running CUDA 12.2, PyTorch 2.6.0, vLLM 0.9.1, and FlashInfer v0.2.
 
 \DIFaddbegin \begin{table}[t]
     \centering
     \caption{Overview of dynamic shape operator benchmarks.
     \textbf{Symbols:} $T$: total tokens, $B$: batch size, $P$: page size, $N_P$: number of KV-cache pages, $M_P$: maximum pages per request, $N_Q/N_{KV}$: query/key--value head counts, $D$: model dimension, $D_{head}$: head dimension ($D/N_Q$), $K$: matrix reduction dimension, $C$: channels, $E$: experts, and $H/W$: image height/width. \textbf{Aux. Input}: indexing or geometric metadata.
     \textbf{Configurations:} Unless otherwise stated, we fix static dimensions based on representative models: $D=4096, D_{head}=128, N_Q=32, N_{KV}=32$ for Llama2-7B; $E=8$ for Mixture-of-Experts (MoE) layer; $C=512$ for CV (e.g., ResNet-50); and $D=128$ for RecSys. 
-    \textbf{Note:} Operators labeled \textbf{MM}, \textbf{FFN}, and \textbf{RMS} share identical kernel implementations across Prefill and Decoding phases, differing only in the leading dynamic dimension ($T$ vs. $B$).
+    \textbf{Note:} Operators labeled \textbf{MM}, \textbf{FFN}, and \textbf{RMS} share identical kernel implementations across Prefill and Decode phases, differing only in the leading dynamic dimension ($T$ vs. $B$).
     \textbf{Conv2d} is lowered to \texttt{im2col} followed by MatMul and is therefore reported as \textbf{MM}. Unless otherwise stated, each operator-level result is the geometric mean over five shapes sampled from the listed dynamic range; all methods use the same samples.}
     \label{tab:dynamic_operators}
     \resizebox{0.99\textwidth}{!}{%
@@ -3246,7 +3067,7 @@ We use two platforms: (1) \textbf{NPU Platform}—Ascend 910B1 NPU (64GB HBM) wi
     & & MatMul & \textbf{MM} & $[T, K]$ & - & $T \in [256, 8k]$ \\
     \cmidrule{2-7}
     % Decoding Phase
-    & \multirow{6}{*}{\shortstack[l]{Decoding Phase\\(Paged KV)}} & 
+    & \multirow{6}{*}{\shortstack[l]{Decode Phase\\(Paged KV)}} &
     \multirow{2}{*}{PagedAttention} & \multirow{2}{*}{\textbf{D-Attn}} & $Q: [B, 1, N_Q, D_{head}]$ & \texttt{BlockTbl[B, $M_P$]} & $T \in [256, 8k]$ \\
     & & & & $K,V: [N_P, P, N_{KV}, D_{head}]$ & \texttt{Offsets[B+1]} & $B \in [1, 8]$ \\
     \cmidrule{3-7}
@@ -3257,23 +3078,23 @@ We use two platforms: (1) \textbf{NPU Platform}—Ascend 910B1 NPU (64GB HBM) wi
     & & MatMul & \textbf{MM} & $[B, K]$ & - & $B \in [1, 8]$ \\
     \cmidrule{2-7}
     % MoE Layer
-    & \multirow{4}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoeGating & \textbf{Gate} & $[T, E]$ & - & $T \in [256, 8k]$ \\
+    & \multirow{4}{*}{\shortstack[l]{MoE Layer\\(Sparse Activation)}} & MoEGating & \textbf{Gate} & $[T, E]$ & - & $T \in [256, 8k]$ \\
     \cmidrule{3-7}
     & & GroupedMatMul & \textbf{GMM} & $[T, D]$ & \texttt{GroupOffsets[E+1]} & $T \in [256, 8k]$ \\
     \cmidrule{3-7}
     & & Sinkhorn & \textbf{Sink} & $[T, E]$ & - & $E \in [8, 64]$ \\ 
     \cmidrule{3-7}
-    & & MoeTokenPermute & \textbf{Perm} & $[T, D]$ & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
+    & & MoETokenPermute & \textbf{Perm} & $[T, D]$ & \texttt{Indices[T]} & $T \in [256, 8k]$ \\
     \midrule
     % CV Domain
     \multirow{7}{*}{\shortstack{\textbf{CV}\\\textit{ResNet,}\\\textit{YOLOv5}}} & \multirow{4}{*}{\shortstack[l]{General Inference\\(Standard Batch)}} 
-    & Conv2d(img2col) & \textbf{MM} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
+    & Conv2d (im2col) & \textbf{MM} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
     \cmidrule{3-7}
     & & GroupNorm & \textbf{GN} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
     \cmidrule{3-7}
     & & AvgPool & \textbf{Pool} & $[B, C, D, H, W]$ & - & $B \in [1, 8]$ \\
     \cmidrule{3-7}
-    & & ElementWise Pow & \textbf{Pow} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
+    & & Elementwise Pow & \textbf{Pow} & $[B, C, H, W]$ & - & $B \in [1, 8]$ \\
     \cmidrule{2-7}
     & \multirow{2}{*}{\shortstack[l]{Object Detection\\(Dyn. Resolution)}} & Upsample & \textbf{Upsample} & $[B, C, H, W]$ & - & \shortstack[l]{$H, W \in [224, 1024]$} \\
     \cmidrule{3-7}
@@ -3312,44 +3133,44 @@ We use two platforms: (1) \textbf{NPU Platform}—Ascend 910B1 NPU (64GB HBM) wi
         $B=64$ \\
         HSTU &
         \texttt{torch\_npu} + TorchRec &
-        $B=2$, $D=512$, $N_H=8$, $D_H=64$, 8 HSTU blocks; no interaction-sequence cache &
-        $S\in\{32,64,128,256,512,1024\}$ &
+        $D=512$, $N_H=8$, $D_H=64$, 8 HSTU blocks; no interaction-sequence cache &
+        $B=2,\ S\in\{256,512,1024,2048,4096\}$ &
         $B=2,\ S=256$ \\
-        LLaMA-3 1B Prefill &
+        Llama 3.2 1B Prefill &
         \texttt{torch\_npu} + Transformers &
-        $B=2$, $D=512$, $N_H=8$, $D_H=64$, 16 decoder blocks &
-        $S\in\{32,64,128,256,512,1024\}$ &
+        $D=2048$, $N_H=32$, $N_{\mathrm{KV}}=8$, $D_H=64$, 16 decoder blocks &
+        $B=2,\ S\in\{256,512,1024,2048,4096\}$ &
         $B=2,\ S=256$ \\
-        LLaMA-3 1B Decode &
+        Llama 3.2 1B Decode &
         \texttt{torch\_npu} + Transformers &
-        one-token query, $D=512$, $N_H=8$, $D_H=64$, paged KV cache &
-        $B=2,\ L_{\mathrm{KV}}\in\{32,64,128,256,512,1024\}$ &
-        $B=16,\ L_{\mathrm{KV}}=256$ \\
-        Qwen-3.5 1B Prefill &
+        one-token query, $D=2048$, $N_H=32$, $N_{\mathrm{KV}}=8$, $D_H=64$, paged KV cache &
+        $B=2,\ L_{\mathrm{KV}}\in\{256,512,1024,2048,4096\}$ &
+        $B=2,\ L_{\mathrm{KV}}=256$ \\
+        Qwen3.5-0.8B Prefill &
         \texttt{torch\_npu} + Transformers &
-        $B=2$, $D=640$, $N_H=8$, $D_H=80$, 16 decoder blocks &
-        $S\in\{32,64,128,256,512,1024\}$ &
+        $D=1024$, $N_H=8$, $N_{\mathrm{KV}}=2$, $D_H=256$, 24 language-model layers &
+        $B=2,\ S\in\{256,512,1024,2048,4096\}$ &
         $B=2,\ S=256$ \\
-        Qwen-3.5 1B Decode &
+        Qwen3.5-0.8B Decode &
         \texttt{torch\_npu} + Transformers &
-        one-token query, $D=640$, $N_H=8$, $D_H=80$, paged KV cache &
-        $B=2,\ L_{\mathrm{KV}}\in\{32,64,128,256,512,1024\}$ &
-        $B=16,\ L_{\mathrm{KV}}=256$ \\
+        one-token query, $D=1024$, $N_H=8$, $N_{\mathrm{KV}}=2$, $D_H=256$, paged KV cache &
+        $B=2,\ L_{\mathrm{KV}}\in\{256,512,1024,2048,4096\}$ &
+        $B=2,\ L_{\mathrm{KV}}=256$ \\
         \bottomrule
     \end{tabularx}
 \end{table}
 
 
-\DIFaddend \textit{Benchmarks}
+\DIFaddend \textit{Benchmarks\DIFadd{.}}
 \label{sec:eval:bench}
 For the \textbf{NPU platform}, we evaluate individual operator latency and end-to-end model inference.
-The operator benchmark covers operators from LLMs, Computer Vision, and recommendation models, with emphasis on complex fused operators such as \texttt{FlashAttention}, \texttt{FeedForward}, and \texttt{MatMul} that feature intensive workloads and numerous schedule parameters.
+The operator benchmark covers operators from LLMs, \DIFdel{Computer Vision}\DIFadd{computer vision}, and recommendation models, with emphasis on complex fused operators such as \texttt{FlashAttention}, \texttt{FeedForward}, and \texttt{MatMul} that \DIFdel{feature intensive}\DIFadd{have substantial} workloads and numerous schedule parameters.
 \autoref{tab:dynamic_operators} summarizes the categorization and configurations of the evaluated operators.
-For end-to-end evaluation, we \DIFdelbegin \DIFdel{use Qwen2}\DIFdelend \DIFaddbegin \DIFadd{evaluate six end-to-end scenarios comprise DeepFM recommendation inference~\mbox{%DIFAUXCMD
+For end-to-end evaluation, we \DIFdelbegin \DIFdel{use Qwen2}\DIFdelend\space \DIFaddbegin \DIFadd{evaluate six scenarios comprising DeepFM recommendation inference~\mbox{%DIFAUXCMD
 \cite{ijcai2017p239}}\hspace{0pt}%DIFAUXCMD
 , HSTU generative recommendation~\mbox{%DIFAUXCMD
 \cite{pmlr-v235-zhai24a}}\hspace{0pt}%DIFAUXCMD
-, LLaMA-3 1B prefill and decode, and Qwen-3}\DIFaddend .5 \DIFdelbegin \DIFdel{-1.5B and Llama-3.2-3B with fixed batch size and variable sequence length}\DIFdelend \DIFaddbegin \DIFadd{1B prefill and decode.
+, Llama 3.2 1B prefill and decode, and Qwen3.5-0.8B prefill and decode.
 }\autoref{tab:eval:model-configs} \DIFadd{provides the fixed model configurations, dynamic-shape range, and representative shapes}\DIFaddend .
 
 For the \textbf{GPU platform}, we target FlashInfer~\cite{ye2025flashinfer}, a state-of-the-art attention kernel library used in vLLM, and evaluate binary size reduction for Llama and Qwen model families.
@@ -3427,10 +3248,10 @@ For the \textbf{GPU platform}, we target FlashInfer~\cite{ye2025flashinfer}, a s
 \DIFdelend \textit{Implementation Details.}
 All evaluations for both operators and models are conducted using PyTorch 2.6.0.
 Dynamic dimensions are explicitly marked using the \texttt{Dynamic} API, and we utilize PyTorch Dynamo with dynamic compilation enabled.
-For the operator benchmark, we compare \textbf{\mysys} against the following baselines:
-\textbf{Baseline}, standard offline compilation with LLVM passes without kernel specialzation;
-\textbf{LLVM-spec}, which performs constant propagation within standard LLVM, but without early-exit identification and \mysys's inter-procedural constant propagation. The derived schedule parameters are then used to specialize kernels same as \mysys;
-\textbf{Optimal}, serves as an oracle reference. \textbf{Optimal} is computed by specializing the kernel with \DIFaddbegin \DIFadd{all constant }\DIFaddend schedule parameters derived for each individual shape configuration.
+For the operator benchmark, we compare \textbf{TilingInfer} against the following baselines:
+\textbf{Baseline}, standard offline compilation with LLVM passes \DIFdel{without kernel specialzation}\DIFadd{but without kernel specialization};
+\textbf{LLVM-spec}, which performs constant propagation within standard LLVM\DIFdel{, but without early-exit identification and TilingInfer's inter-procedural}\DIFadd{ but without early-exit identification or TilingInfer's interprocedural} constant propagation. The derived schedule parameters are then used to specialize kernels \DIFdel{same as TilingInfer}\space\DIFadd{in the same way as in TilingInfer};
+\textbf{Optimal}, \DIFdel{serves as an oracle reference. \textbf{Optimal} is computed by specializing the kernel with}\space\DIFadd{a per-shape full-specialization oracle that specializes each kernel with} \DIFaddbegin \DIFadd{all constant }\DIFaddend schedule parameters derived for each individual shape configuration.
 \DIFdelbegin \DIFdel{Since this approach requires enumerating all possible shapes at compile time, it is infeasible for practical deployment}\DIFdelend \DIFaddbegin \DIFadd{It is unsuitable for production inference because dynamic inputs require per-shape recompilation, incurring prohibitive compilation overhead}\DIFaddend .
 
 \subsection{Performance Results on Ascend}
@@ -3439,12 +3260,12 @@ For the operator benchmark, we compare \textbf{\mysys} against the following bas
 \subsubsection{Operator Performance Analysis}
 \DIFaddbegin 
 
-\DIFaddend \autoref{fig:eval:op-overall} presents the normalized speedup of the evaluated operators across three methods: \textbf{LLVM-spec}, \textbf{\mysys}, and \DIFdelbegin \DIFdel{the }\DIFdelend \textbf{Optimal}. All results are normalized to the \textbf{Baseline} (standard offline compilation).
+\DIFaddend \autoref{fig:eval:op-overall} presents the normalized speedup of the evaluated operators across three methods: \textbf{LLVM-spec}, \textbf{TilingInfer}, and \DIFdelbegin \DIFdel{the }\DIFdelend \textbf{Optimal}. All results are normalized to the \textbf{Baseline} (standard offline compilation).
 
 \DIFdelbegin %DIFDELCMD < \begin{figure}[htbp]
 %DIFDELCMD <     \centering
 %DIFDELCMD <     \includegraphics[width=0.95\textwidth]{figures/evaluation/op-speedup/speedup_histogram.pdf}
-%DIFDELCMD <     \caption{Overall normalized performance of \textbf{\mysys} compared to compiler baselines }
+%DIFDELCMD <     \caption{Overall normalized performance of \textbf{TilingInfer} compared to compiler baselines }
 %DIFDELCMD <     \Description{Bar chart showing speedup ratios for different operators comparing TilingInfer, LLVM-spec, and Optimal methods.}
 %DIFDELCMD <     \label{fig:eval:op-overall}
 %DIFDELCMD <     \vspace{-10pt}
@@ -3453,17 +3274,18 @@ For the operator benchmark, we compare \textbf{\mysys} against the following bas
 \DIFdelend \DIFaddbegin \begin{figure}[htbp]
 	\centering
 	\includegraphics[width=0.75\textwidth]{figures/evaluation/op-speedup/speedup_histogram.pdf}
-		\caption{Overall normalized performance of \textbf{\mysys} compared to compiler baselines}
-		\Description{Bar chart showing speedup ratios for 14 operators comparing LLVM-spec, \mysys, and the empirical full-specialization oracle.}
+		\caption{Overall normalized performance of \textbf{TilingInfer} compared to compiler baselines}
+		\Description{Bar chart showing speedup ratios for 14 operators comparing LLVM-spec, TilingInfer, and the empirical full-specialization oracle.}
 		\label{fig:eval:op-overall}
 \end{figure}
 \DIFaddend 
 
 
-Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.06$\times$} across all operators, substantially outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the speedup ratio of \textbf{\mysys} is close to that of \textbf{Optimal} (\DIFdelbegin \DIFdel{only 1\% smaller }\DIFdelend \DIFaddbegin \DIFadd{within 0.5\% }\DIFaddend on average).
-This demonstrates that \textbf{\mysys} successfully specializes the majority of \DIFdelbegin \DIFdel{kernel }\DIFdelend \DIFaddbegin \DIFadd{schedule }\DIFaddend parameters, leaving only a few residual parameters that have negligible impact on performance. These results validate that \textbf{\mysys} achieves effective automatic kernel specialization for NPU operators.
+Overall, \textbf{TilingInfer} achieves a geometric mean speedup of \textbf{1.06$\times$} across all operators, substantially outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the speedup ratio of \textbf{TilingInfer} is close to that of \textbf{Optimal} (only 1\% smaller on average).
+This demonstrates that \textbf{TilingInfer} successfully specializes the majority of \DIFdelbegin \DIFdel{kernel }\DIFdelend \DIFaddbegin \DIFadd{schedule }\DIFaddend parameters, leaving only a few residual parameters that have negligible impact on performance. These results validate that \textbf{TilingInfer} achieves effective automatic kernel specialization for NPU operators.
 
-We observe distinct performance behaviors across operator categories: \textbf{Attention mechanisms} (P-Attn, D-Attn) show the most significant gains, \textbf{\DIFdelbegin \DIFdel{1.09}\DIFdelend \DIFaddbegin \DIFadd{1.08}\DIFaddend $\times$} for P-Attn and \textbf{\DIFdelbegin \DIFdel{1.18}\DIFdelend \DIFaddbegin \DIFadd{1.17}\DIFaddend $\times$} for D-Attn\DIFdelbegin \DIFdel{because these }\DIFdelend \DIFaddbegin \DIFadd{, because these schedule-generic }\DIFaddend kernels have a large number of schedule parameters.
+\DIFdelbegin\DIFdel{We observe distinct performance behaviors across operator categories: \textbf{Attention mechanisms} (P-Attn, D-Attn) show the most significant gains, \textbf{1.09$\times$} for P-Attn and \textbf{1.18$\times$} for D-Attn because these kernels have a large number of schedule parameters.}\DIFdelend{}\space
+\DIFaddbegin\DIFadd{We observe distinct performance behaviors across operator categories. \textbf{Attention operators} show the largest gains: \textbf{1.08$\times$} for P-Attn and \textbf{1.17$\times$} for D-Attn, because these schedule-generic kernels expose many constant schedule parameters.}\DIFaddend{}\space
 RMS and GN also benefit notably (\textbf{1.08$\times$} and \textbf{1.11$\times$}), as constant specialization eliminates redundant boundary checks and simplifies division operations.
 
 \subsubsection{\DIFaddbegin \DIFadd{Representative }\DIFaddend End-to-End \DIFdelbegin \DIFdel{Model Performance Analysis}\DIFdelend \DIFaddbegin \DIFadd{Inference Scenarios}\DIFaddend}
@@ -3471,13 +3293,14 @@ RMS and GN also benefit notably (\textbf{1.08$\times$} and \textbf{1.11$\times$}
 %DIFDELCMD < %%%
 \DIFdel{The end-to-end model inference performance is depicted in }%DIFDELCMD < \autoref{fig:eval:model-overall}%%%
 \DIFdel{, showing normalized speedup for Llama-3.2-3B and Qwen2.5-1.5B across varying sequence lengths and batch sizes (BS=1, 2, 4) during both Prefill and Decode phases. Additionally, }%DIFDELCMD < \autoref{fig:eval:operator-breakdown} %%%
+
 \DIFdel{presents the operator latency breakdown to illustrate the contribution of different operators to the total inference time. }%DIFDELCMD < 
 
 %DIFDELCMD < \begin{figure}
 %DIFDELCMD <     \centering
 %DIFDELCMD <     \includegraphics[width=\textwidth]{figures/evaluation/model-speedup/multi_model_speedup.png}
-%DIFDELCMD <     \caption{End-to-end speedup of \textbf{\mysys} compared to PyTorch baseline based on CANN compiler for Llama-3.2-3B and Qwen2.5-1.5B. For the prefill phase, we measure the time to first token (TTFT); for the decode phase, we measure the inter-token latency (ITL).}
-%DIFDELCMD <     \Description{End-to-end speedup of \textbf{\mysys} compared to PyTorch baseline based on CANN compiler for Llama-3.2-3B and Qwen2.5-1.5B.}
+%DIFDELCMD <     \caption{End-to-end speedup of \textbf{TilingInfer} compared to PyTorch baseline based on CANN compiler for Llama-3.2-3B and Qwen2.5-1.5B. For the prefill phase, we measure the time to first token (TTFT); for the decode phase, we measure the inter-token latency (ITL).}
+%DIFDELCMD <     \Description{End-to-end speedup of \textbf{TilingInfer} compared to PyTorch baseline based on CANN compiler for Llama-3.2-3B and Qwen2.5-1.5B.}
 %DIFDELCMD <     \label{fig:eval:model-overall}
 %DIFDELCMD <     \vspace{-10pt}
 %DIFDELCMD < \end{figure}
@@ -3486,7 +3309,7 @@ RMS and GN also benefit notably (\textbf{1.08$\times$} and \textbf{1.11$\times$}
 
 \DIFadd{The shape configurations of the six representative inference scenarios are summarized in }\autoref{tab:eval:model-configs}\DIFadd{, and their operator calls are classified in }\autoref{tab:eval:model-operator-categories}\DIFadd{. We divide the calls into seven categories. MatMul/GMM, Attention, and Norm invoke CANN kernels from a schedule-generic implementation and together account for approximately 40\%--94\% of model-inference latency. The other four categories use kernels generated by TVM~\mbox{%DIFAUXCMD
 \cite{chen2018tvm}}\hspace{0pt}%DIFAUXCMD
-, an AI compiler that provides a Python-embedded DSL for describing operator implementations. These kernels have simple schedules, with schedule parameters already specialized during code generation, so }\mysys \DIFadd{provides no further speedup for them.
+, an AI compiler that provides a Python-embedded DSL for describing operator implementations. These kernels have simple schedules, with schedule parameters already specialized during code generation, so TilingInfer provides no further speedup for them.
 }\DIFaddend 
 
 \DIFdelbegin %DIFDELCMD < \begin{figure}
@@ -3502,27 +3325,27 @@ RMS and GN also benefit notably (\textbf{1.08$\times$} and \textbf{1.11$\times$}
 	\centering
 	\includegraphics[width=0.78\textwidth]{figures/evaluation/model-speedup/multi_model_speedup.png}
 		\caption{End-to-end speedup versus runtime shape for six representative ML inference scenarios.}
-		\Description{End-to-end speedup trends for DeepFM, HSTU, LLaMA prefill and decode, and Qwen prefill and decode.}
+		\Description{End-to-end speedup trends for DeepFM, HSTU, Llama 3.2 1B prefill and decode, and Qwen3.5-0.8B prefill and decode.}
 		\label{fig:eval:model-overall}
 \end{figure}
 \DIFaddend 
 
 \DIFdelbegin \DIFdel{As shown in }%DIFDELCMD < \autoref{fig:eval:model-overall}%%%
-\DIFdel{, }\textbf{%DIFDELCMD < \mysys%%%
+\DIFdel{, }\textbf{%DIFDELCMD < TilingInfer%%%
 } %DIFAUXCMD
 \DIFdel{achieves an average speedup of }\textbf{\DIFdel{3\%}} %DIFAUXCMD
 \DIFdel{across various shape configurations for both Prefill and Decode phases.
-The speedup is more pronounced for shorter sequences, but }\DIFdelend \DIFaddbegin \autoref{fig:eval:model-overall} \DIFadd{shows that }\mysys\DIFadd{'s end-to-end speedup generally }\DIFaddend decreases as the \DIFdelbegin \DIFdel{input length and the number of generated tokens increase.
-This trend is consistent across both phases. }\DIFdelend \DIFaddbegin \DIFadd{runtime shape grows because tensor computation occupies an increasing fraction of execution time. DeepFM and the two decode scenarios obtain the larger gains, averaging approximately 1.10$\times$, whereas HSTU and the two prefill scenarios average approximately 1.03$\times$. Relative to Optimal's per-shape full specialization, }\mysys \DIFadd{achieves comparable geometric-mean speedups---1.05$\times$ versus 1.08$\times$ across all six scenarios and 1.10$\times$ versus 1.14$\times$ across the two decode scenarios; although faster, Optimal recompiles the entire operator for every shape, taking tens of minutes each and thus being impractical in production.
+The speedup is more pronounced for shorter sequences, but }\DIFdelend \DIFaddbegin \autoref{fig:eval:model-overall} \DIFadd{shows that }TilingInfer\DIFadd{'s end-to-end speedup generally }\DIFaddend decreases as the \DIFdelbegin \DIFdel{input length and the number of generated tokens increase.
+This trend is consistent across both phases. }\DIFdelend \DIFaddbegin \DIFadd{runtime shape grows because tensor computation occupies an increasing fraction of execution time. DeepFM and the two decode scenarios obtain the larger gains, averaging approximately 1.10$\times$. These scenarios are relatively more memory-intensive and use smaller, shorter-running device-kernel workloads, so the scalar overhead removed by specialization accounts for a larger fraction of latency. In contrast, the compute-intensive HSTU and prefill scenarios average approximately 1.03$\times$ because their device kernels perform more tensor computation. Relative to Optimal's per-shape full specialization, }TilingInfer \DIFadd{achieves comparable geometric-mean speedups---1.05$\times$ versus 1.08$\times$ across all six scenarios and 1.10$\times$ versus 1.14$\times$ across the two decode scenarios; although faster, Optimal recompiles the entire operator for every shape, taking tens of minutes each and thus being impractical in production.
 }\DIFaddend 
 
 \DIFdelbegin \DIFdel{We make two key observations. First, }\textbf{\DIFdel{Speedup Variation with Sequence Length}}%DIFAUXCMD
 \DIFdel{, the end-to-end speedup is more significant for small sequences where scalar overhead is proportionally larger ; as sequence length increases, computational workload dominates, decreasing the benefit. Second, }\textbf{\DIFdel{Dominance of MatMul}}%DIFAUXCMD
-\DIFdel{, MatMul accounts for the majority of inference time; although }\textbf{%DIFDELCMD < \mysys%%%
+\DIFdel{, MatMul accounts for the majority of inference time; although }\textbf{%DIFDELCMD < TilingInfer%%%
 } %DIFAUXCMD
 \DIFdel{achieves significant speedups for FlashAttention and normalization, these contribute less to overall latency, resulting in modest end-to-end improvement}\DIFdelend \DIFaddbegin \begin{table}[H]
-	\caption{Operator categories, implementation sources, and \mysys outcomes for the six representative models.}
-	\Description{The seven model-operator categories, their simplified operator names, whether they use the CANN library or AI-compiler-generated kernels, and whether \mysys specialization provides a benefit.}
+	\caption{Operator categories, implementation sources, and TilingInfer outcomes for the six representative models.}
+	\Description{The seven model-operator categories, their simplified operator names, whether they use the CANN library or AI-compiler-generated kernels, and whether TilingInfer specialization provides a benefit.}
 	\label{tab:eval:model-operator-categories}
 	\centering
 	\scriptsize
@@ -3534,12 +3357,12 @@ This trend is consistent across both phases. }\DIFdelend \DIFaddbegin \DIFadd{ru
 		\midrule
 		MatMul/GMM &
 		Matrix Multiplication (MM), Batched Matrix Multiplication (BMM), Grouped Matrix Multiplication (GMM) &
-		\multirow{3}{*}{\shortstack[l]{CANN operator library;\\\mysys specialization benefits}} \\
+		\multirow{3}{*}{\shortstack[l]{CANN operator library;\\TilingInfer specialization benefits}} \\
 		Attention & P-Attn, D-Attn & \\
 		Norm & RMSNorm, LayerNorm, GroupNorm & \\
 		\midrule
 		Embedding/Gather & Embedding, Gather &
-		\multirow{4}{*}{\shortstack[l]{AI-compiler-generated kernels (TVM Python DSL);\\no \mysys specialization benefit}} \\
+		\multirow{4}{*}{\shortstack[l]{AI-compiler-generated kernels (TVM Python DSL);\\no TilingInfer specialization benefit}} \\
 		Activation/Softmax & ReLU, SiLU/Swish, GELU, Sigmoid, Tanh, Softmax, Reduce/Mean & \\
 		Pointwise Arithmetic & Add, Sub, Mul, Div, Pow, Rsqrt, Maximum/Minimum, Zero & \\
 		Layout \& Data Movement & Concat, Slice, Transpose, Cast, Copy/TensorMove, Reshape/AsStrided & \\
@@ -3556,15 +3379,15 @@ This trend is consistent across both phases. }\DIFdelend \DIFaddbegin \DIFadd{ru
 		\label{fig:eval:operator-breakdown}
 \end{figure}
 
-\autoref{fig:eval:operator-breakdown} \DIFadd{attributes the model-level gains primarily to Attention and MatMul/GMM. In particular, the MatMul calls in DeepFM and decode phase of LLMs have relatively small computation sizes, so specialization removes a larger fraction of their tiling and control overhead and produces higher operator speedups. Attention supplies the other major source of improvement, especially in the decode phase. By contrast, the four AI-compiler-generated categories remain at 1.00$\times$, confirming that }\mysys\DIFadd{'s benefits are limited to expert-written operators}\DIFaddend .
+\autoref{fig:eval:operator-breakdown} \DIFadd{attributes the model-level gains primarily to Attention and MatMul/GMM. In particular, the MatMul calls in DeepFM and the LLM decode phase have relatively small computation sizes, so specialization removes a larger fraction of their tiling and control overhead and produces higher operator speedups. Attention supplies the other major source of improvement, especially in the decode phase. By contrast, the four AI-compiler-generated categories remain at 1.00$\times$, confirming that }TilingInfer\DIFadd{'s benefits are limited to expert-written operators}\DIFaddend .
 
-\subsubsection{Comparison between \textbf{\mysys} and specialization based on Standard LLVM}
+\subsubsection{\DIFdel{Comparison between \textbf{TilingInfer} and specialization based on Standard LLVM}\DIFadd{Comparison with Standard LLVM Specialization}}
 
 \autoref{tab:compilation_detail} shows the trade-off between compilation overhead and optimization effects.
-\textbf{LLVM-spec} incurs minimal overhead (less than 0.60s) due to its \DIFdelbegin \DIFdel{inprecise }\DIFdelend \DIFaddbegin \DIFadd{imprecise }\DIFaddend analysis.
-In contrast, \textbf{\mysys} exhibits \DIFaddbegin \DIFadd{a }\DIFaddend moderate increase (0.24s to 2.70s) due to field-sensitive analysis.
+\textbf{LLVM-spec} incurs minimal overhead (less than 0.60\DIFadd{\,}s) due to its \DIFdelbegin \DIFdel{inprecise }\DIFdelend \DIFaddbegin \DIFadd{imprecise }\DIFaddend analysis.
+In contrast, \textbf{TilingInfer} \DIFdel{exhibits a moderate increase (0.24s to 2.70s)}\DIFadd{adds 0.24--2.70\,s} due to field-sensitive analysis.
 Given that this compilation is a one-off cost during deployment, we consider this overhead acceptable, as it enables the backend compiler to generate considerably more efficient binaries (1.06$\times$ speedup).
-Moreover, \textbf{\mysys} avoids employing path-sensitive analysis through early-exit path identification, keeping compilation overhead acceptable.
+Moreover, \textbf{TilingInfer} \DIFdel{avoids employing path-sensitive analysis through early-exit path identification}\DIFadd{avoids path-sensitive analysis by using early-exit edge identification}, keeping compilation overhead acceptable.
 
 %DIF <  TODO:
 %DIF <  Comparison of the number of inferred parameters
@@ -3589,7 +3412,7 @@ Moreover, \textbf{\mysys} avoids employing path-sensitive analysis through early
      & \textit{Diff} & \scriptsize{(+0.60)} & \scriptsize{(+0.35)} & \scriptsize{(+0.35)} & \scriptsize{(+0.13)} & \scriptsize{(+0.08)} & \scriptsize{(+0.07)} & \scriptsize{(+0.20)} & \scriptsize{(+0.06)} & \scriptsize{(+0.25)} & \scriptsize{(+0.05)} & \scriptsize{(+0.06)} & \scriptsize{(+0.15)} & \scriptsize{(+0.05)} & \scriptsize{(+0.05)} \\
      & Derived \# & 4 & 3 & 3 & 2 & 1 & 2 & 0 & 0 & 1 & 0 & 0 & 3 & 2 & 1 \\
     \midrule
-    \multirow{3}{*}{\textbf{\mysys}} 
+    \multirow{3}{*}{\textbf{TilingInfer}}
      & Time (s) & 27.20 & 21.05 & 42.95 & 5.42 & 3.58 & 2.25 & 6.95 & 1.65 & 7.25 & 1.62 & 1.15 & 3.55 & 3.54 & 1.52 \\
      & \textit{Diff} & \scriptsize{(+2.70)} & \scriptsize{(+1.25)} & \scriptsize{(+0.85)} & \scriptsize{(+0.90)} & \scriptsize{(+0.46)} & \scriptsize{(+0.40)} & \scriptsize{(+1.85)} & \scriptsize{(+0.41)} & \scriptsize{(+1.10)} & \scriptsize{(+0.27)} & \scriptsize{(+0.33)} & \scriptsize{(+0.60)} & \scriptsize{(+0.24)} & \scriptsize{(+0.37)} \\
      & Derived \# & 242 & 352 & 60 & 110 & 11 & 30 & 13 & 28 & 17 & 15 & 5 & 82 & 15 & 14 \\
@@ -3622,7 +3445,7 @@ Moreover, \textbf{\mysys} avoids employing path-sensitive analysis through early
 %DIFDELCMD <      & \textit{Diff} & \scriptsize{(+0.60)} & \scriptsize{(+0.35)} & \scriptsize{(+0.35)} & \scriptsize{(+0.13)} & \scriptsize{(+0.08)} & \scriptsize{(+0.07)} & \scriptsize{(+0.20)} & \scriptsize{(+0.06)} & \scriptsize{(+0.25)} & \scriptsize{(+0.05)} & \scriptsize{(+0.06)} & \scriptsize{(+0.15)} & \scriptsize{(+0.05)} & \scriptsize{(+0.05)} \\
 %DIFDELCMD <      & Derived \# & 4 & 3 & 3 & 2 & 1 & 2 & 0 & 0 & 1 & 0 & 0 & 3 & 2 & 1 \\
 %DIFDELCMD <     \midrule
-%DIFDELCMD <     \multirow{3}{*}{\textbf{\mysys}} 
+%DIFDELCMD <     \multirow{3}{*}{\textbf{TilingInfer}}
 %DIFDELCMD <      & Time (s) & 27.20 & 21.05 & 42.95 & 5.42 & 3.58 & 2.25 & 6.95 & 1.65 & 7.25 & 1.62 & 1.15 & 3.55 & 3.54 & 1.52 \\
 %DIFDELCMD <      & \textit{Diff} & \scriptsize{(+2.70)} & \scriptsize{(+1.25)} & \scriptsize{(+0.85)} & \scriptsize{(+0.90)} & \scriptsize{(+0.46)} & \scriptsize{(+0.40)} & \scriptsize{(+1.85)} & \scriptsize{(+0.41)} & \scriptsize{(+1.10)} & \scriptsize{(+0.27)} & \scriptsize{(+0.33)} & \scriptsize{(+0.60)} & \scriptsize{(+0.24)} & \scriptsize{(+0.37)} \\
 %DIFDELCMD <      & Derived \# & 242 & 352 & 60 & 110 & 11 & 30 & 13 & 28 & 17 & 15 & 5 & 82 & 15 & 14 \\
@@ -3632,18 +3455,20 @@ Moreover, \textbf{\mysys} avoids employing path-sensitive analysis through early
 %DIFDELCMD <     \vspace{-15pt}
 %DIFDELCMD < \end{table}
 %DIFDELCMD < %%%
+\input{sections/evaluation-device-level-paragraph-diff}
+\begin{comment}
 \DIFdelend \DIFaddbegin \subsection{\DIFadd{Device-Level Attribution}}
 \label{sec:eval:analysis}
 \DIFaddend 
 
-\DIFdelbegin \subsection{\DIFdel{Detailed Analysis on Benefits of }\textbf{%DIFDELCMD < \mysys%%%
+\DIFdelbegin \subsection{\DIFdel{Detailed Analysis on Benefits of }\textbf{%DIFDELCMD < TilingInfer%%%
 }%DIFAUXCMD
 }
 %DIFAUXCMD
 \addtocounter{subsection}{-1}%DIFAUXCMD
 \DIFdelend \DIFaddbegin \begin{table}[htbp]
 \centering
-\caption{Performance Comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{\mysys} (T).
+\caption{Performance Comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{TilingInfer} (T).
 Best values are bolded.
 Reflecting our goal to maximize time spent on tensor computation units (Cube and Vector), $\downarrow$ denotes lower is better for metrics irrelative to tensor computations. $\uparrow$ denotes higher is better for speedup ratio.}
 \label{tab:performance_metrics}
@@ -3679,7 +3504,7 @@ Scat & 1.00 & 1.00 & \textbf{1.01} & 24.38 & 23.42 & \textbf{22.61} & \textbf{97
 
 \DIFdelbegin %DIFDELCMD < \begin{table}[htbp]
 %DIFDELCMD < \centering
-%DIFDELCMD < \caption{Performance Comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{\mysys} (T). 
+%DIFDELCMD < \caption{Performance Comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{TilingInfer} (T).
 %DIFDELCMD < Best values are bolded. 
 %DIFDELCMD < Reflecting our goal to maximize time spent on tensor computation units (Cube and Vector), $\downarrow$ denotes lower is better for metrics irrelative to tensor computations.$\uparrow$ denotes higher is better for speedup ratio.}
 %DIFDELCMD < \label{tab:performance_metrics}
@@ -3724,8 +3549,8 @@ Scat & 1.00 & 1.00 & \textbf{1.01} & 24.38 & 23.42 & \textbf{22.61} & \textbf{97
 		\includegraphics[width=\linewidth]{figures/evaluation/op-speedup/mm_execution_speedup.pdf}
 		\caption{MM}
 	\end{subfigure}
-	\caption{Kernel speedup versus Baseline device-kernel latency for D-Attn and MM. Blue points report the speedup of \mysys relative to Baseline.}
-	\Description{Two scatter plots showing \mysys kernel speedup versus Baseline device-kernel latency for D-Attn and MM.}
+	\caption{Kernel speedup versus Baseline device-kernel latency for D-Attn and MM. Blue points report the speedup of TilingInfer relative to Baseline.}
+	\Description{Two scatter plots showing TilingInfer kernel speedup versus Baseline device-kernel latency for D-Attn and MM.}
 	\label{fig:eval:op-scaling}
 \end{figure*}
 \DIFaddend 
@@ -3740,17 +3565,17 @@ The }\textit{\DIFdel{Scalar Ratio}}%DIFAUXCMD
 \DIFdel{, }\textit{\DIFdel{Memory Read Ratio}}%DIFAUXCMD
 \DIFdel{, }\DIFdelend and \DIFdelbegin \textit{\DIFdel{Memory Write Ratio}} %DIFAUXCMD
 \DIFdel{quantify the proportion of execution cycles of corresponding hardware units (scalar units, memory read/write units) relative to the total kernel execution cycles.
-Comparing }\textbf{%DIFDELCMD < \mysys%%%
+Comparing }\textbf{%DIFDELCMD < TilingInfer%%%
 } %DIFAUXCMD
 \DIFdel{(T) against the }\textbf{\DIFdel{Baseline}} %DIFAUXCMD
 \DIFdel{(B) and }\textbf{\DIFdel{LLVM-spec}} %DIFAUXCMD
-\DIFdel{(L), we attribute the improvements to two primary factors: reduced instruction fetch overhead and }\DIFdelend \DIFaddbegin \autoref{fig:eval:op-scaling} \DIFadd{show that }\mysys \DIFadd{does not produce uniform device-level gains; benefiting kernels fall into two mechanism-driven classes, whereas a third class is largely insensitive. For Upsample, D-Attn, FFN, and P-Attn, gains mainly arise because invariant propagation exposes constant branches and loop structure, enabling dead-code elimination and control-flow simplification; the resulting smaller instruction footprint reduces instruction-fetch and I-Cache pressure. A second class, including RMS, Pow, Gate, and GN, benefits primarily from }\DIFaddend simplified runtime calculation \DIFdelbegin \DIFdel{.
+\DIFdel{(L), we attribute the improvements to two primary factors: reduced instruction fetch overhead and }\DIFdelend \DIFaddbegin \autoref{fig:eval:op-scaling} \DIFadd{show that }TilingInfer \DIFadd{does not produce uniform device-level gains; benefiting kernels fall into two mechanism-driven classes, whereas a third class is largely insensitive. For Upsample, D-Attn, FFN, and P-Attn, gains mainly arise because invariant propagation exposes constant branches and loop structure, enabling dead-code elimination and control-flow simplification; the resulting smaller instruction footprint reduces instruction-fetch and I-Cache pressure. A second class, including RMS, Pow, Gate, and GN, benefits primarily from }\DIFaddend simplified runtime calculation \DIFdelbegin \DIFdel{.
 }%DIFDELCMD < 
 
 %DIFDELCMD < %%%
 \textit{\DIFdel{Reduction in Binary Size and I-Cache Misses.}}
 %DIFAUXCMD
-\DIFdel{By propagating runtime invariants, }\textbf{%DIFDELCMD < \mysys%%%
+\DIFdel{By propagating runtime invariants, }\textbf{%DIFDELCMD < TilingInfer%%%
 } %DIFAUXCMD
 \DIFdel{enables the backend compiler to aggressively perform Dead Code Elimination (DCE) and simplify control flow graphs. This leads to significant binary size reductions: 34.0\% for }\texttt{\DIFdel{Upsample}}%DIFAUXCMD
 \DIFdel{, 22.7\% for }\texttt{\DIFdel{D-Attn}}%DIFAUXCMD
@@ -3780,7 +3605,7 @@ observed speedups. }\DIFdelend \DIFaddbegin \DIFadd{schedule parameters removes 
 %DIFDELCMD <     \hfill
 %DIFDELCMD <     \begin{minipage}{0.45\textwidth}
 %DIFDELCMD <         \includegraphics[width=\linewidth]{figures/evaluation/op-speedup/d_attn_execution_speedup.pdf}
-%DIFDELCMD <         \caption{Distribution of speedup ratios of \textbf{\mysys} for the operator \texttt{D-Attn} relative to baseline kernel latency.}
+%DIFDELCMD <         \caption{Distribution of speedup ratios of \textbf{TilingInfer} for the operator \texttt{D-Attn} relative to baseline kernel latency.}
 %DIFDELCMD <         \Description{Scatter plot showing distribution of speedup ratios relative to baseline kernel latency.}
 %DIFDELCMD <         \label{fig:eval:latency_dist}
 %DIFDELCMD <         \vspace{-10pt}
@@ -3788,13 +3613,16 @@ observed speedups. }\DIFdelend \DIFaddbegin \DIFadd{schedule parameters removes 
 %DIFDELCMD <     \hfill
 %DIFDELCMD < \end{figure}
 %DIFDELCMD < %%%
+\end{comment}
+\input{sections/evaluation-sensitivity-paragraph-diff}
+\begin{comment}
 \DIFdelend \DIFaddbegin \subsection{\DIFadd{Sensitivity to Resolved Schedule Parameters}}
 \label{sec:eval:sensitivity}
 \DIFaddend 
 
 \DIFdelbegin \textit{\DIFdel{Optimization of Computational Intensity and Memory Schedule.}}
 %DIFAUXCMD
-\textbf{%DIFDELCMD < \mysys%%%
+\textbf{%DIFDELCMD < TilingInfer%%%
 } %DIFAUXCMD
 \DIFdel{substantially reduces the Scalar Ratio for operators like }\texttt{\DIFdel{RMS}} %DIFAUXCMD
 \DIFdel{(97.9\% $\rightarrow$ 88.6\%) }\DIFdelend \DIFaddbegin \begingroup
@@ -3972,7 +3800,7 @@ observed speedups. }\DIFdelend \DIFaddbegin \DIFadd{schedule parameters removes 
 	\Description{Point plot of speedup over Baseline for Control logic with 6
 	specialized parameters, Per-core tile dimensions/addressing with 14,
 	Core-loop scheduling/memory resources with 14, the three groups jointly
-	with 34, and \mysys with 304.
+	with 34, and TilingInfer with 304.
 	Each row contains separate points for KV lengths 512, 768, 1024, and 1280,
 	and no error bars.}
 	\label{fig:eval:constant-sensitivity}
@@ -4035,7 +3863,7 @@ predicts specialization value.
 \DIFdel{show that speedup decreases towards 1.0 as workload increases. This implies that performance benefits from kernel specialization are relatively fixed in absolute time.
 Consequently, this fixed reduction yields significant speedup ratios for small-scale kernels but becomes negligible for heavy workloads dominated by computation and memory access}\DIFdelend \DIFaddbegin \DIFadd{The three isolated gains sum to 12.2\%, whereas jointly specializing all 34
 parameters yields 1.10$\times$ (10.4\%), or 85.0\% of that sum, indicating
-interaction and diminishing returns. }\mysys \DIFadd{specializes 304 stable parameters
+interaction and diminishing returns. }TilingInfer \DIFadd{specializes 304 stable parameters
 and reaches 1.14$\times$. Although the 34
 $\mathrm{Query}\times\mathrm{Key}^{\mathsf T}$ parameters comprise only 11.0\%
 of these fields, they recover 75.0\% of the full gain; the remaining 270 add
@@ -4049,6 +3877,9 @@ and control flow is more valuable than resolving constants on colder paths}\DIFa
 %DIFDELCMD < %%%
 %DIF <  TODO:
 %DIF <  绘制几种算子启动kernel特化后的 IR 指令数目随pass执行的变化情况，其中只标注 JIT spec pass
+\end{comment}
+\input{sections/evaluation-binary-size-paragraph-diff}
+\begin{comment}
 \DIFdelend \DIFaddbegin \subsection{\DIFadd{Binary-Size Trade-off}}
 \label{sec:eval:tradeoff}
 \DIFaddend 
@@ -4109,7 +3940,7 @@ and control flow is more valuable than resolving constants on colder paths}\DIFa
 }\par\kern6pt
 \DIFaddend 
 
-We \DIFdelbegin \DIFdel{adapted }\textbf{%DIFDELCMD < \mysys%%%
+We \DIFdelbegin \DIFdel{adapted }\textbf{%DIFDELCMD < TilingInfer%%%
 } %DIFAUXCMD
 \DIFdel{to eliminate redundant template instantiations never called at runtime.
 We targeted FlashInfer ~\mbox{%DIFAUXCMD
@@ -4117,14 +3948,14 @@ We targeted FlashInfer ~\mbox{%DIFAUXCMD
 , a state-of-the-art attention kernel library widely used in LLM serving systems like vLLM and SGLang. The results of this optimization are presented in }%DIFDELCMD < \autoref{tab:gpu_binary_reduction}%%%
 \DIFdel{.
 We evaluated the binary size reduction for different LLM families (Llama and Qwen) with various model sizes.
-}\textbf{%DIFDELCMD < \mysys%%%
+}\textbf{%DIFDELCMD < TilingInfer%%%
 } %DIFAUXCMD
-\DIFdel{demonstrates remarkable effectiveness in eliminating redundant code, reducing the binary size of the FlashInfer library from approximately 520MB to roughly 20MB. On average, }\textbf{%DIFDELCMD < \mysys%%%
+\DIFdel{demonstrates remarkable effectiveness in eliminating redundant code, reducing the binary size of the FlashInfer library from approximately 520MB to roughly 20MB. On average, }\textbf{%DIFDELCMD < TilingInfer%%%
 } %DIFAUXCMD
 \DIFdel{achieves a }\textbf{\DIFdel{96.2\% reduction}} %DIFAUXCMD
 \DIFdel{in binary size.
 This substantial reduction in library footprint benefits cold-start-sensitive scenarios such as serverless ML inference, where loading large operator libraries into GPU memory constitutes a major portion of initialization latency.
-Other DSA architectures with AoT compiled operator libraries that suffer from similar codebloat issues could also benefit from }\textbf{%DIFDELCMD < \mysys%%%
+Other DSA architectures with AoT compiled operator libraries that suffer from similar codebloat issues could also benefit from }\textbf{%DIFDELCMD < TilingInfer%%%
 }%DIFAUXCMD
 \DIFdel{.
 }\section{\DIFdel{Related Works}}
@@ -4139,9 +3970,14 @@ In the worst case, serving 8 models like mamba would require 8$\times$60.7\,MB =
 A universal archive therefore favors diverse multi-model deployments, whereas per-model pruning favors serving modest model sets.
 }
 
-\mysys \DIFadd{removes most of the binary footprint from Prefill and Decode kernels because these kernels enumerate and pre-specialize many combinations of template schedule parameters. After pruning these kernels, the retained libraries consist mainly of various complex Utility kernels and SSU kernels.
+TilingInfer \DIFadd{removes most of the binary footprint from Prefill and Decode kernels because these kernels enumerate and pre-specialize many combinations of template schedule parameters. After pruning these kernels, the retained libraries consist mainly of various complex Utility kernels and SSU kernels.
 }
 
+\end{comment}
+\input{sections/related-paragraph-diff}
+\input{sections/discussion-paragraph-diff}
+\input{sections/conclusion-paragraph-diff}
+\begin{comment}
 \section{\DIFadd{Related Work}}
 \DIFaddend \label{sec:related}
 
@@ -4158,7 +3994,7 @@ Sparse conditional constant propagation combines value and executable-edge reaso
 C++ templates can also be understood as a manual form of partial evaluation~\mbox{%DIFAUXCMD
 \cite{veldhuizen1998ctemplatespartialevaluation}}\hspace{0pt}%DIFAUXCMD
 .
-}\mysys \DIFadd{builds on these foundations rather than claiming a new constant-propagation primitive.
+}TilingInfer \DIFadd{builds on these foundations rather than claiming a new constant-propagation primitive.
 Its contribution is to recover a typed C++ entry state that is present in a framework Graph IR but absent from the operator library's LLVM IR, propagate that state through pointer-rich host code, and preserve precision across shape-checker-induced early-exit paths.
 }
 
@@ -4174,7 +4010,7 @@ employ micro-kernel-based approaches for dynamic shapes.
 These systems operate within compiler IRs (TVM, Relax~\mbox{%DIFAUXCMD
 \cite{Lai2023RelaxCA}}\hspace{0pt}%DIFAUXCMD
 ) and focus on generating kernels from high-level tensor expressions.
-In contrast, }%DIFDELCMD < \mysys %%%
+In contrast, }%DIFDELCMD < TilingInfer %%%
 \DIFdel{propagates invariants across the Python}\DIFdelend \DIFaddbegin \DIFadd{, BladeDISC~\mbox{%DIFAUXCMD
 \cite{zheng2023bladedisc}}\hspace{0pt}%DIFAUXCMD
 , Relax~\mbox{%DIFAUXCMD
@@ -4228,19 +4064,19 @@ However, these frameworks have limited support for specializing third-party AoT 
 \addtocounter{section}{-1}%DIFAUXCMD
 %DIFDELCMD < \label{sec:concl}
 %DIFDELCMD < %%%
-\DIFdelend \DIFaddbegin \mysys \DIFadd{therefore has a different optimization object.
+\DIFdelend \DIFaddbegin TilingInfer \DIFadd{therefore has a different optimization object.
 It preserves the expert-written kernel, including its vendor-specific control flow, data movement, and intrinsic calls, and specializes standard scalar LLVM instructions such as loads, stores, arithmetic, branches, and address calculations.
-This distinction is methodological: comparing a generated kernel with an expert-written kernel would mix schedule and implementation quality with the effect of specialization that }\mysys \DIFadd{is designed to isolate.
+This distinction is methodological: comparing a generated kernel with an expert-written kernel would mix schedule and implementation quality with the effect of specialization that }TilingInfer \DIFadd{is designed to isolate.
 }\DIFaddend 
 
-\DIFdelbegin \DIFdel{We present }%DIFDELCMD < \mysys%%%
+\DIFdelbegin \DIFdel{We present }%DIFDELCMD < TilingInfer%%%
 \DIFdel{, a static analysis framework that enables precise constant propagation across language boundaries for kernel specialization in deep learning operator libraries.
 Experimental results demonstrate its effectiveness: on
 Ascend NPU, }\DIFdelend \DIFaddbegin \section{\DIFadd{Discussion}}
 \label{sec:discussion}
 
 \textbf{\DIFadd{Workload-dependent benefits.}}
-\DIFadd{Our experiments show that the magnitude of }\DIFaddend \mysys\DIFdelbegin \DIFdel{achieves an average speedup of }\textbf{\DIFdel{1.06$\times$}} %DIFAUXCMD
+\DIFadd{Our experiments show that the magnitude of }\DIFaddend TilingInfer\DIFdelbegin \DIFdel{achieves an average speedup of }\textbf{\DIFdel{1.06$\times$}} %DIFAUXCMD
 \DIFdel{(up to }\textbf{\DIFdel{1.17$\times$}}%DIFAUXCMD
 \DIFdel{) for individual operators and }\textbf{\DIFdel{3\%}} %DIFAUXCMD
 \DIFdel{end-to-end inference speedupfor LLMs; on GPU, }\DIFdelend \DIFaddbegin \DIFadd{'s benefit depends strongly on
@@ -4253,7 +4089,7 @@ specialized binary can discard a larger fraction of the universal library. By
 contrast, HSTU and prefill remain compute-heavy, so specializing their core
 Attention and MatMul kernels removes little of the total work and improves
 end-to-end latency by only about 2\%. Some kernels in the current open-source
-baselines also cannot be further specialized by }\DIFaddend \mysys\DIFdelbegin \DIFdel{reduces the binary size of the FlashInfer libraryby }\textbf{\DIFdel{96.2\%}}%DIFAUXCMD
+baselines also cannot be further specialized by }\DIFaddend TilingInfer\DIFdelbegin \DIFdel{reduces the binary size of the FlashInfer libraryby }\textbf{\DIFdel{96.2\%}}%DIFAUXCMD
 \DIFdel{, effectively addressing the code bloat problem. }\DIFdelend \DIFaddbegin \DIFadd{, further limiting
 end-to-end gains.
 }\DIFaddend 
@@ -4271,7 +4107,7 @@ libraries and makes automatic specialization particularly relevant.
 }
 
 \textbf{\DIFadd{Optimization scope and limitations.}}
-\DIFaddend \mysys \DIFdelbegin \DIFdel{is most effective for lightweight kernels with high invocation frequency on Ascend, while on
+\DIFaddend TilingInfer \DIFdelbegin \DIFdel{is most effective for lightweight kernels with high invocation frequency on Ascend, while on
 GPUs, further specialization on top of existing manual optimization yields limited improvement due to sufficient general-purpose registers and well-optimized baseline libraries. Second, the current prototype is based on PyTorch; applying }\DIFdelend \DIFaddbegin \DIFadd{applies to existing expert-written operator libraries: it specializes
 schedule-generic kernels or removes unreachable instances from schedule-fixed
 libraries. This differs from AI compilers, which generate implementations and
@@ -4279,7 +4115,7 @@ search schedules; their code-generation pipelines do not optimize an existing
 C++ expert library in place. 
 }
 
-\DIFadd{Besides, }\DIFaddend \mysys \DIFdelbegin \DIFdel{to other frameworks like TensorFlow requires constructing update rules for their specific data types. Third, while }\DIFdelend \DIFaddbegin \DIFadd{analyzes host code only to recover constants
+\DIFadd{Besides, }\DIFaddend TilingInfer \DIFdelbegin \DIFdel{to other frameworks like TensorFlow requires constructing update rules for their specific data types. Third, while }\DIFdelend \DIFaddbegin \DIFadd{analyzes host code only to recover constants
 and launch-site liveness, then optimizes reachable device kernels; it does not
 rewrite host code. Host control flow is complex, CPUs already execute it
 efficiently, and profitable host specialization would require a more selective
@@ -4292,13 +4128,13 @@ many layers, making kernel optimization the higher-value target.
 \section{\DIFadd{Conclusion}}
 \label{sec:concl}
 
-\DIFadd{We presented }\DIFaddend \mysys\DIFdelbegin \DIFdel{can potentially specialize Host-side programs, such optimization involves more complex control flows and
+\DIFadd{We presented }\DIFaddend TilingInfer\DIFdelbegin \DIFdel{can potentially specialize Host-side programs, such optimization involves more complex control flows and
 external function calls, which we leave for future work}\DIFdelend \DIFaddbegin \DIFadd{, which propagates model-specific Graph-IR constants through
 existing C++ operator libraries to specialize schedule-generic device kernels
 or prune unreachable schedule-fixed instances.
 }
 
-\DIFadd{Across 14 Ascend operators, }\mysys \DIFadd{delivers a }\textbf{\DIFadd{1.06$\times$}}
+\DIFadd{Across 14 Ascend operators, }TilingInfer \DIFadd{delivers a }\textbf{\DIFadd{1.06$\times$}}
 \DIFadd{geometric-mean device-kernel speedup, with a maximum of
 }\textbf{\DIFadd{1.17$\times$}}\DIFadd{; its largest end-to-end gains occur in recommendation and
 decode workloads whose Attention and MatMul schedules expose profitable
@@ -4310,6 +4146,7 @@ invariants, averaging about 10\%.
 an 88.8--95.5\% reduction, demonstrating that graph-derived deployment
 knowledge can improve either device-kernel execution or binary footprint
 without synthesizing new schedules}\DIFaddend .
+\end{comment}
 
 
 %%

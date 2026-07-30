@@ -23,29 +23,29 @@
         $B=64$ \\
         HSTU &
         \texttt{torch\_npu} + TorchRec &
-        $B=2$, $D=512$, $N_H=8$, $D_H=64$, 8 HSTU blocks; no interaction-sequence cache &
-        $S\in\{32,64,128,256,512,1024\}$ &
+        $D=512$, $N_H=8$, $D_H=64$, 8 HSTU blocks; no interaction-sequence cache &
+        $B=2,\ S\in\{256,512,1024,2048,4096\}$ &
         $B=2,\ S=256$ \\
-        LLaMA-3 1B Prefill &
+        Llama 3.2 1B Prefill &
         \texttt{torch\_npu} + Transformers &
-        $B=2$, $D=512$, $N_H=8$, $D_H=64$, 16 decoder blocks &
-        $S\in\{32,64,128,256,512,1024\}$ &
+        $D=2048$, $N_H=32$, $N_{\mathrm{KV}}=8$, $D_H=64$, 16 decoder blocks &
+        $B=2,\ S\in\{256,512,1024,2048,4096\}$ &
         $B=2,\ S=256$ \\
-        LLaMA-3 1B Decode &
+        Llama 3.2 1B Decode &
         \texttt{torch\_npu} + Transformers &
-        one-token query, $D=512$, $N_H=8$, $D_H=64$, paged KV cache &
-        $B=2,\ L_{\mathrm{KV}}\in\{32,64,128,256,512,1024\}$ &
-        $B=16,\ L_{\mathrm{KV}}=256$ \\
-        Qwen-3.5 1B Prefill &
+        one-token query, $D=2048$, $N_H=32$, $N_{\mathrm{KV}}=8$, $D_H=64$, paged KV cache &
+        $B=2,\ L_{\mathrm{KV}}\in\{256,512,1024,2048,4096\}$ &
+        $B=2,\ L_{\mathrm{KV}}=256$ \\
+        Qwen3.5-0.8B Prefill &
         \texttt{torch\_npu} + Transformers &
-        $B=2$, $D=640$, $N_H=8$, $D_H=80$, 16 decoder blocks &
-        $S\in\{32,64,128,256,512,1024\}$ &
+        $D=1024$, $N_H=8$, $N_{\mathrm{KV}}=2$, $D_H=256$, 24 language-model layers &
+        $B=2,\ S\in\{256,512,1024,2048,4096\}$ &
         $B=2,\ S=256$ \\
-        Qwen-3.5 1B Decode &
+        Qwen3.5-0.8B Decode &
         \texttt{torch\_npu} + Transformers &
-        one-token query, $D=640$, $N_H=8$, $D_H=80$, paged KV cache &
-        $B=2,\ L_{\mathrm{KV}}\in\{32,64,128,256,512,1024\}$ &
-        $B=16,\ L_{\mathrm{KV}}=256$ \\
+        one-token query, $D=1024$, $N_H=8$, $N_{\mathrm{KV}}=2$, $D_H=256$, paged KV cache &
+        $B=2,\ L_{\mathrm{KV}}\in\{256,512,1024,2048,4096\}$ &
+        $B=2,\ L_{\mathrm{KV}}=256$ \\
         \bottomrule
     \end{tabularx}
 \end{table}

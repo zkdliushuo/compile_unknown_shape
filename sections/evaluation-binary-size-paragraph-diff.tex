@@ -16,7 +16,7 @@
 	\includegraphics[width=\linewidth]{figures/evaluation/op-reduction/flashinfer_footprint.pdf}
 	\captionsetup{hypcap=false,skip=3pt}
 	\captionof{figure}{Per-model FlashInfer footprint.}
-	\Description{Stacked horizontal bars showing specialized FlashInfer library sizes for 17 model variants.}
+	\Description{Stacked horizontal bars showing pruned FlashInfer library sizes for 17 model variants.}
 	\label{fig:eval:flashinfer-tradeoff-footprint}
 \end{adjustbox}
 \hfill
@@ -34,9 +34,13 @@ We apply path-liveness information to FlashInfer and retain the shared objects r
 \par}
 
 {\color{blue}%
-As shown in \autoref{fig:eval:flashinfer-tradeoff-footprint}, the retained per-model libraries occupy 24.3--60.7\,MB, reducing the universal archive by 88.8--95.5\%. To notice, the experiment is conducted without cross-service deduplication and the extrema place the storage break-even point at roughly 8--22 model services. In the worst case, serving 8 models like mamba would require 8$\times$60.7\,MB = 485.6\,MB, which is still smaller than the universal archive of 542\,MB. A universal archive therefore favors diverse multi-model deployments, whereas per-model pruning favors serving modest model sets.
+As shown in \autoref{fig:eval:flashinfer-tradeoff-footprint}, the retained per-model libraries occupy 24.3--60.7\,MB, reducing the universal archive by 88.8--95.5\%. Notably, the experiment is conducted without cross-service deduplication, and the extrema place the storage break-even point at roughly 8--22 model services. In the worst case, serving 8 models like Mamba would require 8$\times$60.7\,MB = 485.6\,MB, which is still smaller than the universal archive of 542\,MB. A universal archive therefore favors diverse multi-model deployments, whereas per-model pruning favors serving modest model sets.
 \par}
 
 {\color{blue}%
-TilingInfer removes most of the binary footprint from Prefill and Decode kernels because these kernels enumerate and pre-specialize many combinations of template schedule parameters. After pruning these kernels, the retained libraries consist mainly of various complex Utility kernels and SSU kernels.
+The reduction in library footprint benefits cold-start-sensitive scenarios such as serverless ML inference, where loading large operator libraries into GPU memory constitutes a major portion of initialization latency. Other DSA architectures with AoT-compiled operator libraries that suffer from similar code-bloat issues could also benefit from TilingInfer.
+\par}
+
+{\color{blue}%
+TilingInfer removes most of the binary footprint from Prefill and Decode kernels because these kernels enumerate and pre-specialize many combinations of template schedule parameters. After pruning these kernels, the retained libraries consist mainly of various complex utility kernels and SSU kernels.
 \par}

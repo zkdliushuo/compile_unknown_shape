@@ -18,6 +18,33 @@
 \input{local}
 \input{mycommand}
 
+% Keep the revised manuscript within the 25-page limit without changing the
+% body text or the revision-marked layout.  This preserves acmart's public
+% section commands, fonts, and numbering and only substitutes slightly tighter
+% spacing when its internal heading formatter receives a section or subsection.
+\makeatletter
+\let\TilingInfer@startsection\@startsection
+\def\@startsection#1#2#3#4#5#6{%
+  \def\TilingInfer@sectionname{#1}%
+  \def\TilingInfer@section{section}%
+  \def\TilingInfer@subsection{subsection}%
+  \def\TilingInfer@beforeskip{#4}%
+  \def\TilingInfer@afterskip{#5}%
+  \ifx\TilingInfer@sectionname\TilingInfer@section
+    \def\TilingInfer@beforeskip{-.68\baselineskip
+      \@plus -2\p@ \@minus -.2\p@}%
+    \def\TilingInfer@afterskip{.20\baselineskip}%
+  \else
+    \ifx\TilingInfer@sectionname\TilingInfer@subsection
+      \def\TilingInfer@beforeskip{-.68\baselineskip
+        \@plus -2\p@ \@minus -.2\p@}%
+      \def\TilingInfer@afterskip{.20\baselineskip}%
+    \fi
+  \fi
+  \TilingInfer@startsection{#1}{#2}{#3}%
+    {\TilingInfer@beforeskip}{\TilingInfer@afterskip}{#6}}
+\makeatother
+
 %%
 %% \BibTeX command to typeset BibTeX logo in the docs
 % \AtBeginDocument{%

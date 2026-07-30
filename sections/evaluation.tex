@@ -10,19 +10,19 @@ Beyond these questions, we evaluate detailed performance metrics and improvement
 \subsection{Experimental Setup}
 \label{sec:eval:setup}
 
-\textit{Hardware and Software Platforms}
-We use two platforms: (1) \textbf{NPU Platform}—Ascend 910B1 NPU (64GB HBM) with Intel Core i7-8700 CPU and 64GB DRAM, running CANN 8.0.RC1, LLVM 15.0.5, and PyTorch 2.6.0. The end-to-end model experiments additionally use Transformers 4.57.6 and TorchRec 1.2.0 (reported metrics are averaged over 90 runs after 10 warm-up iterations); (2) \textbf{GPU Platform}—NVIDIA RTX 3090 (24GB VRAM) with Intel Xeon Gold 6348 CPU, running CUDA 12.2, PyTorch 2.6.0, vLLM 0.9.1, and FlashInfer v0.2.
+\textit{Hardware and Software Platforms.}
+We use two platforms. (1) The \textbf{NPU platform} consists of an Ascend 910B1 NPU (64\,GB HBM), an Intel Core i7-8700 CPU, and 64\,GB DRAM, running CANN 8.0.RC1, LLVM 15.0.5, and PyTorch 2.6.0. The end-to-end model experiments additionally use Transformers 4.57.6 and TorchRec 1.2.0. All end-to-end model-inference experiments enable NPU Graph replay for every compared method, so the methods use the same graph-execution setting and repeated CPU launch overhead is suppressed. Each reported metric is averaged over 90 measured runs after 10 warm-up iterations. (2) The \textbf{GPU platform} consists of an NVIDIA RTX 3090 (24\,GB VRAM) and an Intel Xeon Gold 6348 CPU, running CUDA 12.2, PyTorch 2.6.0, vLLM 0.9.1, and FlashInfer v0.2.
 
 \input{tables/operator-specs.tex}
 
 \input{tables/model-specs.tex}
 
-\textit{Benchmarks}
+\textit{Benchmarks.}
 \label{sec:eval:bench}
 For the \textbf{NPU platform}, we evaluate individual operator latency and end-to-end model inference.
-The operator benchmark covers operators from LLMs, Computer Vision, and recommendation models, with emphasis on complex fused operators such as \texttt{FlashAttention}, \texttt{FeedForward}, and \texttt{MatMul} that feature intensive workloads and numerous schedule parameters.
+The operator benchmark covers operators from LLMs, computer vision, and recommendation models, with emphasis on complex fused operators such as \texttt{FlashAttention}, \texttt{FeedForward}, and \texttt{MatMul} that have substantial workloads and numerous schedule parameters.
 \autoref{tab:dynamic_operators} summarizes the categorization and configurations of the evaluated operators.
-For end-to-end evaluation, we evaluate six end-to-end scenarios comprise DeepFM recommendation inference~\cite{ijcai2017p239}, HSTU generative recommendation~\cite{pmlr-v235-zhai24a}, LLaMA-3 1B prefill and decode, and Qwen-3.5 1B prefill and decode.
+For end-to-end evaluation, we evaluate six scenarios comprising DeepFM recommendation inference~\cite{ijcai2017p239}, HSTU generative recommendation~\cite{pmlr-v235-zhai24a}, Llama 3.2 1B prefill and decode, and Qwen3.5-0.8B prefill and decode.
 \autoref{tab:eval:model-configs} provides the fixed model configurations, dynamic-shape range, and representative shapes.
 
 For the \textbf{GPU platform}, we target FlashInfer~\cite{ye2025flashinfer}, a state-of-the-art attention kernel library used in vLLM, and evaluate binary size reduction for Llama and Qwen model families.
@@ -31,9 +31,9 @@ For the \textbf{GPU platform}, we target FlashInfer~\cite{ye2025flashinfer}, a s
 All evaluations for both operators and models are conducted using PyTorch 2.6.0.
 Dynamic dimensions are explicitly marked using the \texttt{Dynamic} API, and we utilize PyTorch Dynamo with dynamic compilation enabled.
 For the operator benchmark, we compare \textbf{\mysys} against the following baselines:
-\textbf{Baseline}, standard offline compilation with LLVM passes without kernel specialzation;
-\textbf{LLVM-spec}, which performs constant propagation within standard LLVM, but without early-exit identification and \mysys's inter-procedural constant propagation. The derived schedule parameters are then used to specialize kernels same as \mysys;
-\textbf{Optimal}, serves as an oracle reference. \textbf{Optimal} is computed by specializing the kernel with all constant schedule parameters derived for each individual shape configuration.
+\textbf{Baseline}, standard offline compilation with LLVM passes but without kernel specialization;
+\textbf{LLVM-spec}, which performs constant propagation within standard LLVM but without early-exit identification or \mysys's interprocedural constant propagation. The derived schedule parameters are then used to specialize kernels in the same way as in \mysys;
+\textbf{Optimal}, a per-shape full-specialization oracle that specializes each kernel with all constant schedule parameters derived for each individual shape configuration.
 It is unsuitable for production inference because dynamic inputs require per-shape recompilation, incurring prohibitive compilation overhead.
 
 \subsection{Performance Results on Ascend}
@@ -52,10 +52,10 @@ It is unsuitable for production inference because dynamic inputs require per-sha
 \end{figure}
 
 
-Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.06$\times$} across all operators, substantially outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the speedup ratio of \textbf{\mysys} is close to that of \textbf{Optimal} (only 1\% smaller on average)
+Overall, \textbf{\mysys} achieves a geometric mean speedup of \textbf{1.06$\times$} across all operators, substantially outperforming the \textbf{LLVM-spec} baseline (1.01$\times$). Crucially, the speedup ratio of \textbf{\mysys} is close to that of \textbf{Optimal} (only 1\% smaller on average).
 This demonstrates that \textbf{\mysys} successfully specializes the majority of schedule parameters, leaving only a few residual parameters that have negligible impact on performance. These results validate that \textbf{\mysys} achieves effective automatic kernel specialization for NPU operators.
 
-We observe distinct performance behaviors across operator categories: \textbf{Attention mechanisms} (P-Attn, D-Attn) show the most significant gains, \textbf{1.09$\times$} for P-Attn and \textbf{1.18$\times$} for D-Attn, because these schedule-generic kernels have a large number of schedule parameters.
+We observe distinct performance behaviors across operator categories. \textbf{Attention operators} show the largest gains: \textbf{1.08$\times$} for P-Attn and \textbf{1.17$\times$} for D-Attn, because these schedule-generic kernels expose many constant schedule parameters.
 RMS and GN also benefit notably (\textbf{1.08$\times$} and \textbf{1.11$\times$}), as constant specialization eliminates redundant boundary checks and simplifies division operations.
 
 \subsubsection{Representative End-to-End Inference Scenarios}
@@ -66,11 +66,11 @@ The shape configurations of the six representative inference scenarios are summa
 	\centering
 	\includegraphics[width=0.78\textwidth]{figures/evaluation/model-speedup/multi_model_speedup.png}
 		\caption{End-to-end speedup versus runtime shape for six representative ML inference scenarios.}
-		\Description{End-to-end speedup trends for DeepFM, HSTU, LLaMA prefill and decode, and Qwen prefill and decode.}
+		\Description{End-to-end speedup trends for DeepFM, HSTU, Llama 3.2 1B prefill and decode, and Qwen3.5-0.8B prefill and decode.}
 		\label{fig:eval:model-overall}
 \end{figure}
 
-\autoref{fig:eval:model-overall} shows that \mysys's end-to-end speedup generally decreases as the runtime shape grows because tensor computation occupies an increasing fraction of execution time. DeepFM and the two decode scenarios obtain the larger gains, averaging approximately 1.10$\times$, whereas HSTU and the two prefill scenarios average approximately 1.03$\times$. Relative to Optimal's per-shape full specialization, \mysys achieves comparable geometric-mean speedups---1.05$\times$ versus 1.08$\times$ across all six scenarios and 1.10$\times$ versus 1.14$\times$ across the two decode scenarios; although faster, Optimal recompiles the entire operator for every shape, taking tens of minutes each and thus being impractical in production.
+\autoref{fig:eval:model-overall} shows that \mysys's end-to-end speedup generally decreases as the runtime shape grows because tensor computation occupies an increasing fraction of execution time. DeepFM and the two decode scenarios obtain the larger gains, averaging approximately 1.10$\times$. These scenarios are relatively more memory-intensive and use smaller, shorter-running device-kernel workloads, so the scalar overhead removed by specialization accounts for a larger fraction of latency. In contrast, the compute-intensive HSTU and prefill scenarios average approximately 1.03$\times$ because their device kernels perform more tensor computation. Relative to Optimal's per-shape full specialization, \mysys achieves comparable geometric-mean speedups---1.05$\times$ versus 1.08$\times$ across all six scenarios and 1.10$\times$ versus 1.14$\times$ across the two decode scenarios; although faster, Optimal recompiles the entire operator for every shape, taking tens of minutes each and thus being impractical in production.
 
 \begin{table}[H]
 	\caption{Operator categories, implementation sources, and \mysys outcomes for the six representative models.}
@@ -108,15 +108,15 @@ The shape configurations of the six representative inference scenarios are summa
 		\label{fig:eval:operator-breakdown}
 \end{figure}
 
-\autoref{fig:eval:operator-breakdown} attributes the model-level gains primarily to Attention and MatMul/GMM. In particular, the MatMul calls in DeepFM and decode phase of LLMs have relatively small computation sizes, so specialization removes a larger fraction of their tiling and control overhead and produces higher operator speedups. Attention supplies the other major source of improvement, especially in the decode phase. By contrast, the four AI-compiler-generated categories remain at 1.00$\times$, confirming that \mysys's benefits are limited to expert-written operators.
+\autoref{fig:eval:operator-breakdown} attributes the model-level gains primarily to Attention and MatMul/GMM. In particular, the MatMul calls in DeepFM and the LLM decode phase have relatively small computation sizes, so specialization removes a larger fraction of their tiling and control overhead and produces higher operator speedups. Attention supplies the other major source of improvement, especially in the decode phase. By contrast, the four AI-compiler-generated categories remain at 1.00$\times$, confirming that \mysys's benefits are limited to expert-written operators.
 
-\subsubsection{Comparison between \textbf{\mysys} and specialization based on Standard LLVM}
+\subsubsection{Comparison with Standard LLVM Specialization}
 
 \autoref{tab:compilation_detail} shows the trade-off between compilation overhead and optimization effects.
-\textbf{LLVM-spec} incurs minimal overhead (less than 0.60s) due to its imprecise analysis.
-In contrast, \textbf{\mysys} exhibits a moderate increase (0.24s to 2.70s) due to field-sensitive analysis.
+\textbf{LLVM-spec} incurs minimal overhead (less than 0.60\,s) due to its imprecise analysis.
+In contrast, \textbf{\mysys} adds 0.24--2.70\,s due to field-sensitive analysis.
 Given that this compilation is a one-off cost during deployment, we consider this overhead acceptable, as it enables the backend compiler to generate considerably more efficient binaries (1.06$\times$ speedup).
-Moreover, \textbf{\mysys} avoids employing path-sensitive analysis through early-exit path identification, keeping compilation overhead acceptable.
+Moreover, \textbf{\mysys} avoids path-sensitive analysis by using early-exit edge identification, keeping compilation overhead acceptable.
 
 \input{tables/compilation_overhead.tex}
 
@@ -165,7 +165,7 @@ Moreover, \textbf{\mysys} avoids employing path-sensitive analysis through early
 	\Description{Point plot of speedup over Baseline for Control logic with 6
 	specialized parameters, Per-core tile dimensions/addressing with 14,
 	Core-loop scheduling/memory resources with 14, the three groups jointly
-	with 34, and \mysys with 304.
+	with 34, and \mysys with 352.
 	Each row contains separate points for KV lengths 512, 768, 1024, and 1280,
 	and no error bars.}
 	\label{fig:eval:constant-sensitivity}
@@ -205,13 +205,14 @@ predicts specialization value.
 
 The three isolated gains sum to 12.2\%, whereas jointly specializing all 34
 parameters yields 1.10$\times$ (10.4\%), or 85.0\% of that sum, indicating
-interaction and diminishing returns. \mysys specializes 304 stable parameters
+interaction and diminishing returns. \mysys specializes 352 constant schedule parameters
 and reaches 1.14$\times$. Although the 34
-$\mathrm{Query}\times\mathrm{Key}^{\mathsf T}$ parameters comprise only 11.0\%
-of these fields, they recover 75.0\% of the full gain; the remaining 270 add
+$\mathrm{Query}\times\mathrm{Key}^{\mathsf T}$ parameters comprise only 9.7\%
+of these parameters, they recover 75.0\% of the full gain; the remaining 318 add
 only 3.4 percentage points. Because these 34 parameters control D-Attn's core
 BMM in \autoref{fig:resolved-tiling-code}(c), specializing its hot-path address
 and control flow is more valuable than resolving constants on colder paths.
+These conclusions apply to the evaluated D-Attn implementation and shapes.
 
 \subsection{Binary-Size Trade-off}
 \label{sec:eval:tradeoff}
@@ -231,7 +232,7 @@ and control flow is more valuable than resolving constants on colder paths.
 	\includegraphics[width=\linewidth]{figures/evaluation/op-reduction/flashinfer_footprint.pdf}
 	\captionsetup{hypcap=false,skip=2pt}
 	\captionof{figure}{Per-model FlashInfer footprint.}
-	\Description{Stacked horizontal bars showing specialized FlashInfer library sizes for 17 model variants.}
+		\Description{Stacked horizontal bars showing pruned FlashInfer library sizes for 17 model variants.}
 	\label{fig:eval:flashinfer-tradeoff-footprint}
 \end{adjustbox}
 \hfill
@@ -241,8 +242,10 @@ and control flow is more valuable than resolving constants on colder paths.
 We apply path-liveness information to FlashInfer and retain the shared objects reachable by each of 17 model variants, including standard, FP8 KV-cache, MoE, sliding-window, and logits-soft-cap attention as well as Mamba Selective-State-Update (SSU) kernels. The universal AOT archive contains 247 shared objects and occupies 542\,MB. As shown in \autoref{fig:eval:flashinfer-tradeoff-archive}, Prefill and Decode kernels account for 87.9\% of its footprint, with Prefill alone contributing 70.9\%. Prefill kernels dominate because they have high computational cost, complex implementations, and numerous schedule-parameter combinations that are enumerated and pre-specialized in AOT shared libraries.
 
 As shown in \autoref{fig:eval:flashinfer-tradeoff-footprint}, the retained per-model libraries occupy 24.3--60.7\,MB, reducing the universal archive by 88.8--95.5\%.
-To notice, the experiment is conducted without cross-service deduplication and the extrema place the storage break-even point at roughly 8--22 model services.
-In the worst case, serving 8 models like mamba would require 8$\times$60.7\,MB = 485.6\,MB, which is still smaller than the universal archive of 542\,MB.
+Notably, the experiment is conducted without cross-service deduplication, and the extrema place the storage break-even point at roughly 8--22 model services.
+In the worst case, serving 8 models like Mamba would require 8$\times$60.7\,MB = 485.6\,MB, which is still smaller than the universal archive of 542\,MB.
 A universal archive therefore favors diverse multi-model deployments, whereas per-model pruning favors serving modest model sets.
 
-\mysys removes most of the binary footprint from Prefill and Decode kernels because these kernels enumerate and pre-specialize many combinations of template schedule parameters. After pruning these kernels, the retained libraries consist mainly of various complex Utility kernels and SSU kernels.
+The reduction in library footprint benefits cold-start-sensitive scenarios such as serverless ML inference, where loading large operator libraries into GPU memory constitutes a major portion of initialization latency. Other DSA architectures with AoT-compiled operator libraries that suffer from similar code-bloat issues could also benefit from \mysys.
+
+\mysys removes most of the binary footprint from Prefill and Decode kernels because these kernels enumerate and pre-specialize many combinations of template schedule parameters. After pruning these kernels, the retained libraries consist mainly of various complex utility kernels and SSU kernels.

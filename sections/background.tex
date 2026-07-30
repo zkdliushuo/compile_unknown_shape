@@ -41,7 +41,7 @@ DL models are partially dynamic: batch size and sequence lengths may vary at run
 \begin{figure}[ht]
 	\centering
 	\includegraphics[width=\linewidth]{figures/motivation/motivating-example.png}
-		\caption{A simplified Graph-to-C++ constant-propagation opportunity for Flash Attention. A model-fixed graph dimension (e.g., \texttt{q->size(1) = 40}) flows into C++ host code, determines the launch-site schedule parameter \texttt{stages = 2}, which can be used to specialize \texttt{kernel\_fa} and generate an optimized kernel \texttt{kernel\_fa2}.}
+		\caption{A simplified Graph-to-C++ constant-propagation opportunity for Flash Attention. A model-fixed graph dimension (e.g., \texttt{q->size(1) = 40}) flows into C++ host code and determines the launch-site schedule parameter \texttt{stages = 2}, enabling specialization of \texttt{kernel\_fa} into \texttt{kernel\_fa2}.}
 		\Description{Diagram showing a graph-level model constant materialized in the abstract C++ entry state and propagated through host code to a device-kernel launch site.}
 		\label{fig:motivating-example}
 \end{figure}
@@ -51,7 +51,7 @@ DL models are partially dynamic: batch size and sequence lengths may vary at run
 
 \paragraph*{Bottleneck Analysis of Schedule-Generic Implementations.}
 
-Their kernels support complex scheduling strategies by receiving numerous schedule parameters from the host at runtime.
+Schedule-generic kernels support complex scheduling strategies by receiving numerous schedule parameters from the host at runtime.
 Because the compiler cannot treat these parameters as constants, optimizations such as constant folding and loop simplification remain limited.
 \autoref{fig:fa_on_ascend} illustrates the resulting overhead on Ascend.
 
@@ -76,7 +76,7 @@ The representative profiles in \autoref{fig:perf_stats} show high Scalar ratios 
 High-performance GPU libraries such as FlashInfer~\cite{ye2025flashinfer} rely on C++ template metaprogramming to enable aggressive compiler optimizations.
 To avoid runtime JIT overhead, such libraries pre-instantiate kernels for the Cartesian product of all template parameters.
 As described in \autoref{eq:flash_attention}, FA's configuration space includes head dimensions ($d_k \in \{64, 128, 256\}$), mask types, GQA sizes, and position encodings.
-Combined with tile size configurations, this results in over 1000 binary instantiations, yet a specific model utilizes only $\sim$10 kernels.
+Combined with tile-size configurations, this results in over 1,000 binary instantiations, yet a specific model uses only $\sim$10 kernels.
 This pre-instantiation strategy, while manageable on GPUs, is ill-suited for Ascend due to its more complex schedule parameters, forcing their Ascend counterparts to rely on schedule-generic kernels with limited compile-time optimization.
 
 \begin{figure}[htbp]
@@ -102,8 +102,8 @@ We further analyze the schedule parameters of key operators from the \textbf{Qwe
 \autoref{fig:param_stats} reveals that the overwhelming majority of kernel parameters are invariable.
 Propagating \initialconsts to resolve schedule parameters at compile time yields two benefits: (1) for schedule-generic implementations, it enables model-specific kernel specialization with aggressive constant folding, reducing scalar overhead and I-Cache misses; (2) for schedule-fixed implementations, it makes kernel dispatch paths deterministic, enabling precise pruning of unused binaries.
 
-Besides, the further sensitivity study in \S\ref{sec:eval:sensitivity} analyzes which schedule parameters tend to have the most significant impact on performance.
-It reveals that a small subset of parameters, which lie in the hot path of the kernel, are responsible for the majority of performance impact.
+In addition, the sensitivity study in \S\ref{sec:eval:sensitivity} analyzes which schedule parameters have the greatest effect on performance.
+It shows that a small subset of parameters on the kernel's hot path accounts for most of the performance gain.
 
 \subsection{Challenges and Design Insights}
 \label{sec:motivation:challenges}
@@ -114,7 +114,7 @@ These steps present two challenges not directly addressed by existing static ana
 \subsubsection{Challenge 1: Reconstructing Cross-Language Calling Contexts.}
 
 The first challenge is the Python/C++ semantic gap: Graph IR constants and symbolic dimensions must be mapped to the memory states of their underlying C++ objects before LLVM can use them as compile-time facts.
-This mapping is not a direct binding between arguments of graph IR node and C++ parameters.
+This mapping is not a direct binding between the arguments of a Graph IR node and C++ parameters.
 Graph IR records typed values and shapes, whereas composite C++ parameters such as \texttt{Tensor}, \texttt{List}, and \texttt{Optional} use nested object layouts; after lowering, an access such as \texttt{query->size(1)} becomes pointer arithmetic and \texttt{load} instructions.
 The analyzer must therefore reconstruct the corresponding base objects, pointers, field offsets, and field values, preserving concrete dimensions as constants and symbolic dimensions as unknown.
 

@@ -10,14 +10,15 @@
   \noindent\textcolor{commentgray}{\textbf{Comment.} \emph{#3}}\par}
 \newcommand{\authorresponse}{%
   \par\noindent\textcolor{responseblue}{\textbf{Response.}}\enspace}
+\newcommand{\acmreftext}[1]{\textcolor{ACMPurple}{#1}}
 \newcommand{\responseid}[2]{%
-  #1\par{\footnotesize\S\ref{#2}}}
+  #1\par{\footnotesize\hyperref[#2]{\acmreftext{\S\ref*{#2}}}}}
 \newcommand{\papersec}[1]{%
-  \hyperref[#1]{\textbf{S\ref*{#1}}}}
+  \hyperref[#1]{\acmreftext{\textbf{S\ref*{#1}}}}}
 \newcommand{\paperfig}[1]{%
-  \hyperref[#1]{Fig.~\ref*{#1}}}
+  \hyperref[#1]{\acmreftext{Fig.~\ref*{#1}}}}
 \newcommand{\papertab}[1]{%
-  \hyperref[#1]{Table~\ref*{#1}}}
+  \hyperref[#1]{\acmreftext{Table~\ref*{#1}}}}
 \makeatletter
 \newcommand{\PaperTotPagesLink}{%
   \hyper@linkstart{link}{page.34}34\hyper@linkend}
