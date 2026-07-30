@@ -1,11 +1,18 @@
-\section{Limitations and Conclusion}
+\section{Conclusion}
 \label{sec:concl}
 
-We present \mysys, a static analysis framework that enables precise constant propagation across language boundaries for kernel specialization in deep learning operator libraries.
-Experimental results demonstrate its effectiveness: on Ascend NPU, \mysys achieves an average speedup of \textbf{1.06$\times$} (up to \textbf{1.17$\times$}) for individual operators and \textbf{3\%} end-to-end inference speedup for LLMs; on GPU, \mysys reduces the binary size of the FlashInfer library by \textbf{96.2\%}, effectively addressing the code bloat problem.
+We presented \mysys, which propagates model-specific Graph-IR constants through
+existing C++ operator libraries to specialize schedule-generic device kernels
+or prune unreachable schedule-fixed instances.
 
-\textbf{Limitations.}
-First, the performance benefits vary across kernel types and hardware platforms.
-\mysys is most effective for lightweight kernels with high invocation frequency on Ascend, while on GPUs, further specialization on top of existing manual optimization yields limited improvement due to sufficient general-purpose registers and well-optimized baseline libraries.
-Second, the current prototype is based on PyTorch; applying \mysys to other frameworks like TensorFlow requires constructing update rules for their specific data types.
-Third, while \mysys can potentially specialize Host-side programs, such optimization involves more complex control flows and external function calls, which we leave for future work.
+Across 14 Ascend operators, \mysys delivers a \textbf{1.06$\times$}
+geometric-mean device-kernel speedup, with a maximum of
+\textbf{1.17$\times$}; its largest end-to-end gains occur in recommendation and
+decode workloads whose Attention and MatMul schedules expose profitable
+invariants, averaging about 10\%.
+
+For the schedule-fixed FlashInfer library, per-model pruning reduces the
+542~MB universal binary to 24.3--60.7~MB across 17 model configurations,
+an 88.8--95.5\% reduction, demonstrating that graph-derived deployment
+knowledge can improve either device-kernel execution or binary footprint
+without synthesizing new schedules.

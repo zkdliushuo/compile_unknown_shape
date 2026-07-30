@@ -1,0 +1,46 @@
+\subsection{Binary-Size Trade-off}
+\label{sec:eval:tradeoff}
+
+\noindent
+\hfill
+\begin{adjustbox}{valign=t,minipage=0.72\textwidth}
+	\input{figures/evaluation/op-reduction/flashinfer_tradeoff.tex}
+\end{adjustbox}
+\hfill
+\mbox{}
+
+\noindent
+\hfill
+\begin{adjustbox}{valign=t,minipage=0.95\textwidth}
+	\centering
+	\includegraphics[width=\linewidth]{figures/evaluation/op-reduction/flashinfer_footprint.pdf}
+	\captionsetup{hypcap=false,skip=3pt}
+	\captionof{figure}{Per-model FlashInfer footprint.}
+	\Description{Stacked horizontal bars showing pruned FlashInfer library sizes for 17 model variants.}
+	\label{fig:eval:flashinfer-tradeoff-footprint}
+\end{adjustbox}
+\hfill
+\mbox{}
+\par\kern8pt
+
+{\color{red}%
+\DIFdel{%
+We adapted TilingInfer to eliminate redundant template instantiations never called at runtime. We targeted FlashInfer~}\cite{ye2025flashinfer}\DIFdel{, a state-of-the-art attention kernel library widely used in LLM serving systems like vLLM and SGLang. The results of this optimization are presented in the original GPU binary-reduction table. We evaluated the binary size reduction for different LLM families (Llama and Qwen) with various model sizes. TilingInfer demonstrates remarkable effectiveness in eliminating redundant code, reducing the binary size of the FlashInfer library from approximately 520MB to roughly 20MB. On average, TilingInfer achieves a 96.2\% reduction in binary size. This substantial reduction in library footprint benefits cold-start-sensitive scenarios such as serverless ML inference, where loading large operator libraries into GPU memory constitutes a major portion of initialization latency. Other DSA architectures with AoT-compiled operator libraries that suffer from similar code-bloat issues could also benefit from TilingInfer.
+}
+\par}
+
+{\color{blue}%
+We apply path-liveness information to FlashInfer and retain the shared objects reachable by each of 17 model variants, including standard, FP8 KV-cache, MoE, sliding-window, and logits-soft-cap attention as well as Mamba Selective-State-Update (SSU) kernels. The universal AOT archive contains 247 shared objects and occupies 542\,MB. As shown in \autoref{fig:eval:flashinfer-tradeoff-archive}, Prefill and Decode kernels account for 87.9\% of its footprint, with Prefill alone contributing 70.9\%. Prefill kernels dominate because they have high computational cost, complex implementations, and numerous schedule-parameter combinations that are enumerated and pre-specialized in AOT shared libraries.
+\par}
+
+{\color{blue}%
+As shown in \autoref{fig:eval:flashinfer-tradeoff-footprint}, the retained per-model libraries occupy 24.3--60.7\,MB, reducing the universal archive by 88.8--95.5\%. Notably, the experiment is conducted without cross-service deduplication, and the extrema place the storage break-even point at roughly 8--22 model services. In the worst case, serving 8 models like Mamba would require 8$\times$60.7\,MB = 485.6\,MB, which is still smaller than the universal archive of 542\,MB. A universal archive therefore favors diverse multi-model deployments, whereas per-model pruning favors serving modest model sets.
+\par}
+
+{\color{blue}%
+The reduction in library footprint benefits cold-start-sensitive scenarios such as serverless ML inference, where loading large operator libraries into GPU memory constitutes a major portion of initialization latency. Other DSA architectures with AoT-compiled operator libraries that suffer from similar code-bloat issues could also benefit from TilingInfer.
+\par}
+
+{\color{blue}%
+TilingInfer removes most of the binary footprint from Prefill and Decode kernels because these kernels enumerate and pre-specialize many combinations of template schedule parameters. After pruning these kernels, the retained libraries consist mainly of various complex utility kernels and SSU kernels.
+\par}

@@ -74,9 +74,6 @@
 \usepackage{dutchcal}
 \usepackage{amsthm}
 \usepackage{threeparttable}
-\usepackage{colortbl}
-\usepackage{enumitem}
-\usepackage{longtable}
 
 % 定义新定理样式：缩进1em，标题斜体，内容正常
 \newtheoremstyle{indenteditalic}
@@ -153,11 +150,11 @@
 %DIF < % \setlength{\abovecaptionskip}{2pt}  % 调整标题与图表之间的距离
 %DIF < % \setlength{\belowcaptionskip}{1pt}  % 调整标题与正文之间的距离
 %DIF -------
-\setlength{\textfloatsep}{8pt plus 2pt minus 2pt} %DIF > 
-\setlength{\floatsep}{8pt plus 2pt minus 2pt} %DIF > 
-\setlength{\intextsep}{8pt plus 2pt minus 2pt} %DIF > 
-\setlength{\abovecaptionskip}{3pt} %DIF > 
-\setlength{\belowcaptionskip}{2pt} %DIF > 
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt} %DIF >
+\setlength{\floatsep}{8pt plus 2pt minus 2pt} %DIF >
+\setlength{\intextsep}{8pt plus 2pt minus 2pt} %DIF >
+\setlength{\abovecaptionskip}{3pt} %DIF >
+\setlength{\belowcaptionskip}{2pt} %DIF >
 %DIF -------
 \usepackage{cleveref}
 \usepackage{tikz}
@@ -516,38 +513,8 @@ belowskip=0em  % 控制代码块下方的距离
 \lstnewenvironment{DIFverbatim}{\lstset{style=DIFverbatimstyle}}{} %DIF PREAMBLE
 \lstnewenvironment{DIFverbatim*}{\lstset{style=DIFverbatimstyle,showspaces=true}}{} %DIF PREAMBLE
 %DIF END PREAMBLE EXTENSION ADDED BY LATEXDIFF
-\input{response_letter/response-preamble}
 
 \begin{document}
-\input{response_letter/response-body}
-
-% Start the appended marked manuscript with fresh counters and restore the
-% paper's original hyperlink namespaces.
-\clearpage
-\hypersetup{pageanchor=false}
-\pagenumbering{arabic}
-\setcounter{section}{0}
-\setcounter{subsection}{0}
-\setcounter{subsubsection}{0}
-\setcounter{paragraph}{0}
-\setcounter{figure}{0}
-\setcounter{table}{0}
-\setcounter{equation}{0}
-\setcounter{footnote}{0}
-\makeatletter
-\@ifundefined{c@algorithm}{}{\setcounter{algorithm}{0}}
-\@ifundefined{c@definition}{}{\setcounter{definition}{0}}
-\@ifundefined{c@lstlisting}{}{\setcounter{lstlisting}{0}}
-\global\ACM@linecount\@ne
-\makeatother
-\let\theHsection\PaperHSection
-\let\theHsubsection\PaperHSubsection
-\let\theHsubsubsection\PaperHSubsubsection
-\let\theHfigure\PaperHFigure
-\let\theHtable\PaperHTable
-\let\theHequation\PaperHEquation
-\pagestyle{standardpagestyle}
-\hypersetup{pageanchor=true}
 
 %%
 %% The "title" command has an optional parameter,
@@ -631,17 +598,7 @@ belowskip=0em  % 控制代码块下方的距离
 %%
 %% This command processes the author and affiliation and title
 %% information and builds the first part of the formatted document.
-\let\CombinedDocumentRef\ref
-\def\PaperTotPagesLabel{TotPages}
-\def\ref#1{%
-  \def\CurrentReferenceLabel{#1}%
-  \ifx\CurrentReferenceLabel\PaperTotPagesLabel
-    \PaperTotPagesLink
-  \else
-    \CombinedDocumentRef{#1}%
-  \fi}
 \maketitle
-\let\ref\CombinedDocumentRef
 
 \input{sections/introduction-paragraph-diff}
 \begin{comment}
@@ -649,7 +606,7 @@ belowskip=0em  % 控制代码块下方的距离
 
 \DIFaddbegin 
 
-Deep-learning (DL) frameworks and serving systems~\cite{ansel2024dynamo,abadi2016tensorflow,kwon2023vllm,zheng2024sglang} rely heavily on \DIFdelbegin \DIFdel{hand-written }\DIFdelend \DIFaddbegin \DIFadd{expert-written }\DIFaddend operator libraries~\cite{nvidia2021cublas,nvidia2017cutlass,ye2025flashinfer,ascend_cannopsadv,dao2024flashattention2,flashmla2025}\DIFdelbegin \DIFdel{to ensure efficient operator implementation. 
+Deep-learning (DL) frameworks and serving systems~\cite{ansel2024dynamo,abadi2016tensorflow,kwon2023vllm,zheng2024sglang} rely heavily on \DIFdelbegin \DIFdel{hand-written }\DIFdelend \DIFaddbegin \DIFadd{expert-written }\DIFaddend operator libraries~\cite{nvidia2021cublas,nvidia2017cutlass,ye2025flashinfer,ascend_cannopsadv,dao2024flashattention2,flashmla2025}\DIFdelbegin \DIFdel{to ensure efficient operator implementation.
 To achieve universal applicability, these libraries must handle }\DIFdelend \DIFaddbegin \DIFadd{. 
 These libraries must cover }\DIFaddend input dynamics \DIFdelbegin \DIFdel{arising from two main sources: (1) Cross-model heterogeneity , involving diverse algorithmic variants(e.g., attention mechanisms~\mbox{%DIFAUXCMD
 \cite{vaswani2017attention,ainslie2023gqa,shazeer2019fast,beltagy2020longformerlongdocumenttransformer} }\hspace{0pt}%DIFAUXCMD
@@ -1244,7 +1201,7 @@ and accelerator architectures expose increasingly diverse programmable units~\mb
 %DIFAUXCMD
 \DIFdel{Our analysis (\S\ref{sec:motivation} ) shows thatover }\DIFdelend \DIFaddbegin \DIFadd{~\mbox{%DIFAUXCMD
 \cite{shen2021nimble,zheng2023bladedisc,Lai2023RelaxCA,ansel2024dynamo}}\hspace{0pt}%DIFAUXCMD
-. Mechanistically, }model-specific constants \DIFadd{determine the core tiling and pipeline structure constrained by on-chip resources and compute units, whereas dynamic dimensions primarily affect the number of executions of these tiles, their parallel partitioning, and tail handling. 
+. Mechanistically, }model-specific constants \DIFadd{determine the core tiling and pipeline structure constrained by on-chip resources and compute units, whereas dynamic dimensions primarily affect the number of executions of these tiles, their parallel partitioning, and tail handling.
 Consistent with this mechanism, our analysis in \S\ref{sec:motivation} finds that, across the studied operators, about }\DIFaddend 90\% of schedule parameters \DIFdelbegin \DIFdel{become deterministic given }\DIFdelend \DIFaddbegin \DIFadd{are runtime invariants determined by }\DIFaddend model-specific constants \DIFdelbegin \DIFdel{, enabling static resolution of most dynamic schedule decisions}\DIFdelend \DIFaddbegin \DIFadd{and do not depend on the concrete runtime values of dynamic dimensions}\DIFaddend .
 
 \DIFdelbegin \DIFdel{Based on }\DIFdelend \DIFaddbegin \DIFadd{This observation suggests a novel way to address the specialization trade-off: using }model-specific constants \DIFadd{to specialize existing operator libraries.
@@ -3455,7 +3412,7 @@ Moreover, \textbf{TilingInfer} \DIFdel{avoids employing path-sensitive analysis 
      & \textit{Diff} & \scriptsize{(+0.60)} & \scriptsize{(+0.35)} & \scriptsize{(+0.35)} & \scriptsize{(+0.13)} & \scriptsize{(+0.08)} & \scriptsize{(+0.07)} & \scriptsize{(+0.20)} & \scriptsize{(+0.06)} & \scriptsize{(+0.25)} & \scriptsize{(+0.05)} & \scriptsize{(+0.06)} & \scriptsize{(+0.15)} & \scriptsize{(+0.05)} & \scriptsize{(+0.05)} \\
      & Derived \# & 4 & 3 & 3 & 2 & 1 & 2 & 0 & 0 & 1 & 0 & 0 & 3 & 2 & 1 \\
     \midrule
-    \multirow{3}{*}{\textbf{TilingInfer}} 
+    \multirow{3}{*}{\textbf{TilingInfer}}
      & Time (s) & 27.20 & 21.05 & 42.95 & 5.42 & 3.58 & 2.25 & 6.95 & 1.65 & 7.25 & 1.62 & 1.15 & 3.55 & 3.54 & 1.52 \\
      & \textit{Diff} & \scriptsize{(+2.70)} & \scriptsize{(+1.25)} & \scriptsize{(+0.85)} & \scriptsize{(+0.90)} & \scriptsize{(+0.46)} & \scriptsize{(+0.40)} & \scriptsize{(+1.85)} & \scriptsize{(+0.41)} & \scriptsize{(+1.10)} & \scriptsize{(+0.27)} & \scriptsize{(+0.33)} & \scriptsize{(+0.60)} & \scriptsize{(+0.24)} & \scriptsize{(+0.37)} \\
      & Derived \# & 242 & 352 & 60 & 110 & 11 & 30 & 13 & 28 & 17 & 15 & 5 & 82 & 15 & 14 \\
@@ -3488,7 +3445,7 @@ Moreover, \textbf{TilingInfer} \DIFdel{avoids employing path-sensitive analysis 
 %DIFDELCMD <      & \textit{Diff} & \scriptsize{(+0.60)} & \scriptsize{(+0.35)} & \scriptsize{(+0.35)} & \scriptsize{(+0.13)} & \scriptsize{(+0.08)} & \scriptsize{(+0.07)} & \scriptsize{(+0.20)} & \scriptsize{(+0.06)} & \scriptsize{(+0.25)} & \scriptsize{(+0.05)} & \scriptsize{(+0.06)} & \scriptsize{(+0.15)} & \scriptsize{(+0.05)} & \scriptsize{(+0.05)} \\
 %DIFDELCMD <      & Derived \# & 4 & 3 & 3 & 2 & 1 & 2 & 0 & 0 & 1 & 0 & 0 & 3 & 2 & 1 \\
 %DIFDELCMD <     \midrule
-%DIFDELCMD <     \multirow{3}{*}{\textbf{TilingInfer}} 
+%DIFDELCMD <     \multirow{3}{*}{\textbf{TilingInfer}}
 %DIFDELCMD <      & Time (s) & 27.20 & 21.05 & 42.95 & 5.42 & 3.58 & 2.25 & 6.95 & 1.65 & 7.25 & 1.62 & 1.15 & 3.55 & 3.54 & 1.52 \\
 %DIFDELCMD <      & \textit{Diff} & \scriptsize{(+2.70)} & \scriptsize{(+1.25)} & \scriptsize{(+0.85)} & \scriptsize{(+0.90)} & \scriptsize{(+0.46)} & \scriptsize{(+0.40)} & \scriptsize{(+1.85)} & \scriptsize{(+0.41)} & \scriptsize{(+1.10)} & \scriptsize{(+0.27)} & \scriptsize{(+0.33)} & \scriptsize{(+0.60)} & \scriptsize{(+0.24)} & \scriptsize{(+0.37)} \\
 %DIFDELCMD <      & Derived \# & 242 & 352 & 60 & 110 & 11 & 30 & 13 & 28 & 17 & 15 & 5 & 82 & 15 & 14 \\
@@ -3547,7 +3504,7 @@ Scat & 1.00 & 1.00 & \textbf{1.01} & 24.38 & 23.42 & \textbf{22.61} & \textbf{97
 
 \DIFdelbegin %DIFDELCMD < \begin{table}[htbp]
 %DIFDELCMD < \centering
-%DIFDELCMD < \caption{Performance Comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{TilingInfer} (T). 
+%DIFDELCMD < \caption{Performance Comparison: Speedup and detailed hardware metrics across \textbf{Baseline} (B), \textbf{LLVM-spec} (L), and \textbf{TilingInfer} (T).
 %DIFDELCMD < Best values are bolded. 
 %DIFDELCMD < Reflecting our goal to maximize time spent on tensor computation units (Cube and Vector), $\downarrow$ denotes lower is better for metrics irrelative to tensor computations.$\uparrow$ denotes higher is better for speedup ratio.}
 %DIFDELCMD < \label{tab:performance_metrics}

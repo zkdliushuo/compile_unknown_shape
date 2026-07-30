@@ -1,0 +1,41 @@
+\definecolor{responseblue}{RGB}{24,79,128}
+\definecolor{commentgray}{RGB}{80,80,80}
+\definecolor{tablehead}{RGB}{232,238,244}
+
+\newcommand{\MS}{revised manuscript}
+\newcommand{\loc}[1]{%
+  \par\noindent\textbf{Location in the \MS:} #1\par}
+\newcommand{\reviewcomment}[3]{%
+  \subsection{#1}\label{#2}
+  \noindent\textcolor{commentgray}{\textbf{Comment.} \emph{#3}}\par}
+\newcommand{\authorresponse}{%
+  \par\noindent\textcolor{responseblue}{\textbf{Response.}}\enspace}
+\newcommand{\acmreftext}[1]{\textcolor{ACMPurple}{#1}}
+\newcommand{\responseid}[2]{%
+  #1\par{\footnotesize\hyperref[#2]{\acmreftext{\S\ref*{#2}}}}}
+\newcommand{\papersec}[1]{%
+  \hyperref[#1]{\acmreftext{\textbf{S\ref*{#1}}}}}
+\newcommand{\paperfig}[1]{%
+  \hyperref[#1]{\acmreftext{Fig.~\ref*{#1}}}}
+\newcommand{\papertab}[1]{%
+  \hyperref[#1]{\acmreftext{Table~\ref*{#1}}}}
+\makeatletter
+\newcommand{\PaperTotPagesLink}{%
+  \hyper@linkstart{link}{page.34}34\hyper@linkend}
+\makeatother
+\newcommand{\SIntro}{\papersec{sec:intro}}
+\newcommand{\SBG}{\papersec{sec:motivation}}
+\newcommand{\SDesign}{\papersec{sec:design}}
+\newcommand{\SEval}{\papersec{sec:eval}}
+\newcommand{\SRelated}{\papersec{sec:related}}
+\newcommand{\SDiscussion}{\papersec{sec:discussion}}
+\newcommand{\SConclusion}{\papersec{sec:concl}}
+
+% Preserve the paper's original hyperref anchor formats. Response-letter
+% anchors receive their own namespace before the paper counters are reset.
+\let\PaperHSection\theHsection
+\let\PaperHSubsection\theHsubsection
+\let\PaperHSubsubsection\theHsubsubsection
+\let\PaperHFigure\theHfigure
+\let\PaperHTable\theHtable
+\let\PaperHEquation\theHequation

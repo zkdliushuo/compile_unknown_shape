@@ -1,24 +1,20 @@
-
 \begin{abstract}
-% Deep Learning (DL) frameworks and serving systems rely on operator libraries to support diverse model architectures and dynamic input shapes.
-% Such flexibility introduces a considerable number of runtime parameters into accelerator kernels, making high performance heavily dependent on kernel specialization, i.e., resolving kernel parameters with concrete values at compile time.
-% However, existing operator libraries lack effective mechanisms for automatic specialization, leading to a fundamental trade-off between performance degradation and severe code bloat.
+% 目前，主流的深度学习系统广泛依赖专家实现的算子库来达到高性能。
+% 然而，为了适配动态形状，需要根据输入形状选择最优的调度实现，包括循环分块大小、数据缓存布局等调度参数。
+% 不同形状的最优调度参数不同，这使得编译专家算子库面临着 specialization 的权衡：允许运行时传递调度参数的通用内核面临显著的性能损失，而编译时枚举调度参数取值逐个生成专门化 kernel 会导致编译产物体积过度膨胀。
+% 此外，现有的生成高性能内核的 AI 编译器针对的是不同的问题，不会就地特化现有的专家算子库。
+Deep-learning (DL) systems rely on expert-written operator libraries for high performance across dynamic input shapes. These libraries use shape-dependent schedule parameters, such as tile sizes and on-chip buffer layouts. Schedule-generic expert-written operator libraries preserve shape coverage with a single kernel but limit compile-time optimization, whereas schedule-fixed expert-written operator libraries precompile combinations of schedule parameters and incur binary bloat. Kernel-generation compilers do not resolve this trade-off because they generate new kernels rather than specialize existing libraries.
 
-% This work reveals that most kernel parameters are actually invariants given model and hardware configurations.
-% The key to achieving automatic kernel specialization is to determine values of such invariable parameters at compile-time, which faces challenges in cross-language semantic loss and control flow dependent on dynamic shapes.
-% We present \mysys, a framework that first achieves propagating model-specific constant information to optimize operator libraries.
-% \mysys is designed to address challenges when propagating information of invariants across multiple layers from front-end Python runtime to host-side programs and finally to device kernel functions.
-% We implement \mysys on Ascend and GPU platform.
-% Comprehensive operator-level and end-to-end evaluations demonstrate \mysys's ability to infer invariants and specialize kernels across diverse operators and models:
-% compared to the baseline compiler for Ascend, \mysys achieves 1.06$\times$ speedup on average and up to 1.17$\times$ speedup on specific operators, 1.03$\times$ speedup on large language models(LLMs) inference speed.
-% Besides, \mysys shows potential on operator libraries slimming by using inferred invariants for GPUs, reducing the binary size of FlashInfer by over 96\%.
+% 这一问题的关键根因是，手写算子库在编译阶段丢失了保存在 Graph IR 层面的模型常量信息，导致全部调度参数在编译时都是未知变量，而实际上大部分调度参数取值在给定模型时是固定的。
+% 因此 A promising solution is to specialize kernels by propagating model-specific constants from the framework to the compiler.
+% 然而，基于现有算子库的编译设施执行上述传播面临着两个挑战：(1) Cross-language semantic gap, where constant information in the high-level Python DSL fails to propagate to device-native C++ compilers, and (2) Control flow obstruction, where extensive shape checkers for dynamic dimensions generate massive execution paths, hurting the precision of constant propagation.
 
-Deep learning (DL) frameworks rely heavily on operator libraries to support diverse model architectures and dynamic input shapes. To maintain flexibility, these libraries employ generic kernels with numerous runtime parameters for optimal scheduling.
-However, relying on runtime resolution for these parameters hurts performance, whereas statically enumerating them for efficiency leads to severe code bloat, creating a fundamental dilemma: accepting performance degradation with generic kernels or suffering severe code bloat through exhaustive specialization.
-A promising solution is to specialize kernels by propagating model-specific constants from the framework to the compiler.
-However, this approach faces two challenges: (1) Cross-language semantic gap, where constant information in the high-level Python DSL fails to propagate to device-native C++ compilers, and (2) Control flow obstruction, where extensive validity checks on dynamic dimensions generate massive execution paths handling invalid shapes, thereby impeding the precision and efficiency of constant propagation.
+Although many schedule parameters are fixed for a given model, the corresponding model-specific constants recorded in Graph IR are absent from the LLVM IR of separately compiled C++ operator libraries. Runtime argument transmission through Python/C++ FFI does not make these values available as compile-time facts. Propagating model-specific constants from the framework enables specialization, but existing toolchains face two challenges: the Python/C++ semantic gap prevents constant information from reaching the native compiler, and shape checkers for dynamic dimensions introduce many early-exit paths that weaken constant propagation.
 
-We present \mysys, the first framework designed to automate kernel specialization in cross-language and dynamic-shape scenarios. To bridge the semantic gap, \mysys employs program synthesis to generate partial evaluation programs directly from the Graph IR. To handle control flow, it constructs a Conditional Return-Value Flow Graph to trace the relationship between shape check conditions and early-exit paths, enabling efficient identification and pruning of infeasible execution paths through lightweight constant comparison.
-We implement \mysys on Ascend NPUs and NVIDIA GPUs.
-Evaluations on state-of-the-art libraries (CANN and FlashInfer) demonstrate its effectiveness: \mysys achieves an average 1.06$\times$ speedup (up to 1.17$\times$) on Ascend operators and 1.03$\times$ speedup on LLM inference. Furthermore, it reduces the binary size of FlashInfer by over 96\% on GPUs, demonstrating significant potential for library slimming.
+% 因此我们提出了 \mysys，一个用于自动特化专家算子库的静态分析框架。它将 Graph IR 层面的模型常量信息映射为抽象的 C++ 调用上下文，并基于 LLVM 对 C++ 算子程序在给定的 C++ 调用上下文下执行常量传播，并自动根据常量传播推导的常量调度参数对算子库做 kernel 特化或代码去冗余。
+% 基于抽象的 C++ 调用上下文，\mysys 无需分析 Python/C++ 跨语言层接口的复杂粘合代码（e.g. FFI）。
+% 此外，在常量传播前，我们利用条件返回值流图标记错误处理路径，从而防止常量传播时错误处理路径污染有效路径状态。
+We present \mysys, a static-analysis framework that uses LLVM to propagate Graph IR shape information through existing C++ operator libraries and derive constant schedule parameters for kernel specialization and redundant-code elimination. To address the two challenges above, \mysys introduces two core designs. First, type-specific context-update rules construct C++ entry states directly from Graph IR shapes and attributes, avoiding analysis of Python/C++ FFI glue code. Second, a Conditional Return-Value Flow Graph identifies early-exit paths and prevents their states from affecting normal paths, preserving precision without analyzing every path.
+
+On an Ascend NPU, \mysys achieves a $1.06\times$ geometric-mean device-kernel speedup across 14 operators, with a maximum of $1.17\times$, and a $1.05\times$ geometric-mean end-to-end speedup across six representative inference scenarios. It provides larger benefits in the DeepFM recommendation and LLM decode scenarios, which average $1.10\times$. On an NVIDIA GPU, it reduces a 542\,MB operator-library archive by 88.8--95.5\% across 17 model variants.
 \end{abstract}

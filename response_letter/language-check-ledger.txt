@@ -1,0 +1,91 @@
+R3-W 全文语言检查修复台账
+
+本台账记录本轮独立全文语言检查中应用到未标记论文、并同步到标记论文的语言、术语和一致性修复。审稿意见直接要求的实验数据、模型维度和论证扩充另见回复信，不重复列为纯语言修复。
+
+## Abstract
+
+- 将主语 `Tiling` 更正为系统名 `TilingInfer`。
+- 将 operator、device-kernel 和 end-to-end 三类指标的统计口径分别写清，避免把不同层级的 speedup 混称为 average speedup。
+- 将 `reduces a 542 MB binary size` 改为 `reduces a 542 MB operator-library archive`；按要求不在这句话中点名 FlashInfer。
+- 统一 `geometric-mean`、`device-kernel`、`end-to-end`、`LLM decode scenarios` 等复合修饰语。
+
+## Introduction
+
+- `select ... from the runtime shape` → `select ... based on the runtime shape`。
+- `suggests a novel way` → `suggests a distinct application strategy`，降低不必要的新颖性措辞。
+- `a common representation for C++ libraries` → `a common representation of C++ operator libraries`。
+- `Graph IR node(i.e., ...)` → `Graph IR node (i.e., ...)`。
+- `TilingInfer employ` → `TilingInfer employs`。
+- 将不自然的 `gap between ... to ...` 改为 `gap by mapping ... into ...`。
+- `shape checkers, leading to ...` → `shape checkers that create ...`，修复悬垂结构。
+- 将 early-exit 段落中的空缺短语 `based on .` 补全为基于状态返回值条件流识别 `early-exit edges`，并统一高层 `paths` 与 CFG 层 `edges` 的术语边界。
+
+## Background and Motivation
+
+- 重写 Fig. 2 caption 中过长的并列从句，使 graph constant、schedule parameter 和 kernel specialization 的因果链清晰。
+- `Their kernels` → `Schedule-generic kernels`，补足明确主语。
+- `tile size configurations` → `tile-size configurations`。
+- `over 1000` → `over 1,000`。
+- `utilizes` → `uses`。
+- `Besides, the further sensitivity study` → `In addition, the sensitivity study`。
+- 将 `most significant impact` / `majority of performance impact` 改为更自然且可测量的 `greatest effect` / `most of the performance gain`。
+- `arguments of graph IR node` → `arguments of a Graph IR node`，补冠词并统一 `Graph IR` 大小写。
+
+## Design
+
+- `a directed acyclic graph where` → `a directed acyclic graph in which`。
+- `compositions like` → `compositions such as`。
+- `ensuring the approach` → `ensuring that the approach`。
+- 重写 CRVFG 示例 caption，分别使用完整句子描述 `check` 和 `set_t` 的返回值传播。
+- 全文统一 `Inter-Procedural` / `inter-procedural` 为 `Interprocedural` / `interprocedural`。
+- `pruning redundant template instantiations` → `pruning of redundant template instantiations`。
+- `Then TilingInfer employs` → `TilingInfer then applies`。
+- `determines it is unreachable` → `determines that it is unreachable`。
+
+## Evaluation
+
+- 为 `Hardware and Software Platforms`、`Benchmarks` 等斜体引导语补句号。
+- 将平台配置的破折号串联句拆成完整句，并统一 `64\,GB`、`24\,GB`、`0.60\,s`、`0.24--2.70\,s` 等单位间距和数值范围格式。
+- `Computer Vision` → `computer vision`。
+- `feature intensive workloads` → `have substantial workloads`。
+- `six end-to-end scenarios comprise` → `six scenarios comprising`。
+- `kernel specialzation` → `kernel specialization`。
+- `without ... and ...` → `without ... or ...`。
+- `inter-procedural` → `interprocedural`。
+- `specialize kernels same as` → `specialize kernels in the same way as`。
+- 将不完整的 `Optimal, serves as ...` 改为同位定义：`Optimal, a per-shape full-specialization oracle ...`。
+- 为 `only 1% smaller on average` 所在句补句号。
+- `Attention mechanisms ... most significant gains` → `Attention operators show the largest gains`。
+- 将场景级机制描述限定为 `relatively more memory-intensive`，避免在没有端到端 roofline 结论时作绝对 memory-bound 断言。
+- `decode phase of LLMs` → `the LLM decode phase`。
+- `Comparison between ... and specialization based on Standard LLVM` → `Comparison with Standard LLVM Specialization`。
+- `avoids employing path-sensitive analysis through ... paths` → `avoids path-sensitive analysis by using early-exit edge identification`。
+- `stable parameters` / `fields` 统一为 `constant schedule parameters` / `parameters`。
+- `To notice` → `Notably`。
+- `mamba` → `Mamba`。
+- `complex Utility kernels` → `complex utility kernels`。
+- 图的无障碍描述中 `specialized FlashInfer library sizes` → `pruned FlashInfer library sizes`。
+
+## Tables and captions
+
+- `Performance Comparison` → `Performance comparison`。
+- `metrics irrelative to tensor computations` → `metrics not directly tied to tensor computation`。
+- `Binary Size(KB)` → `Binary Size (KB)`。
+- `Decoding Phase` → `Decode Phase`。
+- `MoeGating` / `MoeTokenPermute` → `MoEGating` / `MoETokenPermute`。
+- `Conv2d(img2col)` → `Conv2d (im2col)`，同时修复算法名拼写。
+- `ElementWise` → `Elementwise`。
+- 模型名称统一为 `Llama 3.2 1B` 和 `Qwen3.5-0.8B`。
+
+## Related Work and Discussion
+
+- `inside an unchanged expert-written operator library` → `within an unchanged source-level expert implementation`，把比较边界限定到源级实现。
+- `specialized binary` → `pruned binary`，与 schedule-fixed library pruning 的实际操作一致。
+- `Besides` → `In addition`。
+- 将 Host 侧说明改为：NPU Graph replay 抑制重复启动开销，Transformer 各层相同输入形状允许复用 Host 计算出的 schedule parameters，因此在所评估设置中 Host schedule computation 不是瓶颈。
+
+## 标记版同步检查
+
+- 上述修改均已同步到 revision-marked 源文件；旧文本保留为红色删除，新文本显示为蓝色新增。
+- 对 `use Qwen2`/`evaluate six scenarios`、`same as TilingInfer`/`in the same way as in TilingInfer`、`with`/`a per-shape full-specialization oracle` 三处相邻删除与新增补了显式空格，避免 PDF 中红蓝文字粘连。
+- 未标记版和标记版均通过 LaTeX 编译；无未定义引用、未定义文献或致命错误。

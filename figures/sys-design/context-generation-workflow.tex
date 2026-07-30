@@ -1,5 +1,6 @@
 \begin{figure}[htbp]
 \centering
+\resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
     >=latex,
     thick,
@@ -46,11 +47,11 @@
     % 1. Input Data (doc style)
     \node[doc] (input) at (0, 0) {{\small\ding{172}} Graph IR\\Node $N$};
 
-    % 2. Process: Extract Parameter Types (box style)
-    \node[box] (extract) at (3.2, 0) {{\small\ding{173}} Extract\\Param Types};
+    % 2. Process: Extract Metadata (box style)
+    \node[box] (extract) at (3.2, 0) {{\small\ding{173}} Extract\\Metadata};
 
-    % 3. Intermediate Data: Parameter Type Sequence Phi (doc style)
-    \node[doc, minimum width=2.6cm] (param_types) at (6.6, 0) {{\small\ding{174}} Param Types $\Phi$\\$=[\phi_0, \dots, \phi_n]$};
+    % 3. Intermediate Data: Metadata Phi (doc style)
+    \node[doc, minimum width=2.6cm] (metadata) at (6.6, 0) {{\small\ding{174}} Metadata $\Phi$\\$=[\phi_0, \dots, \phi_n]$};
 
     % 4. Process: Update Context (box style)
     \node[box, minimum width=2.8cm] (update) at (10.2, 0) {{\small\ding{175}} Update Context\\$\mathbb{C}_{i+1}{=}\mathcal{R}_{\phi_i}(\mathbb{C}_{i})$};
@@ -58,15 +59,15 @@
     % Side Inputs for Update Process (both above)
     \node[doc, minimum width=2.2cm, minimum height=0.9cm] (empty_ctx) at (8.6, 1.5) {{\small\ding{176}} Empty $\mathbb{C}_0$};
     
-    \node[rulebox, minimum width=2.2cm] (rules) at (11.8, 1.5) {{\small\ding{177}} Rules $\mathcal{R}$};
+    \node[rulebox, minimum width=3.4cm] (rules) at (11.8, 1.5) {{\small\ding{177}} Type-directed\\context-update rules $\mathcal{R}$\\(\autoref{tab:semantic-rules})};
 
     % 5. Final Output (doc style)
     \node[doc, minimum width=2.2cm] (output) at (13.8, 0) {{\small\ding{178}} Initial $\mathbb{C}_{init}$};
 
     % Edges
     \draw[->] (input) -- (extract);
-    \draw[->] (extract) -- (param_types);
-    \draw[->] (param_types) -- (update);
+    \draw[->] (extract) -- (metadata);
+    \draw[->] (metadata) -- (update);
     \draw[->] (update) -- (output);
     
     % Side connections
@@ -74,8 +75,8 @@
     \draw[->] (rules) -- (update);
 
 \end{tikzpicture}
-\caption{Workflow of Context Generation. \ding{172}-\ding{174}: Extraction phase; \ding{175}-\ding{178}: Context construction phase.}
-\Description{Flow diagram showing the context generation process from Graph IR Node through Parameter Type Extraction to Call Context.}
+}
+\caption{Workflow of calling-context generation. \ding{172}--\ding{174}: extraction parses the Graph IR node into typed metadata $\Phi$. \ding{175}--\ding{178}: the five type-directed context-update rules $\mathcal{R}$ in \autoref{tab:semantic-rules} map $\Phi$ to the abstract C++ calling context $\mathbb{C}_{init}$.}
+\Description{Flow diagram showing the context generation process from Graph IR Node through Metadata Extraction to Call Context.}
 \label{fig:context_workflow}
-\vspace{-15pt}
 \end{figure}

@@ -3,12 +3,32 @@
 % \usepackage[numbers,sort]{natbib}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
-\newcommand{\algorithmautorefname}{Algorithm}
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xspace}
 
 \usepackage{wrapfig}
+
+% Chinese support via CJKutf8 for pdflatex.
+% CJKutf8 4.8.4 replaces the modern NFSS \selectfont implementation with a
+% pre-2020 version that ignores delayed series changes, making \textbf and
+% \bfseries ineffective. Preserve modern NFSS font selection and retain the
+% CJK-specific post-selection step through the standard selectfont hook.
+\makeatletter
+\expandafter\let\expandafter\ModernNFSSselectfont\csname selectfont \endcsname
+\makeatother
+\usepackage{CJKutf8}
+\makeatletter
+\expandafter\let\csname selectfont \endcsname\ModernNFSSselectfont
+\AddToHook{selectfont}[cjkutf8-compat]{%
+  \expandafter\ifx\csname CJK@\curr@fontshape\endcsname\relax
+  \else
+    \CJK@bold@false
+    \csname CJK@\curr@fontshape\endcsname
+  \fi
+}
+\makeatother
+\newcommand{\cn}[1]{\begin{CJK}{UTF8}{gbsn}#1\end{CJK}}
 
 % \usepackage[hyphens]{url}
 % \usepackage[linesnumbered,ruled,vlined]{algorithm2e}
@@ -30,39 +50,48 @@
 
 % 定义新定理样式：缩进1em，标题斜体，内容正常
 \newtheoremstyle{indenteditalic}
-  {3pt}   % 上方间距
-  {3pt}   % 下方间距
-  {}      % 主体字体（正常）
-  {1em}   % 缩进量
-  {\itshape} % 标题字体（斜体）
-  {.}     % 标题后标点
-  {0.5em} % 标题与内容间距
-  {}      % 定理头格式（可选）
+{3pt}   % 上方间距
+{3pt}   % 下方间距
+{}      % 主体字体（正常）
+{1em}   % 缩进量
+{\itshape} % 标题字体（斜体）
+{.}     % 标题后标点
+{0.5em} % 标题与内容间距
+{}      % 定理头格式（可选）
 
 % 应用新样式到definition环境
 \theoremstyle{indenteditalic}
 \newtheorem{definition}{Definition}[section]
-% 强制声明字体尺寸兼容性（添加到导言区）
-% \DeclareFontFamily{U}{rsfs}{\skewchar\font127}
-% \DeclareFontShape{U}{rsfs}{m}{n}{<-> s*[1.0] rsfs10}{} % 缩放系数可调
+% Scale the nearest RSFS design size instead of substituting a discrete size.
+\DeclareFontFamily{U}{rsfs}{\skewchar\font127}
+\DeclareFontShape{U}{rsfs}{m}{n}{%
+	<-6> s*[1.0] rsfs5
+	<6-8> s*[1.0] rsfs7
+	<8-> s*[1.0] rsfs10
+}{}
+
+% Inconsolata exposes its italic face as scit; make \itshape use that face.
+\makeatletter
+\InputIfFileExists{t1zi4.fd}{}{}
+\makeatother
+\DeclareFontShape{T1}{zi4}{m}{it}{<-> ssub * zi4/m/scit}{}
 
 \usepackage{subcaption}
-\usepackage{caption}
 \usepackage{color}
 \usepackage{import}
 \usepackage{listings}
 \usepackage{booktabs}
 \usepackage{url}
 \usepackage{hyperref}
-\usepackage{fancyhdr} 
+\usepackage{fancyhdr}
 \usepackage{adjustbox}
 % \usepackage{amssymb} 
 % \newtheorem{definition}{Definition}
 % \newtheorem{assumption}{Assumption}
 % \newcommand{\definitionautorefname}{Definition}
 % \newcommand{\assumptionautorefname}{Assumption}
-\PassOptionsToPackage{dvipsnames}{xcolor}
-\usepackage[dvipsnames]{xcolor}
+% acmart loads xcolor; main.tex passes dvipsnames before \documentclass.
+\usepackage{xcolor}
 % \usepackage{pdfpages}
 \colorlet{RED}{red}
 % \usepackage{subfig}
@@ -73,25 +102,25 @@
 % \titlespacing{\section}{0pt}{2pt}{2pt}  % 控制章节标题的上、下间距
 % \titlespacing{\subsection}{0pt}{1pt}{1pt}  % 控制小节标题的上、下间距
 
-% \setlength{\textfloatsep}{5pt}   % 控制图表与正文之间的垂直距离
-% \setlength{\floatsep}{5pt}       % 控制两个图表之间的距离
-% \setlength{\intextsep}{5pt}      % 控制浮动图表与正文之间的距离
-% \setlength{\abovecaptionskip}{2pt}  % 调整标题与图表之间的距离
-% \setlength{\belowcaptionskip}{1pt}  % 调整标题与正文之间的距离
+\setlength{\textfloatsep}{2pt plus 1pt minus 1pt}
+\setlength{\floatsep}{2pt plus 1pt minus 1pt}
+\setlength{\intextsep}{2pt plus 1pt minus 1pt}
+\setlength{\abovecaptionskip}{1pt}
+\setlength{\belowcaptionskip}{0pt}
 \usepackage{cleveref}
 \usepackage{tikz}
 \usetikzlibrary{
-    shapes.multipart,
-    shapes.geometric,
-    shapes.symbols, 
-    shapes.arrows,
-    shapes.callouts,
-    arrows.meta,
-    positioning,
-    fit,
-    backgrounds,
-    calc,
-    shadows
+	shapes.multipart,
+	shapes.geometric,
+	shapes.symbols,
+	shapes.arrows,
+	shapes.callouts,
+	arrows.meta,
+	positioning,
+	fit,
+	backgrounds,
+	calc,
+	shadows
 }
 % \usetikzlibrary{tikzmark}
 \newcommand{\tikzmark}[1]{\tikz[overlay,remember picture] \node (#1) {};}
@@ -104,44 +133,44 @@
 
 % --- 样式定义 ---
 \tikzset{
-    layeredbox/.style={
-        rectangle split, rectangle split parts=2, draw=borderblack, very thick,
-        inner sep=3pt, align=center, rectangle split part fill={headerblue, bodywhite},
-        font=\sffamily\small, minimum height=1.1cm
-    },
-    simplebox/.style={
-        rectangle, draw=borderblack, thick, fill=bodywhite, inner sep=2pt,
-        minimum width=1cm, align=center, font=\sffamily\small
-    },
-    black_simplebox/.style={
-        simplebox, font=\sffamily\small\color{black}, draw=borderblack
-    },
-    stdarrow/.style={->, >=latex, thick, line width=0.8pt, rounded corners=2pt, color=black},
-    arrowlabel/.style={
-        midway,
-        above=3pt,
-        font=\footnotesize,
-        align=center,
-        color=black!80,
-        inner sep=0pt
-    },
-    bubble/.style={
-        rectangle callout, draw=borderblack, fill=bodywhite, align=center,
-        font=\sffamily\small\color{customred}, inner sep=2pt,
-        rounded corners=0pt, callout absolute pointer={#1}
-    },
-    enclosing_box/.style={
-        draw=borderblack, thick, inner sep=2pt, rounded corners=0pt
-    },
-    % 标题框样式
-    box_header/.style={
-        rectangle, draw=borderblack, fill=headerblue, thick,
-        font=\sffamily\small, inner sep=2pt, minimum width=3cm
-    },
-    % 新增：独立数字图标样式
-    number_icon/.style={
-        anchor=east, xshift=-2pt, font=\Large
-    }
+	layeredbox/.style={
+			rectangle split, rectangle split parts=2, draw=borderblack, very thick,
+			inner sep=3pt, align=center, rectangle split part fill={headerblue, bodywhite},
+			font=\sffamily\small, minimum height=1.1cm
+		},
+	simplebox/.style={
+			rectangle, draw=borderblack, thick, fill=bodywhite, inner sep=2pt,
+			minimum width=1cm, align=center, font=\sffamily\small
+		},
+	black_simplebox/.style={
+			simplebox, font=\sffamily\small\color{black}, draw=borderblack
+		},
+	stdarrow/.style={->, >=latex, thick, line width=0.8pt, rounded corners=2pt, color=black},
+	arrowlabel/.style={
+			midway,
+			above=3pt,
+			font=\footnotesize,
+			align=center,
+			color=black!80,
+			inner sep=0pt
+		},
+	bubble/.style={
+			rectangle callout, draw=borderblack, fill=bodywhite, align=center,
+			font=\sffamily\small\color{customred}, inner sep=2pt,
+			rounded corners=0pt, callout absolute pointer={#1}
+		},
+	enclosing_box/.style={
+			draw=borderblack, thick, inner sep=2pt, rounded corners=0pt
+		},
+	% 标题框样式
+	box_header/.style={
+			rectangle, draw=borderblack, fill=headerblue, thick,
+			font=\sffamily\small, inner sep=2pt, minimum width=3cm
+		},
+	% 新增：独立数字图标样式
+	number_icon/.style={
+			anchor=east, xshift=-2pt, font=\Large
+		}
 }
 % \usepackage[active,tightpage]{preview}
 % \PreviewEnvironment{tikzpicture}
@@ -152,7 +181,7 @@
 \definecolor{paleblue}{RGB}{240, 248, 255}   % 虚线框背景色 (AliceBlue)
 \definecolor{codekey}{RGB}{0, 0, 255}
 \definecolor{codestr}{RGB}{163, 21, 21}
-\definecolor{flowred}{RGB}{220, 50, 47}      % Parameter/Constant Flow
+\definecolor{flowred}{RGB}{220, 50, 47}      % Metadata/Constant Flow
 \definecolor{flowblue}{RGB}{38, 139, 210}    % Variable Flow
 \definecolor{llvmgreen}{RGB}{0, 100, 0}      % LLVM IR specific
 
@@ -180,38 +209,38 @@
 %   \colorbox{blue!20}{\textbf{#1}}%
 % }
 \newcommand{\corecodecomment}[1]{%
-  \colorbox{blue!70}{\textcolor{white}{#1}}%
+	\colorbox{blue!70}{\textcolor{white}{#1}}%
 }
 
 % 设置 listings 样式
 \lstset{
-  backgroundcolor=\color{codebg},
-  basicstyle=\small\ttfamily\color{codefont},
-  % fontfamily=Fira Code,
-  keywordstyle=\color{keywordcolor},
-  commentstyle=\color{commentcolor}\itshape,
-  stringstyle=\color{stringcolor},
-  numberstyle=\tiny\color{gray},
-  numbers=left,
-  numbersep=5pt,
-  tabsize=2,
-  showstringspaces=false,
-  breaklines=true,
-  prebreak=\mbox{\textcolor{gray}{\tiny$\hookleftarrow$}\space}, % 将换行符显示在上一行末尾
-  frame=none,
-  captionpos=b,
-  language=C++,
-  xrightmargin=0pt,
-  framexrightmargin=0pt,
-  morekeywords={align,define,declare,call,ret,br,phi,load,store,add,sub,mul,icmp,fcmp,bitcast,ptrtoint,inttoptr,alloca,getelementptr,select,unreachable},
-  alsoletter={\%,@},
-  morekeywords={[2]\%[a-zA-Z_][a-zA-Z0-9_]*,@[a-zA-Z_][a-zA-Z0-9_]*},
-  keywordstyle={[2]\color{blue!70}},
-  emph={assert}, % 添加自定义类型名
-  emphstyle=\color{typecolor}, % 设置类型名高亮样式
-  moredelim=**[is][\colorbox{blue!20}]{@HL@}{@HL@},
-  aboveskip=0.5em, % 控制代码块上方的距离
-  belowskip=0em  % 控制代码块下方的距离
+backgroundcolor=\color{codebg},
+basicstyle=\small\ttfamily\color{codefont},
+% fontfamily=Fira Code,
+keywordstyle=\color{keywordcolor},
+commentstyle=\color{commentcolor}\itshape,
+stringstyle=\color{stringcolor},
+numberstyle=\tiny\color{gray},
+numbers=left,
+numbersep=5pt,
+tabsize=2,
+showstringspaces=false,
+breaklines=true,
+prebreak=\mbox{\textcolor{gray}{\tiny$\hookleftarrow$}\space}, % 将换行符显示在上一行末尾
+frame=none,
+captionpos=b,
+language=C++,
+xrightmargin=0pt,
+framexrightmargin=0pt,
+morekeywords={align,define,declare,call,ret,br,phi,load,store,add,sub,mul,icmp,fcmp,bitcast,ptrtoint,inttoptr,alloca,getelementptr,select,unreachable},
+alsoletter={\%,@},
+morekeywords={[2]\%[a-zA-Z_][a-zA-Z0-9_]*,@[a-zA-Z_][a-zA-Z0-9_]*},
+keywordstyle={[2]\color{blue!70}},
+emph={assert}, % 添加自定义类型名
+emphstyle=\color{typecolor}, % 设置类型名高亮样式
+moredelim=**[is][\colorbox{blue!20}]{@HL@}{@HL@},
+aboveskip=0.5em, % 控制代码块上方的距离
+belowskip=0em  % 控制代码块下方的距离
 }
 
 \newcommand{\myparagraph}[1]{\noindent\textbf{#1}}
@@ -221,14 +250,14 @@
 \usepackage{ulem}
 \usepackage{pifont}
 \usepackage{array}
-\usepackage[table]{xcolor} % 引入xcolor包并启用表格颜色支持
+% The table option is passed to xcolor before \documentclass in main.tex.
 \definecolor{lightgray}{rgb}{0.9,0.9,0.9} % 自定义浅灰色
 \long\def\com#1{}
 \long\def\xxx#1{{\bf XXX: }{\small [#1]}}
 \long\def\abbr#1#2{#2}			% long version
 \def\bibbrev#1#2{#2}			% long version\newcommand{\abcite}[2]{\abbr{\cite{#1}}{\cite{#1,#2}}}
 \newcommand{\bibconf}[3][]{#1 #2}
-\newcommand{\mysect}[1]{\textit{\textbf{#1}}} 
+\newcommand{\mysect}[1]{\textit{\textbf{#1}}}
 \newcommand{\kw}[1]{{\it #1}} % keyword
 \newcommand{\kn}[1]{\texttt{\small #1}}	% keyword
 \newcommand{\kd}[1]{\textbf{#1}} % keyword

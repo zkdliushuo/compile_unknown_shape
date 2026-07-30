@@ -1,13 +1,16 @@
+% Start a paragraph before opening the color group. Otherwise, acmart's
+% one-shot no-indent hook is cleared only inside the group and is restored at
+% the end of every full-paragraph \red{...}, suppressing later indentation.
+\newcommand{\red}[1]{\leavevmode{\color{red}#1}}
 \newcommand{\yu}[1] {{\textcolor{OliveGreen}{\textbf{#1}}}}
-\newcommand{\yunote}[1] {{$\langle${\textcolor{red}{YU:\textbf{#1}}}$\rangle$}}
+\newcommand{\yunote}[1] {{$\langle${\red{YU:\textbf{#1}}}$\rangle$}}
 \newcommand{\ls}[1] {{$\langle${\textcolor{brown}{LS:\textbf{#1}}}$\rangle$}}
 \newcommand{\yi}[1] {{$\langle${\textcolor{blue}{HYT:\textbf{#1}}}$\rangle$}}
 \newcommand{\yiR}[2]{{\remv{#1}\yi{#2}}}
 \newcommand{\yiRemv}[1]{{\color{magenta}\sout{#1}}}
-\newcommand\sxy[1]{{$\langle${\textcolor{red}{SXY:\textbf{#1}}}$\rangle$}}
-\newcommand\yzj[1]{{$\langle${\textcolor{red}{YZJ:\textbf{#1}}}$\rangle$}}
-\newcommand\scnote[1]{{$\langle${\textcolor{red}{SC:\textbf{#1}}}$\rangle$}}
-\newcommand\red[1] {{\textcolor{red}{#1}}}
+\newcommand\sxy[1]{{$\langle${\red{SXY:\textbf{#1}}}$\rangle$}}
+\newcommand\yzj[1]{{$\langle${\red{YZJ:\textbf{#1}}}$\rangle$}}
+\newcommand\scnote[1]{{$\langle${\red{SC:\textbf{#1}}}$\rangle$}}
 \newcommand{\lsR}[2]{{{\color{magenta}\sout{#1}}#2}}
 
 \newcommand\sR{{\mathbb{R}}}

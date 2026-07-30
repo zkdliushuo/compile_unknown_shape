@@ -1,11 +1,10 @@
-\begin{table}[htbp]
+\begin{table}[H]
     \centering
-    \caption{Detailed comparison of compilation overhead and parameter specialization. 
-    \textbf{Total Params} indicates the number of parameter fields defined in the operator program.
+    \caption{Detailed comparison of compilation overhead and parameter specialization.
+    \textbf{Total Params} indicates the number of schedule parameters defined in the operator program.
     \textbf{Time} is total compilation time in seconds. \textbf{Diff} is the time increment relative to Baseline.
-    \textbf{Derived \#} is the count of invariant parameter fields inferred by the compiler.}
+    \textbf{Derived \#} is the count of invariant schedule parameters inferred by the compiler.}
     \label{tab:compilation_detail}
-    \vspace{-5pt}
     \resizebox{\textwidth}{!}{%
     \begin{tabular}{@{}llcccccccccccccc@{}}
     \toprule
@@ -27,5 +26,4 @@
     \bottomrule
     \end{tabular}%
     }
-    \vspace{-15pt}
 \end{table}

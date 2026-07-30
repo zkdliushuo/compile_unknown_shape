@@ -52,7 +52,7 @@
     \draw[data_edge] (zero_check.south) -- node[right, font=\ttfamily\scriptsize, pos=0.4, align=left] {$\neg\varphi_0$} (vok_check.north);
     \draw[data_edge] (verr.south) -- (ret_check.north west);
     \draw[data_edge] (vok_check.south) -- (ret_check.north east);
-    
+
     % check 函数的边框和标题（左下角）
     \node[func_frame, fit=(neg_one) (zero_check) (verr) (vok_check) (ret_check)] (check_frame) {};
     \node[func_title, anchor=south west] at ([yshift=-0.5pt]check_frame.south west) {\texttt{check}};
@@ -74,7 +74,7 @@
     \draw[data_edge] (zero.south) -- node[right, font=\ttfamily\scriptsize, pos=0.4, align=left] {$\neg\varphi_1$} (vok.north);
     \draw[data_edge] (ve.south) -- (ret.north west);
     \draw[data_edge] (vok.south) -- (ret.north east);
-    
+
     % set_t 函数的边框和标题（左下角）
     \node[func_frame, fit=(check) (zero) (ve) (vok) (ret)] (set_t_frame) {};
     \node[func_title, anchor=south west] at (set_t_frame.south west) {\texttt{set\_t}};

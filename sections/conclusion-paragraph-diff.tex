@@ -1,0 +1,20 @@
+\section{Conclusion}
+\label{sec:concl}
+
+{\color{red}%
+\DIFdel{%
+We present TilingInfer, a static analysis framework that enables precise constant propagation across language boundaries for kernel specialization in deep learning operator libraries. Experimental results demonstrate its effectiveness: on Ascend NPU, TilingInfer achieves an average speedup of 1.06$\times$ (up to 1.17$\times$) for individual operators and 3\% end-to-end inference speedup for LLMs; on GPU, TilingInfer reduces the binary size of the FlashInfer library by 96.2\%, effectively addressing the code bloat problem.
+}
+\par}
+
+{\color{blue}%
+We presented TilingInfer, which propagates model-specific Graph-IR constants through existing C++ operator libraries to specialize schedule-generic device kernels or prune unreachable schedule-fixed instances.
+\par}
+
+{\color{blue}%
+Across 14 Ascend operators, TilingInfer delivers a 1.06$\times$ geometric-mean device-kernel speedup, with a maximum of 1.17$\times$; its largest end-to-end gains occur in recommendation and decode workloads whose Attention and MatMul schedules expose profitable invariants, averaging about 10\%.
+\par}
+
+{\color{blue}%
+For the schedule-fixed FlashInfer library, per-model pruning reduces the 542~MB universal binary to 24.3--60.7~MB across 17 model configurations, an 88.8--95.5\% reduction, demonstrating that graph-derived deployment knowledge can improve either device-kernel execution or binary footprint without synthesizing new schedules.
+\par}
